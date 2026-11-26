@@ -1,0 +1,245 @@
+{
+  "_about": "Real December 2026 trip used as the main test case. Confirmation codes, booking numbers and phone numbers are replaced with placeholders. 'calendarEvents' mimics what the Google Calendar import receives, including duplicates and disagreements. 'expected' is what the trip should look like after review.",
+  "today": "2026-11-26T12:00:00-05:00",
+  "trip": { "name": "Asia, December 2026", "owner": "kenny" },
+  "users": [
+    { "key": "kenny", "name": "Kenneth Yu", "homeZone": "America/New_York" },
+    { "key": "jacob", "name": "Jacob Feldman", "homeZone": "America/New_York" }
+  ],
+  "travelers": [
+    { "key": "kenny", "name": "Kenneth Yu", "user": "kenny" },
+    { "key": "jacob", "name": "Jacob Feldman", "user": "jacob" }
+  ],
+
+  "calendarEvents": [
+    {
+      "calendar": "kenny primary",
+      "summary": "Flight to Tokyo (NH 159) JFK → Haneda",
+      "start": { "dateTime": "2026-12-01T00:55:00-05:00", "timeZone": "America/New_York" },
+      "end": { "dateTime": "2026-12-01T15:25:00-05:00", "timeZone": "America/New_York" },
+      "location": "JFK Terminal 7",
+      "description": "ANA NH 159, reservation PLACEHOLDER_A, seat 30K, Economy. Arrives Tokyo Haneda Wed Dec 2, 5:25 AM Tokyo time."
+    },
+    {
+      "calendar": "shared China",
+      "summary": "NH159 JFK → Tokyo Haneda",
+      "start": { "dateTime": "2026-12-01T00:55:00-05:00", "timeZone": "America/New_York" },
+      "end": { "dateTime": "2026-12-01T15:25:00-05:00", "timeZone": "America/New_York" },
+      "location": "JFK Terminal 7",
+      "description": "ANA NH159, Boeing 777-300ER. Seat 30C, Economy. ANA confirmation: PLACEHOLDER_B"
+    },
+    {
+      "calendar": "shared China",
+      "summary": "Hotel Resol Ueno (Tokyo)",
+      "start": { "date": "2026-12-02" },
+      "end": { "date": "2026-12-05" },
+      "location": "Hotel Resol Ueno, 7-2-9 Ueno, Taito-ku, Tokyo 110-0005, Japan",
+      "description": "Check-in: Wed Dec 2 after 3:00pm. Check-out: Sat Dec 5 by 11:00am. 3 nights, 2 adults. Free cancellation until Sat Nov 28, 11:59pm. Non-refundable after that. If arriving after 9pm, contact the hotel or the reservation may be cancelled."
+    },
+    {
+      "calendar": "shared China",
+      "summary": "Head spa, Belle Cheveu Hiroo",
+      "start": { "dateTime": "2026-12-02T18:30:00+09:00", "timeZone": "Asia/Tokyo" },
+      "end": { "dateTime": "2026-12-02T21:00:00+09:00", "timeZone": "Asia/Tokyo" },
+      "location": "Belle Cheveu Hiroo, 2F Confort Minami Azabu, 4-5-47 Minami-Azabu, Minato-ku, Tokyo 106-0047, Japan",
+      "description": "Scalp care for 2. JPY 44,000 total, pay at salon. Cancel or change by 10:00am Sun Nov 29 (Japan time). After that: 50% to change, 100% to cancel."
+    },
+    {
+      "calendar": "kenny primary (from Gmail)",
+      "summary": "Flight to Hong Kong (CX 509)",
+      "start": { "dateTime": "2026-12-05T09:00:00+09:00", "timeZone": "America/New_York" },
+      "end": { "dateTime": "2026-12-05T13:25:00+08:00", "timeZone": "America/New_York" },
+      "location": "Tokyo NRT",
+      "description": ""
+    },
+    {
+      "calendar": "shared China",
+      "summary": "CX509 Tokyo Narita → Hong Kong",
+      "start": { "dateTime": "2026-12-05T08:50:00+09:00", "timeZone": "Asia/Tokyo" },
+      "end": { "dateTime": "2026-12-05T13:25:00+08:00", "timeZone": "Asia/Tokyo" },
+      "location": "Narita International Airport (NRT)",
+      "description": "Cathay Pacific CX509. Departs Tokyo Narita at 8:50am Sat Dec 5 (Japan time). Arrives Hong Kong 1:25pm Sat Dec 5 (HK time). Seat 39G. Booking reference: PLACEHOLDER_C"
+    },
+    {
+      "calendar": "shared China",
+      "summary": "Stanford Hotel (Hong Kong)",
+      "start": { "date": "2026-12-05" },
+      "end": { "date": "2026-12-06" },
+      "location": "Stanford Hotel, 118 Soy Street, Mong Kok, Kowloon, Hong Kong",
+      "description": "Check-in: Sat Dec 5 after 3:00pm. Check-out: Sun Dec 6. 1 night."
+    },
+    {
+      "calendar": "shared China",
+      "summary": "Jantzen Tailor, custom suits",
+      "start": { "dateTime": "2026-12-05T17:00:00+08:00", "timeZone": "Asia/Hong_Kong" },
+      "end": { "dateTime": "2026-12-05T18:30:00+08:00", "timeZone": "Asia/Hong_Kong" },
+      "location": "Jantzen Tailor, Room D-E, 5/F, On Lok Yuen Building, 25-27 Des Voeux Road Central, Central, Hong Kong",
+      "description": "Measurements and fabric selection. Shop closes 8pm."
+    },
+    {
+      "calendar": "shared China",
+      "summary": "Sun Kai Tat, Wedding Card Street",
+      "start": { "dateTime": "2026-12-05T18:45:00+08:00", "timeZone": "Asia/Hong_Kong" },
+      "end": { "dateTime": "2026-12-05T19:45:00+08:00", "timeZone": "Asia/Hong_Kong" },
+      "location": "Sun Kai Tat, Shop B07, B/F, Lee Tung Avenue, 200 Queen's Road East, Wan Chai, Hong Kong",
+      "description": "Printing and gold stamping shop."
+    },
+    {
+      "calendar": "shared China",
+      "summary": "Mumian Hotel Luohu (Shenzhen)",
+      "start": { "date": "2026-12-06" },
+      "end": { "date": "2026-12-10" },
+      "location": "No.1001 Baoan South Road, Luohu District, Shenzhen, China 518001",
+      "description": "Check-in: Sun Dec 6 after 2:00pm. Check-out: Thu Dec 10 before 12:00pm. 4 nights. Free cancellation before Dec 5 (Shenzhen time). After that, first night is charged."
+    },
+    {
+      "calendar": "shared China",
+      "summary": "Airbnb, 528 Nathan Road (Hong Kong)",
+      "start": { "date": "2026-12-10" },
+      "end": { "date": "2026-12-13" },
+      "location": "Onward Building, 528 Nathan Road, Kowloon, Hong Kong",
+      "description": "Check-in: Thu Dec 10, 2:00pm. Checkout: Sun Dec 13, 11:00am. 3 nights, 4 guests. Partial refund if cancelled before 2:00pm Dec 3."
+    },
+    {
+      "calendar": "kenny primary (from Gmail)",
+      "summary": "Stay at Queen beds, 4Rms beside MTR grand 14ppls 2 bathrm",
+      "start": { "date": "2026-12-10" },
+      "end": { "date": "2026-12-14" },
+      "location": "",
+      "description": ""
+    },
+    {
+      "calendar": "kenny primary (from Gmail)",
+      "summary": "Stay at Total (USD) $1,183.22",
+      "start": { "date": "2026-12-10" },
+      "end": { "date": "2026-12-14" },
+      "location": "",
+      "description": ""
+    },
+    {
+      "calendar": "shared China",
+      "summary": "CX520 Hong Kong → Tokyo Narita",
+      "start": { "dateTime": "2026-12-13T10:30:00+08:00", "timeZone": "Asia/Hong_Kong" },
+      "end": { "dateTime": "2026-12-13T15:30:00+09:00", "timeZone": "Asia/Hong_Kong" },
+      "location": "Hong Kong International Airport (HKG)",
+      "description": "Cathay Pacific CX520. Seat 40K. Booking reference: PLACEHOLDER_C"
+    },
+    {
+      "calendar": "shared China",
+      "summary": "Hotel Resol Ueno (Tokyo)",
+      "start": { "date": "2026-12-13" },
+      "end": { "date": "2026-12-15" },
+      "location": "Hotel Resol Ueno, 7-2-9 Ueno, Taito-ku, Tokyo 110-0005, Japan",
+      "description": "Check-in: Sun Dec 13 after 3:00pm. Check-out: Tue Dec 15. 2 nights."
+    },
+    {
+      "calendar": "shared China",
+      "summary": "NH160 Tokyo Haneda → JFK",
+      "start": { "dateTime": "2026-12-15T22:55:00+09:00", "timeZone": "Asia/Tokyo" },
+      "end": { "dateTime": "2026-12-15T21:55:00-05:00", "timeZone": "Asia/Tokyo" },
+      "location": "Haneda Airport (HND)",
+      "description": "ANA NH160. Departs Tokyo Haneda at 10:55pm Tue Dec 15 (Japan time). Arrives JFK 9:55pm Tue Dec 15 (ET), same calendar day. Seat 30H."
+    }
+  ],
+
+  "expected": {
+    "items": [
+      { "type": "flight", "flightNumber": "NH159", "airline": "ANA", "from": "JFK", "to": "HND",
+        "start": { "local": "2026-12-01T00:55", "zone": "America/New_York" },
+        "end": { "local": "2026-12-02T05:25", "zone": "Asia/Tokyo" },
+        "travelers": ["kenny", "jacob"],
+        "private": [ { "traveler": "kenny", "seat": "30K", "confirmationCode": "PLACEHOLDER_A" },
+                     { "traveler": "jacob", "seat": "30C", "confirmationCode": "PLACEHOLDER_B" } ] },
+
+      { "type": "stay", "title": "Hotel Resol Ueno", "city": "Tokyo",
+        "start": { "local": "2026-12-02T15:00", "zone": "Asia/Tokyo" },
+        "end": { "local": "2026-12-05T11:00", "zone": "Asia/Tokyo" },
+        "travelers": ["kenny", "jacob"],
+        "lateArrivalCutoff": "21:00",
+        "deadlines": [ { "kind": "free_cancellation", "local": "2026-11-28T23:59", "zone": "Asia/Tokyo", "consequence": "Non refundable after this" } ] },
+
+      { "type": "plan", "title": "Head spa, Belle Cheveu Hiroo", "city": "Tokyo",
+        "start": { "local": "2026-12-02T18:30", "zone": "Asia/Tokyo" },
+        "end": { "local": "2026-12-02T21:00", "zone": "Asia/Tokyo" },
+        "travelers": ["kenny", "jacob"],
+        "deadlines": [ { "kind": "change", "local": "2026-11-29T10:00", "zone": "Asia/Tokyo", "consequence": "50% to change, 100% to cancel after this" } ] },
+
+      { "type": "flight", "flightNumber": "CX509", "airline": "Cathay Pacific", "from": "NRT", "to": "HKG",
+        "start": { "local": "2026-12-05T08:50", "zone": "Asia/Tokyo" },
+        "end": { "local": "2026-12-05T13:25", "zone": "Asia/Hong_Kong" },
+        "travelers": ["kenny", "jacob"],
+        "importConflict": { "field": "start", "values": ["08:50", "09:00"] } },
+
+      { "type": "stay", "title": "Stanford Hotel", "city": "Hong Kong",
+        "start": { "local": "2026-12-05T15:00", "zone": "Asia/Hong_Kong" },
+        "end": { "local": "2026-12-06T11:00", "zone": "Asia/Hong_Kong", "estimated": true },
+        "travelers": ["kenny", "jacob"] },
+
+      { "type": "plan", "title": "Jantzen Tailor", "city": "Hong Kong",
+        "start": { "local": "2026-12-05T17:00", "zone": "Asia/Hong_Kong" },
+        "end": { "local": "2026-12-05T18:30", "zone": "Asia/Hong_Kong" },
+        "travelers": ["kenny", "jacob"] },
+
+      { "type": "plan", "title": "Sun Kai Tat", "city": "Hong Kong",
+        "start": { "local": "2026-12-05T18:45", "zone": "Asia/Hong_Kong" },
+        "end": { "local": "2026-12-05T19:45", "zone": "Asia/Hong_Kong" },
+        "travelers": ["kenny", "jacob"] },
+
+      { "type": "stay", "title": "Mumian Hotel Luohu", "city": "Shenzhen",
+        "start": { "local": "2026-12-06T14:00", "zone": "Asia/Shanghai" },
+        "end": { "local": "2026-12-10T12:00", "zone": "Asia/Shanghai" },
+        "travelers": ["kenny", "jacob"],
+        "deadlines": [ { "kind": "free_cancellation", "local": "2026-12-05T00:00", "zone": "Asia/Shanghai", "consequence": "First night charged after this" } ] },
+
+      { "type": "stay", "title": "Airbnb, 528 Nathan Road", "city": "Hong Kong",
+        "start": { "local": "2026-12-10T14:00", "zone": "Asia/Hong_Kong" },
+        "end": { "local": "2026-12-13T11:00", "zone": "Asia/Hong_Kong" },
+        "travelers": ["kenny", "jacob"],
+        "deadlines": [ { "kind": "partial_refund", "local": "2026-12-03T14:00", "zone": "Asia/Hong_Kong", "consequence": "Only a partial refund before this, none after" } ],
+        "note": "The Gmail event 'Stay at Queen beds, 4Rms beside MTR...' should match and merge into this item." },
+
+      { "type": "stay", "title": "Stay at Total (USD) $1,183.22", "city": null,
+        "start": { "local": "2026-12-10T15:00", "zone": "Asia/Hong_Kong", "estimated": true },
+        "end": { "local": "2026-12-14T11:00", "zone": "Asia/Hong_Kong", "estimated": true },
+        "travelers": ["kenny"],
+        "status": "needs_review",
+        "note": "Unknown property. Must stay in the review inbox or be flagged by the overlapping stays check. Do not auto merge it into the Airbnb." },
+
+      { "type": "flight", "flightNumber": "CX520", "airline": "Cathay Pacific", "from": "HKG", "to": "NRT",
+        "start": { "local": "2026-12-13T10:30", "zone": "Asia/Hong_Kong" },
+        "end": { "local": "2026-12-13T15:30", "zone": "Asia/Tokyo" },
+        "travelers": ["kenny", "jacob"] },
+
+      { "type": "stay", "title": "Hotel Resol Ueno", "city": "Tokyo",
+        "start": { "local": "2026-12-13T15:00", "zone": "Asia/Tokyo" },
+        "end": { "local": "2026-12-15T11:00", "zone": "Asia/Tokyo", "estimated": true },
+        "travelers": ["kenny", "jacob"] },
+
+      { "type": "flight", "flightNumber": "NH160", "airline": "ANA", "from": "HND", "to": "JFK",
+        "start": { "local": "2026-12-15T22:55", "zone": "Asia/Tokyo" },
+        "end": { "local": "2026-12-15T21:55", "zone": "America/New_York" },
+        "travelers": ["kenny", "jacob"] }
+    ],
+
+    "checks": [
+      "Overlapping stays: Airbnb 528 Nathan Road and 'Stay at Total (USD) $1,183.22', Dec 10 to 13",
+      "Different airport: land HND Dec 2, depart NRT Dec 5",
+      "Different airport: land NRT Dec 13, depart HND Dec 15",
+      "City change with no transport: Hong Kong to Shenzhen, Dec 6",
+      "City change with no transport: Shenzhen to Hong Kong, Dec 10",
+      "Records disagree: CX509 departure 8:50am vs 9:00am (until resolved in the inbox)",
+      "Late arrival: head spa ends 9pm, Hotel Resol late arrival cutoff 9pm"
+    ],
+
+    "notConflicts": [
+      "NH159 seat 30K vs 30C and different confirmation codes: two travelers on one flight"
+    ],
+
+    "deadlinesOnToday": [
+      { "item": "Hotel Resol Ueno (Dec 2 to 5)", "when": "Sat Nov 28, 11:59pm Tokyo", "home": "Sat Nov 28, 9:59am NY", "warning": true },
+      { "item": "Head spa", "when": "Sun Nov 29, 10:00am Tokyo", "home": "Sat Nov 28, 8:00pm NY", "warning": true },
+      { "item": "Airbnb 528 Nathan Road", "when": "Thu Dec 3, 2:00pm Hong Kong", "home": "Thu Dec 3, 1:00am NY", "warning": false },
+      { "item": "Mumian Hotel Luohu", "when": "Sat Dec 5, 12:00am Shenzhen", "home": "Fri Dec 4, 11:00am NY", "warning": false }
+    ]
+  }
+}

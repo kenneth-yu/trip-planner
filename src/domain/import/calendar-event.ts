@@ -1,0 +1,202 @@
+import { DateTime } from "../time/luxon";
+import type { ItemPrivate, Zone, ZonedTime } from "../types";
+import { fromLocal, isValidZone } from "../time/format";
+import { airportZone, findCityInText, isKnownCity, cityZone } from "../time/places";
+import {
+  extractDeadlines,
+  extractFlightNumber,
+  extractLateArrivalCutoff,
+  extractPrivate,
+  extractRoute,
+  extractStayTimes,
+} from "./patterns";
+import type { ProposedItem } from "./proposal";
+
+export interface CalendarEventTime {
+  dateTime?: string;
+  date?: string;
+  timeZone?: string;
+}
+
+export interface CalendarEvent {
+  id?: string;
+  calendar?: string;
+  summary?: string;
+  description?: string;
+  location?: string;
+  htmlLink?: string;
+  start: CalendarEventTime;
+  end: CalendarEventTime;
+}
+
+export interface MapContext {
+  travelerIds: string[];
+  zoneOnDate: (isoDate: string) => Zone | null;
+  homeZone: Zone;
+}
+
+export interface MappedEvent {
+  proposed: ProposedItem;
+  unparsed: string[];
+}
+
+export const DEFAULT_CHECK_IN = "15:00";
+export const DEFAULT_CHECK_OUT = "11:00";
+
+type TimedEvent = CalendarEvent & { start: { dateTime: string; timeZone?: string }; end: { dateTime: string } };
+type AllDayEvent = CalendarEvent & { start: { date: string }; end: { date: string } };
+
+function isAllDay(ev: CalendarEvent): ev is AllDayEvent {
+  return typeof ev.start.date === "string" && typeof ev.end.date === "string";
+}
+
+function isTimed(ev: CalendarEvent): ev is TimedEvent {
+  return typeof ev.start.dateTime === "string" && typeof ev.end.dateTime === "string";
+}
+
+function instant(t: { dateTime: string }, zone: Zone): ZonedTime {
+  const dt = DateTime.fromISO(t.dateTime, { setZone: true });
+  return { at: dt.toUTC().toISO(), zone };
+}
+
+function privateFor(text: string, travelerIds: string[]): ItemPrivate[] {
+  const p = extractPrivate(text);
+  if (!Object.keys(p).length) return [];
+  return [{ travelerId: travelerIds.length === 1 ? travelerIds[0] : null, ...p }];
+}
+
+function splitCity(summary: string): { title: string; city: string | null } {
+  const m = /^(.*?)\s*\(([^)]+)\)\s*$/.exec(summary);
+  if (m && isKnownCity(m[2]) && cityZone(m[2])) return { title: m[1], city: m[2] };
+  return { title: summary, city: null };
+}
+
+function mapFlight(ev: TimedEvent, flightNumber: string, ctx: MapContext): MappedEvent {
+  const summary = ev.summary ?? "";
+  const desc = ev.description ?? "";
+  const { from, to } = extractRoute(summary, ev.location ?? "", desc);
+  const problems: string[] = [];
+  const fallback = ev.start.timeZone ?? ctx.homeZone;
+  const fromZone = from ? airportZone(from) : null;
+  const toZone = to ? airportZone(to) : null;
+  if (!fromZone) problems.push("Which airport does this flight leave from?");
+  if (!toZone) problems.push("Which airport does this flight land at?");
+  const start = instant(ev.start, fromZone ?? fallback);
+  const end = instant(ev.end, toZone ?? fallback);
+  const notAfter = DateTime.fromISO(start.at).setZone(start.zone);
+  const { deadlines, unparsed } = extractDeadlines(desc, start.zone, notAfter);
+  return {
+    proposed: {
+      type: "flight",
+      title: flightNumber,
+      start,
+      end,
+      startIsEstimated: false,
+      endIsEstimated: false,
+      location: null,
+      flight: { flightNumber, fromAirport: from ?? "", toAirport: to ?? "", airline: airlineBefore(desc, flightNumber) },
+      travelerIds: ctx.travelerIds,
+      private: privateFor(desc, ctx.travelerIds),
+      deadlines: deadlines.map((d) => ({ kind: d.kind, at: fromLocal(d.local, d.zone), consequence: d.consequence, source: "parsed" as const })),
+      notes: desc,
+      status: problems.length || !desc ? "needs_review" : "confirmed",
+      problems,
+    },
+    unparsed,
+  };
+}
+
+function mapAllDay(ev: AllDayEvent, ctx: MapContext): MappedEvent {
+  const summary = ev.summary ?? "Untitled";
+  const desc = ev.description ?? "";
+  const { title, city: titleCity } = splitCity(summary);
+  const fromAddress = ev.location ? findCityInText(ev.location) : null;
+  const city = titleCity ?? fromAddress?.city ?? null;
+  const problems: string[] = [];
+  let zone = city ? cityZone(city) : null;
+  if (!zone) {
+    zone = ctx.zoneOnDate(ev.start.date) ?? ctx.homeZone;
+    problems.push("Where is this? The time zone was taken from where you are that day.");
+  }
+  const nights = DateTime.fromISO(ev.end.date).diff(DateTime.fromISO(ev.start.date), "days").days;
+  const isStay = nights >= 1;
+  const times = extractStayTimes(desc);
+  const start = fromLocal(`${ev.start.date}T${times.checkIn ?? DEFAULT_CHECK_IN}`, zone);
+  const end = fromLocal(`${ev.end.date}T${times.checkOut ?? DEFAULT_CHECK_OUT}`, zone);
+  const { deadlines, unparsed } = extractDeadlines(desc, zone, DateTime.fromISO(start.at).setZone(zone));
+  const kind = /airbnb|vrbo|apartment/i.test(summary) ? "rental" : /hotel|inn|hostel|resort|ryokan/i.test(summary) ? "hotel" : "other";
+  return {
+    proposed: {
+      type: isStay ? "stay" : "plan",
+      title,
+      start,
+      end,
+      startIsEstimated: !times.checkIn,
+      endIsEstimated: !times.checkOut,
+      location: { name: title, address: ev.location || undefined, city: city ?? undefined },
+      stay: isStay ? { propertyName: title, kind, lateArrivalCutoff: extractLateArrivalCutoff(desc) ?? undefined } : undefined,
+      travelerIds: ctx.travelerIds,
+      private: privateFor(desc, ctx.travelerIds),
+      deadlines: deadlines.map((d) => ({ kind: d.kind, at: fromLocal(d.local, d.zone), consequence: d.consequence, source: "parsed" as const })),
+      notes: desc,
+      status: problems.length || !desc ? "needs_review" : "confirmed",
+      problems,
+    },
+    unparsed,
+  };
+}
+
+function mapTimed(ev: TimedEvent, ctx: MapContext): MappedEvent {
+  const summary = ev.summary ?? "Untitled";
+  const desc = ev.description ?? "";
+  const place = ev.location ? findCityInText(ev.location) : null;
+  const problems: string[] = [];
+  let zone = place?.zone ?? null;
+  if (!zone) {
+    const tz = ev.start.timeZone;
+    if (tz && isValidZone(tz)) zone = tz;
+    else {
+      zone = ctx.homeZone;
+      problems.push("Where is this? No place or time zone came with it.");
+    }
+  }
+  const start = instant(ev.start, zone);
+  const end = instant(ev.end, zone);
+  const { deadlines, unparsed } = extractDeadlines(desc, zone, DateTime.fromISO(start.at).setZone(zone));
+  const name = ev.location?.split(",")[0]?.trim();
+  return {
+    proposed: {
+      type: "plan",
+      title: summary,
+      start,
+      end,
+      startIsEstimated: false,
+      endIsEstimated: false,
+      location: ev.location ? { name, address: ev.location, city: place?.city } : null,
+      travelerIds: ctx.travelerIds,
+      private: privateFor(desc, ctx.travelerIds),
+      deadlines: deadlines.map((d) => ({ kind: d.kind, at: fromLocal(d.local, d.zone), consequence: d.consequence, source: "parsed" as const })),
+      notes: desc,
+      status: problems.length ? "needs_review" : "confirmed",
+      problems,
+    },
+    unparsed,
+  };
+}
+
+export function mapCalendarEvent(ev: CalendarEvent, ctx: MapContext): MappedEvent {
+  if (isAllDay(ev)) return mapAllDay(ev, ctx);
+  if (!isTimed(ev)) throw new Error("Event has no usable start or end");
+  const flightNumber = extractFlightNumber(ev.summary ?? "") ?? extractFlightNumber(ev.description ?? "");
+  const looksLikeFlight = flightNumber && (/flight|→|->|\bto\b/i.test(ev.summary ?? "") || /airport|\([A-Z]{3}\)|\b[A-Z]{3}\b/.test(ev.location ?? ""));
+  if (flightNumber && looksLikeFlight) return mapFlight(ev, flightNumber, ctx);
+  return mapTimed(ev, ctx);
+}
+
+export function airlineBefore(text: string, flightNumber: string): string | undefined {
+  const code = flightNumber.slice(0, 2);
+  const num = flightNumber.slice(2);
+  const m = new RegExp(`\\b((?:[A-Z][A-Za-z]+ ){0,2}[A-Z][A-Za-z]+)\\s+${code}\\s?${num}\\b`).exec(text);
+  if (!m) return undefined;
+  return m[1].replace(/^(?:Flight|Departs|Arrives|On)\s+/, "") || undefined;
+}

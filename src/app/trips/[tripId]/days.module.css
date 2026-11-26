@@ -1,0 +1,206 @@
+.day {
+  margin-bottom: 28px;
+}
+
+.day > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.day > summary::-webkit-details-marker {
+  display: none;
+}
+
+.date {
+  font-weight: 700;
+  font-size: var(--size-heading);
+  white-space: nowrap;
+}
+
+.place {
+  color: var(--muted);
+}
+
+.entries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.entry {
+  border-bottom: 1px solid var(--rule);
+}
+
+.entry > details > summary,
+.static {
+  list-style: none;
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  gap: 12px;
+  padding: 12px 0;
+  cursor: pointer;
+}
+
+.entry > details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.time {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.home {
+  display: block;
+  color: var(--muted);
+  font-size: var(--size-small);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.sub {
+  display: block;
+  color: var(--muted);
+  font-size: var(--size-small);
+}
+
+.stay {
+  position: relative;
+}
+
+.city1 {
+  --city: var(--city-1);
+}
+
+.city2 {
+  --city: var(--city-2);
+}
+
+.city3 {
+  --city: var(--city-3);
+}
+
+.city4 {
+  --city: var(--city-4);
+}
+
+.city5 {
+  --city: var(--city-5);
+}
+
+.stay::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: 14px;
+  bottom: 14px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--city, var(--rule));
+}
+
+.detail {
+  padding: 0 0 14px 6.25rem;
+  color: var(--muted);
+  font-size: var(--size-small);
+}
+
+.detail dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+}
+
+.detail dt {
+  color: var(--muted);
+}
+
+.detail dd {
+  margin: 0;
+  color: var(--text);
+}
+
+.arrival {
+  color: var(--muted);
+  font-size: var(--size-small);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.free {
+  color: var(--muted);
+  padding: 12px 0;
+}
+
+.flight {
+  padding: 12px 0;
+}
+
+.flightHead {
+  font-size: var(--size-small);
+  color: var(--muted);
+}
+
+.legs {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.key {
+  font-size: var(--size-key);
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.legPlace {
+  font-size: var(--size-small);
+  color: var(--muted);
+}
+
+.duration {
+  font-size: var(--size-small);
+  color: var(--muted);
+  padding-bottom: 22px;
+  white-space: nowrap;
+}
+
+.arrive {
+  text-align: right;
+}
+
+.tag {
+  font-size: var(--size-small);
+  font-weight: 700;
+  margin-left: 6px;
+}
+
+.clock {
+  font-size: var(--size-small);
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+.estimated {
+  font-style: normal;
+  color: var(--muted);
+}
+
+@media (min-width: 720px) {
+  .entry > details > summary,
+  .static {
+    grid-template-columns: 7rem 1fr;
+  }
+  .detail {
+    padding-left: 7.75rem;
+  }
+}
