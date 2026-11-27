@@ -4,6 +4,7 @@ import { getDb, type Db } from "../db/client";
 import * as t from "../db/schema";
 import { createAdapter, generateSessionToken, lookupSession, SESSION_MAX_AGE_SECONDS, sessionCookieExpiry, type User } from "./adapter";
 import { sessionCookieName } from "./config";
+import { isReviewServer } from "../env";
 import type { Env } from "./providers";
 
 export type { User };
@@ -26,7 +27,7 @@ export function devSignInEnabled(env: Env = process.env): boolean {
     throw new Error("DEV_SIGN_IN=1 is set on a production deployment. Remove DEV_SIGN_IN from the production environment variables.");
   }
   if (env.VERCEL_ENV === "preview") return true;
-  if (env.NODE_ENV === "production") {
+  if (env.NODE_ENV === "production" && !isReviewServer(env)) {
     throw new Error("DEV_SIGN_IN=1 is set with NODE_ENV=production. Remove DEV_SIGN_IN, or set VERCEL_ENV=preview on a preview deployment.");
   }
   return true;

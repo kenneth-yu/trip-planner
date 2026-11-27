@@ -291,3 +291,19 @@ jobs:
           grep -q "DEV_SIGN_IN" refuse.log || { echo "::error::the refusal did not name DEV_SIGN_IN"; exit 1; }
           kill "$server"
           exit 0
+      - name: Production refuses the review server flag
+        env:
+          REVIEW_SERVER: "1"
+          DEV_SIGN_IN: "1"
+        run: |
+          npx next start -p 3102 > review-flag.log 2>&1 &
+          for i in $(seq 1 30); do curl -s -o /dev/null localhost:3102/sign-in && break; sleep 1; done
+          code=$(curl -s -o /dev/null -w '%{http_code}' "localhost:3102/api/dev/sign-in?as=kenny")
+          echo "dev sign in with the review flag answered $code"
+          [ "$code" = "500" ] || { echo "::error::dev sign in with REVIEW_SERVER=1 answered $code, expected 500"; exit 1; }
+          home=$(curl -s -o /dev/null -w '%{http_code}' localhost:3102/sign-in)
+          echo "sign in page answered $home"
+          [ "$home" = "500" ] || { echo "::error::the sign in page answered $home, expected 500 because startup refused"; exit 1; }
+          grep -q "REVIEW_SERVER" review-flag.log || { echo "::error::the refusal did not name REVIEW_SERVER"; exit 1; }
+          for pid in $(ss -ltnp | grep ':3102 ' | sed 's/.*pid=\([0-9]*\).*/\1/'); do kill "$pid"; done
+          exit 0

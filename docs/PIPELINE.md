@@ -86,9 +86,17 @@ Then open `http://localhost:8766/?url=http://localhost:3000/trips/<trip id>`. Th
 
 ## Running an app from a worktree
 
-Each reviewer runs their own copy so nobody touches the main dev database:
+Use the review server. It picks a free port, seeds the demo trips into a scratch database, and prints the URL:
 
 ```bash
-PGLITE_DIR=<main>/.pipeline/scratch/WP-NN/db DATA_ENCRYPTION_KEY=<base64 32 bytes> npm run db:seed
-PGLITE_DIR=<main>/.pipeline/scratch/WP-NN/db DEV_SIGN_IN=1 SESSION_SECRET=<32+ chars> TOKEN_ENCRYPTION_KEY=<base64 32 bytes> DATA_ENCRYPTION_KEY=<base64 32 bytes> npx next dev --port 31NN
+node tools/review-server.mjs
+node tools/review-server.mjs --dev
 ```
+
+- Default: `next build` then `next start` with `REVIEW_SERVER=1` and `DEV_SIGN_IN=1` (a flag the app honours only when no Vercel variable and no `DATABASE_URL` is present), so you see the production build signed in (`/api/dev/sign-in?as=kenny`) on a scratch embedded database seeded with the demo trips.
+- `--dev` runs `next dev` instead. Use it only when asked: it is the heavy mode.
+- It listens on 127.0.0.1 only and passes the child process an allowlisted environment (no email, Google or database variables).
+- It refuses to start when `DATABASE_URL` is set in your shell or when the folder has an env file (`.env`, `.env.local` and the like), so it can never touch a real database or read real secrets. It never reads those files.
+- It stops itself after 45 minutes. The server runs under `timeout`, so it is killed on schedule even if the wrapper is killed. Stop it before you finish (Ctrl-C).
+- At most 2 review servers run at once across all worktrees. The lock lives in `trip-planner-review-servers` under the system temp directory, stale entries are removed, and a third start prints which pids and ports hold the slots.
+- Secrets are generated per run and never printed. The scratch database is deleted on exit. Never point it at a real database.
