@@ -1,0 +1,113 @@
+.title {
+  font-size: var(--size-heading);
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.value {
+  margin: 0 0 4px;
+}
+
+.field {
+  display: block;
+  margin: 0 0 12px;
+}
+
+.field label {
+  display: block;
+  color: var(--muted);
+  font-size: var(--size-small);
+  margin-bottom: 4px;
+}
+
+.field input[type="text"] {
+  width: 100%;
+  max-width: 28rem;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: var(--size-small);
+  margin: 4px 0 0;
+}
+
+.row {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 10px 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.rowName {
+  margin-right: 6px;
+}
+
+.panel {
+  padding: 0 0 12px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+}
+
+.actions button {
+  min-height: 44px;
+}
+
+.remove {
+  margin-top: 24px;
+}
+
+.danger {
+  color: var(--warning);
+}
+
+.group {
+  border: 0;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.group legend {
+  font-weight: 700;
+  padding: 0;
+  margin-bottom: 6px;
+}
+
+.option {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 44px;
+}
+
+.buttons {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.add {
+  margin-top: 16px;
+}
+
+.delete {
+  margin-top: 48px;
+}
+
+.delete a {
+  display: inline-block;
+  min-height: 44px;
+  line-height: 44px;
+  color: var(--text);
+}

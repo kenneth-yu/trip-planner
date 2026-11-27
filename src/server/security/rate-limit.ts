@@ -5,7 +5,7 @@ import { appSecret } from "../auth/tokens";
 import type { DbOrTx } from "../repo/trip-repo";
 
 export interface RateRule {
-  name: "signIn" | "inviteAccept" | "inviteLookup" | "viewLink" | "feed" | "assistant" | "quickAdd" | "placeHint";
+  name: "signIn" | "inviteAccept" | "inviteLookup" | "viewLink" | "feed" | "assistant" | "quickAdd" | "placeHint" | "travelerAdd";
   limit: number;
   windowMs: number;
 }
@@ -22,6 +22,7 @@ export const RATE_RULES: Record<RateRule["name"], RateRule> = {
   assistant: { name: "assistant", limit: 120, windowMs: MINUTE },
   quickAdd: { name: "quickAdd", limit: 30, windowMs: MINUTE },
   placeHint: { name: "placeHint", limit: 60, windowMs: MINUTE },
+  travelerAdd: { name: "travelerAdd", limit: 30, windowMs: MINUTE },
 };
 
 const INVITE_TOKEN_OPEN = /^\/invite\/(?!(?:accept|join|lost|problem)(?:\/|$))[^/]+\/?$/;
