@@ -1,23 +1,38 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
-import { describe, expect, it } from "vitest";
-import { OFFLINE_COPY } from "./offline-copy";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { OFFLINE_COPY, offlineHtml } from "./offline-html";
 
-const source = readFileSync(path.join(import.meta.dirname, "..", "..", "..", "public", "sw.js"), "utf8");
+const publicDir = path.join(import.meta.dirname, "..", "..", "..", "public");
+const source = readFileSync(path.join(publicDir, "sw.js"), "utf8");
+const ICON_FILES = ["icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png", "icon.svg"];
+
+function expectedCacheName() {
+  const hash = createHash("sha256");
+  hash.update(offlineHtml(null));
+  for (const file of ICON_FILES) hash.update(readFileSync(path.join(publicDir, file)));
+  return `trips-offline-${hash.digest("hex").slice(0, 12)}`;
+}
 
 type Listener = (event: Record<string, unknown>) => void;
 
-function load(networkUp: boolean) {
+function load(networkUp: boolean, offlineStatus = 200, stalled = false) {
   const listeners = new Map<string, Listener>();
   const stores = new Map<string, Map<string, string>>();
   const fetched: string[] = [];
+  let up = true;
   const cacheFor = (name: string) => {
     const store = stores.get(name) ?? new Map<string, string>();
     stores.set(name, store);
     return {
       addAll: async (paths: string[]) => {
-        for (const p of paths) store.set(p, `cached ${p}`);
+        for (const p of paths) {
+          const response = await context.fetch({ url: `https://trips.test${p}` });
+          if (!response.ok) throw new TypeError(`bad response for ${p}`);
+          store.set(p, `cached ${p}`);
+        }
       },
     };
   };
@@ -36,10 +51,19 @@ function load(networkUp: boolean) {
     caches,
     URL,
     Promise,
-    fetch: async (request: { url: string }) => {
+    setTimeout,
+    clearTimeout,
+    AbortController,
+    fetch: (request: { url: string }, init?: { signal?: AbortSignal }): Promise<{ ok: boolean; body: string }> => {
       fetched.push(request.url);
-      if (!networkUp) throw new TypeError("network down");
-      return `network ${request.url}`;
+      if (stalled && !request.url.endsWith("/offline") && !request.url.endsWith(".png") && !request.url.endsWith(".svg")) {
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+        });
+      }
+      if (!up) return Promise.reject(new TypeError("network down"));
+      const ok = request.url.endsWith("/offline") ? offlineStatus === 200 : true;
+      return Promise.resolve({ ok, body: `network ${request.url}` });
     },
   };
   vm.runInNewContext(source, context);
@@ -54,12 +78,17 @@ function load(networkUp: boolean) {
       },
     });
     await Promise.all(waits);
+    if (type === "install") up = networkUp;
     return responded === undefined ? undefined : { value: await responded };
   };
   return { run, stores, fetched };
 }
 
 const request = (url: string, mode = "cors", method = "GET") => ({ url: `https://trips.test${url}`, mode, method });
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("service worker", () => {
   it("caches only the offline page and the icons", async () => {
@@ -83,7 +112,7 @@ describe("service worker", () => {
     const sw = load(true);
     await sw.run("install", {});
     const result = await sw.run("fetch", { request: request("/trips/abc", "navigate") });
-    expect(result?.value).toBe("network https://trips.test/trips/abc");
+    expect(result?.value).toEqual({ ok: true, body: "network https://trips.test/trips/abc" });
   });
 
   it("serves the offline page when a navigation fails for lack of a network", async () => {
@@ -98,6 +127,33 @@ describe("service worker", () => {
     await sw.run("install", {});
     expect(await sw.run("fetch", { request: request("/api/mcp") })).toBeUndefined();
     expect(await sw.run("fetch", { request: request("/trips/abc", "navigate", "POST") })).toBeUndefined();
+  });
+
+  it("fails the install when the offline page cannot be fetched", async () => {
+    const sw = load(true, 500);
+    await expect(sw.run("install", {})).rejects.toThrow("bad response for /offline");
+  });
+
+  it("falls back to the offline page when a navigation stalls for 8 seconds and never caches the late page", async () => {
+    vi.useFakeTimers();
+    const sw = load(true, 200, true);
+    await sw.run("install", {});
+    const before = JSON.stringify([...sw.stores]);
+    const pending = sw.run("fetch", { request: request("/trips/abc", "navigate") });
+    await vi.advanceTimersByTimeAsync(7999);
+    let settled = false;
+    void pending.then(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect((await pending)?.value).toBe("cached /offline");
+    expect(JSON.stringify([...sw.stores])).toBe(before);
+  });
+
+  it("names its cache after a hash of the offline page and icons, so changing either needs a new name", () => {
+    expect(source).toContain(`const CACHE = "${expectedCacheName()}";`);
   });
 
   it("serves icons from the cache without the network", async () => {
@@ -116,7 +172,7 @@ describe("service worker", () => {
   });
 });
 
-describe("offline copy", () => {
+describe("offline page", () => {
   it("uses the exact words from the spec", () => {
     expect(OFFLINE_COPY).toEqual({
       heading: "You are offline.",
@@ -124,5 +180,40 @@ describe("offline copy", () => {
       screenshots: "If you saved screenshots of your bookings, they are in your photos.",
       retry: "Try again",
     });
+    const html = offlineHtml(null);
+    for (const text of Object.values(OFFLINE_COPY)) expect(html).toContain(text);
+    expect(html).toContain("<h1>You are offline.</h1>");
+    expect(html).toContain('<button type="button"');
+  });
+
+  it("references nothing under /_next/ and no stylesheet, font or image link", () => {
+    const html = offlineHtml("abc");
+    expect(html).not.toContain("/_next/");
+    expect(html).not.toMatch(/<link\b/);
+    expect(html).not.toMatch(/\b(src|href)=/);
+  });
+
+  it("styles itself for light, dark and safe areas", () => {
+    const html = offlineHtml(null);
+    expect(html).toContain("prefers-color-scheme: dark");
+    expect(html).toContain("env(safe-area-inset-top)");
+    expect(html).toContain("min-height: 44px");
+  });
+});
+
+describe("offline route", () => {
+  it("answers the same bytes for anyone, whatever cookies or session they send, nonce aside", async () => {
+    const { GET } = await import("./route");
+    const anonymous = await (await GET(new Request("https://trips.test/offline", { headers: { "x-nonce": "AAAA" } }))).text();
+    const signedIn = await (
+      await GET(new Request("https://trips.test/offline", { headers: { "x-nonce": "BBBB", cookie: "session=whatever", authorization: "Bearer x" } }))
+    ).text();
+    expect(signedIn.replace("BBBB", "AAAA")).toBe(anonymous);
+  });
+
+  it("carries the request nonce on its inline script", async () => {
+    const { GET } = await import("./route");
+    const html = await (await GET(new Request("https://trips.test/offline", { headers: { "x-nonce": "N0nce" } }))).text();
+    expect(html).toContain('<script nonce="N0nce">');
   });
 });

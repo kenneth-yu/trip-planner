@@ -25,7 +25,7 @@ test("a navigation with no network shows the offline page and Try again reloads"
   await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
   await page.reload();
   await context.setOffline(true);
-  await page.goto(`/trips/${DECEMBER_TRIP}`).catch(() => undefined);
+  await page.goto(`/trips/${DECEMBER_TRIP}`);
   await expect(page.getByRole("heading", { level: 1, name: "You are offline." })).toBeVisible();
   await expect(page.getByText("Your trip will show again when you have a connection.")).toBeVisible();
   await expect(page.getByText("If you saved screenshots of your bookings, they are in your photos.")).toBeVisible();
@@ -33,4 +33,14 @@ test("a navigation with no network shows the offline page and Try again reloads"
   await context.setOffline(false);
   await page.getByRole("button", { name: "Try again" }).click();
   await expect(page.getByRole("heading", { name: "Asia, December 2026" })).toBeVisible();
+});
+
+test("the offline page is the same bytes for an anonymous visitor and a signed in traveler, nonce aside", async ({ page, request, signIn }) => {
+  const nonceOf = (html: string) => /<script nonce="([^"]+)"/.exec(html)?.[1] ?? "";
+  const anonymous = await (await request.get("/offline")).text();
+  await signIn("kenny");
+  const signedIn = await (await page.request.get("/offline")).text();
+  expect(nonceOf(anonymous)).not.toBe("");
+  expect(signedIn.replace(nonceOf(signedIn), nonceOf(anonymous))).toBe(anonymous);
+  expect(anonymous).not.toContain("/_next/");
 });

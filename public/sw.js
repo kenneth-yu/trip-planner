@@ -1,4 +1,5 @@
-const CACHE = "trips-offline-v1";
+const CACHE = "trips-offline-0798b9aaae43";
+const NAVIGATION_TIMEOUT_MS = 8000;
 const OFFLINE_PATH = "/offline";
 const ICON_PATHS = ["/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/apple-touch-icon.png", "/icon.svg"];
 const CACHED_PATHS = [OFFLINE_PATH, ...ICON_PATHS];
@@ -16,12 +17,16 @@ self.addEventListener("activate", (event) => {
 });
 
 async function navigate(request) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), NAVIGATION_TIMEOUT_MS);
   try {
-    return await fetch(request);
+    return await fetch(request, { signal: controller.signal });
   } catch (error) {
     const offline = await caches.match(OFFLINE_PATH);
     if (offline) return offline;
     throw error;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
