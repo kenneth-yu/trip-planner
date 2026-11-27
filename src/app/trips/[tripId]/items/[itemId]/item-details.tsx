@@ -1,6 +1,6 @@
 import styles from "./item.module.css";
 import { CopyButton } from "./copy-button";
-import { buildFlightCard } from "@/domain/time/flight-card";
+import { buildFlightCard, flightCities } from "@/domain/time/flight-card";
 import { formatClock, formatDayHeader, homeReference, toLocal } from "@/domain/time/format";
 import { buildDeadlineLines } from "@/domain/deadlines/deadlines";
 import { itemCity } from "@/domain/time/days";
@@ -39,6 +39,12 @@ function moments(item: VisibleItem, view: TripView): { rows: Moment[]; lead: str
   return { lead: null, sentence: null, rows: [moment(null, item.start, view)] };
 }
 
+function heading(item: VisibleItem): string {
+  if (item.type !== "flight" || !item.flight) return item.title;
+  const to = flightCities(item).to;
+  return [to ? `${item.flight.flightNumber} to ${to}` : item.flight.flightNumber, item.flight.airline].filter(Boolean).join(", ");
+}
+
 function firstName(view: TripView, id: string | null): string | null {
   if (!id) return null;
   return (view.travelers.find((t) => t.id === id)?.name ?? "Someone").split(" ")[0];
@@ -49,13 +55,13 @@ interface Entry {
   value: string;
 }
 
-function entriesFor(view: TripView, rows: ItemPrivate[], pick: (p: ItemPrivate) => string | undefined): Entry[] {
+function entriesFor(view: TripView, item: VisibleItem, rows: ItemPrivate[], pick: (p: ItemPrivate) => string | undefined): Entry[] {
   const all = rows.flatMap((p) => {
     const value = pick(p);
     return value ? [{ who: firstName(view, p.travelerId), value }] : [];
   });
   const distinct = new Set(all.map((e) => e.value));
-  if (distinct.size === 1) return [{ who: null, value: all[0].value }];
+  if (distinct.size === 1 && (all.length > 1 || item.travelerIds.length < 2)) return [{ who: null, value: all[0].value }];
   return all;
 }
 
@@ -83,14 +89,14 @@ export function ItemDetails({ view, item, nowMs }: { view: TripView; item: Visib
   const address = item.location?.address ?? null;
   const sensitive = view.permissions.canSeeSensitive;
   const priv = sensitive ? item.private : [];
-  const seats = entriesFor(view, priv, (p) => p.seat);
+  const seats = entriesFor(view, item, priv, (p) => p.seat);
   const seatLine = priv.flatMap((p) => (p.seat ? [[firstName(view, p.travelerId), p.seat] as const] : [])).map(([who, seat]) => (who ? `${who} ${seat}` : seat)).join(", ");
-  const prices = entriesFor(view, priv, (p) => (p.price ? `${p.price.currency} ${p.price.amount}` : undefined));
+  const prices = entriesFor(view, item, priv, (p) => (p.price ? `${p.price.currency} ${p.price.amount}` : undefined));
   const notes = [...priv.flatMap((p) => (p.notes ? [p.notes] : [])), ...(sensitive && item.notes ? [item.notes] : [])];
   const deadlines = buildDeadlineLines(view, nowMs).filter((l) => l.itemId === item.id);
   return (
     <article className={styles.item}>
-      <h2 className={styles.title}>{item.title}</h2>
+      <h2 className={styles.title}>{heading(item)}</h2>
       <div className={styles.when}>
         {rows.map((r, i) => (
           <div key={i} className={styles.moment}>
@@ -128,8 +134,8 @@ export function ItemDetails({ view, item, nowMs }: { view: TripView; item: Visib
       ))}
       {sensitive && (
         <>
-          <Field label="Confirmation code" entries={entriesFor(view, priv, (p) => p.confirmationCode)} big />
-          <Field label="Booking reference" entries={entriesFor(view, priv, (p) => p.bookingReference)} />
+          <Field label="Confirmation code" entries={entriesFor(view, item, priv, (p) => p.confirmationCode)} big />
+          <Field label="Booking reference" entries={entriesFor(view, item, priv, (p) => p.bookingReference)} />
           {seats.length > 0 && (
             <section className={styles.field}>
               <div className={styles.fieldHead}>
@@ -139,7 +145,7 @@ export function ItemDetails({ view, item, nowMs }: { view: TripView; item: Visib
               <div className={styles.value}>{seatLine}</div>
             </section>
           )}
-          <Field label="Phone" entries={entriesFor(view, priv, (p) => p.phone)} />
+          <Field label="Phone" entries={entriesFor(view, item, priv, (p) => p.phone)} />
           <Field label="Price" entries={prices} />
           {notes.map((n, i) => (
             <section key={i} className={styles.field}>

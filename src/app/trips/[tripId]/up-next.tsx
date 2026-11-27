@@ -24,7 +24,7 @@ export function UpNext({ entries, attention, tripId }: { entries: UpNextEntry[];
         <>
           <h2>Up next</h2>
           {entries.map((e) => (
-            <Link key={e.key} className={styles.next} href={`/trips/${tripId}/items/${e.key.slice(e.key.indexOf(":") + 1)}`}>
+            <Link key={e.key} className={styles.next} href={`/trips/${tripId}/items/${e.itemId}`}>
               <b>{e.time}</b>
               <span>
                 {e.title}

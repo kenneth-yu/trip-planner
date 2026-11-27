@@ -97,7 +97,7 @@ function projectItem(item: Item, requester: Requester, perms: Permissions): Visi
     showAsBusy: item.showAsBusy,
     status: item.status,
     flags: [...item.flags],
-    notes: item.notes,
+    notes: perms.canSeeSensitive ? item.notes : "",
     private: perms.canSeeSensitive ? item.private.map((p) => structuredClone(p)) : [],
     deadlines: perms.canSeeDeadlines ? item.deadlines.map(({ confirmedBy, ...d }) => ({ ...structuredClone(d), confirmed: confirmedBy !== null })) : [],
     createdBy: isMember ? item.createdBy : null,

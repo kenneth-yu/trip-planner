@@ -127,4 +127,28 @@ describe("day view rows", () => {
     expect(page).toContain(`href="/trips/${TRIP_ID}/items/${nh159(agg).id}"`);
     expect(page).not.toContain("item-ring");
   });
+
+  it("no longer repeat codes, seats, phone or price from the details page", () => {
+    const agg = trip();
+    const flight = nh159(agg);
+    flight.private = [{ travelerId: null, confirmationCode: "PLACEHOLDER_A", seat: "30K", phone: "+1 555 0100", price: { amount: "1200", currency: "USD" } }];
+    const view = projectTrip(agg, owner);
+    const page = renderToStaticMarkup(createElement(DayView, { view, days: buildDays(view), todayKey: "2026-11-27" }));
+    for (const value of ["PLACEHOLDER_A", "30K", "+1 555 0100", "1200"]) expect(page).not.toContain(value);
+    expect(page).toContain("Open booking");
+  });
+});
+
+describe("details wording", () => {
+  it("a code held by one of two travelers says whose it is", () => {
+    const agg = trip();
+    const flight = nh159(agg);
+    flight.private = [{ travelerId: flight.travelerIds[0], confirmationCode: "PLACEHOLDER_A" }];
+    expect(render(agg, owner, flight.id)).toContain("Confirmation code, Kenneth");
+  });
+
+  it("the flight title says where it goes", () => {
+    const agg = trip();
+    expect(render(agg, owner, nh159(agg).id)).toContain("NH159 to Tokyo, ANA");
+  });
 });

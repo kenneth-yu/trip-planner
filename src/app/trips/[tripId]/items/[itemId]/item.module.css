@@ -112,12 +112,3 @@
   min-height: 36px;
   cursor: pointer;
 }
-
-.openDetails {
-  margin: 0 0 6px;
-}
-
-.openDetails a {
-  color: var(--link);
-  font-weight: 700;
-}

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import styles from "./days.module.css";
-import itemStyles from "./items/[itemId]/item.module.css";
 import formStyles from "@/app/ui/item-form/item-form.module.css";
 import { AddedMarker } from "@/app/ui/item-form/added-marker";
 
@@ -51,30 +50,21 @@ function Flight({ card, itemId, item }: { card: FlightCard; itemId: string; item
   );
 }
 
-function Details({ item, canSeeSensitive, names }: { item: VisibleItem; canSeeSensitive: boolean; names: Map<string, string> }) {
+function Details({ item, names }: { item: VisibleItem; names: Map<string, string> }) {
   const rows: [string, string][] = [];
+  const hasBooking = item.private.length > 0 || item.notes !== "" || item.deadlines.length > 0;
   if (item.location?.address) rows.push(["Address", item.location.address]);
   if (item.travelerIds.length) rows.push(["Travelers", item.travelerIds.map((id) => names.get(id) ?? "Someone").join(", ")]);
-  if (canSeeSensitive) {
-    for (const p of item.private) {
-      const who = p.travelerId ? `${names.get(p.travelerId)}: ` : "";
-      if (p.confirmationCode) rows.push(["Confirmation", `${who}${p.confirmationCode}`]);
-      if (p.bookingReference) rows.push(["Booking", `${who}${p.bookingReference}`]);
-      if (p.seat) rows.push(["Seat", `${who}${p.seat}`]);
-      if (p.phone) rows.push(["Phone", `${who}${p.phone}`]);
-      if (p.price) rows.push(["Price", `${who}${p.price.currency} ${p.price.amount}`]);
-      if (p.notes) rows.push(["From the booking", p.notes]);
-    }
-  }
   if (item.startIsEstimated || item.endIsEstimated) rows.push(["Times", "Estimated. Check the booking."]);
   if (item.status === "needs_review") rows.push(["Status", "Needs review"]);
   for (const flag of item.flags) rows.push(["Check", flag]);
-  if (item.notes) rows.push(["Notes", item.notes]);
   return (
     <div className={styles.detail}>
-      <p className={itemStyles.openDetails}>
-        <Link href={`/trips/${item.tripId}/items/${item.id}`}>Open details</Link>
-      </p>
+      {hasBooking && (
+        <p className={styles.openDetails}>
+          <Link href={`/trips/${item.tripId}/items/${item.id}`}>Open booking</Link>
+        </p>
+      )}
       <dl>
         {rows.map(([k, v], i) => (
           <div key={i} style={{ display: "contents" }}>
@@ -105,7 +95,7 @@ function Entry({ entry, view, colors, names }: { entry: DayEntry; view: TripView
     );
   }
   const item = view.items.find((i) => i.id === entry.itemId);
-  const detail = item ? <Details item={item} canSeeSensitive={view.permissions.canSeeSensitive} names={names} /> : null;
+  const detail = item ? <Details item={item} names={names} /> : null;
   if (entry.kind === "flight") {
     return (
       <li className={styles.entry}>

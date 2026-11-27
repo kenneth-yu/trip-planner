@@ -118,6 +118,15 @@
   font-size: var(--size-small);
 }
 
+.openDetails {
+  margin: 0 0 6px;
+}
+
+.openDetails a {
+  color: var(--link);
+  font-weight: 700;
+}
+
 .detail dl {
   margin: 0;
   display: grid;
