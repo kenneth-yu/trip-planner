@@ -188,15 +188,15 @@ describe("legacy rows are sealed on start", () => {
       status: "confirmed" as const,
       problems: [],
     };
-    await db.insert(t.itemPrivate).values({ itemId: item.id, travelerId: null, data: { confirmationCode: "LEGACY-CODE", seat: "99Z" } });
+    await db.insert(t.itemPrivate).values({ itemId: item.id, travelerId: null, data: { confirmationCode: "LEGACY-CODE", seat: "LEGACY-SEAT-A" } });
     await db.insert(t.importedItems).values({ batchId, tripId: TRIP_ID, raw: [{ summary: "LEGACY-RAW" }], proposed });
     await db.insert(t.activity).values({
       tripId: TRIP_ID,
       actorId: kenny.kind === "member" ? kenny.userId : "",
       action: "updated",
       itemId: item.id,
-      before: { private: [{ seat: "99Z" }] },
-      after: { private: [{ seat: "98Y" }] },
+      before: { private: [{ seat: "LEGACY-SEAT-A" }] },
+      after: { private: [{ seat: "LEGACY-SEAT-B" }] },
     });
     return { ...env, item };
   }
@@ -206,12 +206,22 @@ describe("legacy rows are sealed on start", () => {
     expect(await storedText(db)).toContain("LEGACY-CODE");
     expect(await sealLegacyRows(db)).toEqual({ itemPrivate: 1, activity: 1, imported: 1 });
     const text = await storedText(db);
-    for (const secret of ["LEGACY-CODE", "LEGACY-RAW", "99Z", "98Y"]) expect(text, secret).not.toContain(secret);
+    for (const secret of ["LEGACY-CODE", "LEGACY-RAW", "LEGACY-SEAT-A", "LEGACY-SEAT-B"]) expect(text, secret).not.toContain(secret);
     const after = present((await getTripView(ctx, TRIP_ID, kenny)).items.find((i) => i.id === item.id));
-    expect(after.private.some((p) => p.seat === "99Z" && p.confirmationCode === "LEGACY-CODE")).toBe(true);
+    expect(after.private.some((p) => p.seat === "LEGACY-SEAT-A" && p.confirmationCode === "LEGACY-CODE")).toBe(true);
     const log = present((await listActivity(db, TRIP_ID)).find((a) => a.action === "updated"));
-    expect(log.before).toEqual({ private: [{ seat: "99Z" }] });
+    expect(log.before).toEqual({ private: [{ seat: "LEGACY-SEAT-A" }] });
     expect(present((await listInbox(ctx, TRIP_ID, kenny))[0]).proposed.title).toBe("Old import");
+  });
+
+  it("seals a legacy activity row that has neither before nor after, so the log still lists", async () => {
+    const { db } = await insertLegacy();
+    await db.insert(t.activity).values({ tripId: TRIP_ID, actorId: kenny.kind === "member" ? kenny.userId : "", action: "viewed", before: null, after: null });
+    expect(await sealLegacyRows(db)).toEqual({ itemPrivate: 1, activity: 2, imported: 1 });
+    const log = await listActivity(db, TRIP_ID);
+    expect(log).toHaveLength(2);
+    expect(present(log.find((a) => a.action === "viewed"))).toMatchObject({ before: null, after: null });
+    for (const row of await db.select().from(t.activity)) expect(row.sealed).toMatch(/^k1\./);
   });
 
   it("is idempotent", async () => {

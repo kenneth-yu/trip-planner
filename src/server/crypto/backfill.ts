@@ -1,4 +1,4 @@
-import { eq, isNotNull, or } from "drizzle-orm";
+import { eq, isNotNull, isNull, or } from "drizzle-orm";
 import type { Db } from "../db/client";
 import * as t from "../db/schema";
 import { sealJson } from "./sealed";
@@ -21,7 +21,7 @@ export async function sealLegacyRows(db: Db): Promise<BackfillCounts> {
     const rows = await tx
       .select({ id: t.activity.id, before: t.activity.before, after: t.activity.after })
       .from(t.activity)
-      .where(or(isNotNull(t.activity.before), isNotNull(t.activity.after)));
+      .where(isNull(t.activity.sealed));
     for (const row of rows) {
       await tx
         .update(t.activity)

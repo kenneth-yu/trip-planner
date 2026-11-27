@@ -20,6 +20,10 @@ function dataKey(): Buffer {
   return key;
 }
 
+export function assertDataKey(): void {
+  dataKey();
+}
+
 function context(purpose: SealPurpose, rowId: string): Buffer {
   return Buffer.from(`${purpose}:${rowId}`, "utf8");
 }

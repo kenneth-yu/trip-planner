@@ -3,6 +3,7 @@ import path from "node:path";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "./schema";
 import { sealLegacyRows } from "../crypto/backfill";
+import { assertDataKey } from "../crypto/sealed";
 
 export type Schema = typeof schema;
 export type Db = PgDatabase<PgQueryResultHKT, Schema>;
@@ -34,6 +35,7 @@ declare global {
 }
 
 async function openDb(): Promise<Db> {
+  assertDataKey();
   const db = process.env.DATABASE_URL
     ? await createPostgresDb(process.env.DATABASE_URL)
     : await createPgliteDb(process.env.PGLITE_DIR ?? path.join(process.cwd(), ".data", "pglite"));
