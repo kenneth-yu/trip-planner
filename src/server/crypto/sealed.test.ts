@@ -90,6 +90,11 @@ describe("sealed json", () => {
     expect(() => sealJson(value, "item_private", rowId)).toThrow(/32 bytes/);
   });
 
+  it("rejects an all-zero key", () => {
+    vi.stubEnv("DATA_ENCRYPTION_KEY", Buffer.alloc(32, 0).toString("base64"));
+    expect(() => sealJson(value, "item_private", rowId)).toThrow(/all zeros/);
+  });
+
   it("cannot open data sealed under a different key", () => {
     const sealed = sealJson(value, "item_private", rowId);
     vi.stubEnv("DATA_ENCRYPTION_KEY", Buffer.alloc(32, 9).toString("base64"));

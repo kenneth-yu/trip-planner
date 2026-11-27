@@ -17,6 +17,7 @@ function dataKey(): Buffer {
   if (!raw) throw new SealError("DATA_ENCRYPTION_KEY is not set. Generate one with: openssl rand -base64 32");
   const key = Buffer.from(raw, "base64");
   if (key.length !== 32) throw new SealError("DATA_ENCRYPTION_KEY must be 32 bytes, base64 encoded.");
+  if (key.every((byte) => byte === 0)) throw new SealError("DATA_ENCRYPTION_KEY must not be all zeros. Generate one with: openssl rand -base64 32");
   return key;
 }
 

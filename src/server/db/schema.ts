@@ -180,7 +180,6 @@ export const importedItems = pgTable(
     matchStrength: text("match_strength", { enum: ["strong", "possible"] }),
     differences: jsonb("differences").$type<Difference[]>().notNull().default([]),
     matchDifferences: jsonb("match_differences").$type<Difference[]>().notNull().default([]),
-    unparsed: jsonb("unparsed").$type<string[]>().notNull().default([]),
     state: text("state", { enum: ["pending", "approved", "merged", "discarded"] }).notNull().default("pending"),
     resultItemId: uuid("result_item_id"),
     decidedBy: uuid("decided_by").references(() => users.id),

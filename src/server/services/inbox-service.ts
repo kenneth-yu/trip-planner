@@ -41,12 +41,11 @@ async function insertBatch(ctx: ServiceContext, tripId: string, requester: Reque
             id,
             batchId,
             tripId,
-            sealed: sealJson({ raw: d.raw, proposed: d.proposed }, "import", id),
+            sealed: sealJson({ raw: d.raw, proposed: d.proposed, unparsed: d.unparsed }, "import", id),
             matchItemId: d.match?.itemId ?? null,
             matchStrength: d.match?.strength ?? null,
             differences: d.differences,
             matchDifferences: d.match?.differences ?? [],
-            unparsed: d.unparsed,
           };
         }),
       );
@@ -114,15 +113,16 @@ export async function listInbox(ctx: ServiceContext, tripId: string, requester: 
   return rows.map(({ e, b }) => {
     const matched = e.matchItemId ? agg.items.find((i) => i.id === e.matchItemId) : undefined;
     const visibleMatch = matched && e.matchStrength && canSeeItem(matched, requester) ? { item: matched, strength: e.matchStrength } : undefined;
+    const opened = openImport(e);
     const entry = {
       id: e.id,
       batchId: b.id,
       source: b.source,
       label: b.label,
-      proposed: openImport(e).proposed,
+      proposed: opened.proposed,
       match: visibleMatch ? { itemId: visibleMatch.item.id, strength: visibleMatch.strength, title: visibleMatch.item.title, differences: e.matchDifferences } : null,
       differences: e.differences,
-      unparsed: e.unparsed,
+      unparsed: opened.unparsed,
       createdAt: e.createdAt.toISOString(),
     };
     return { ...entry, clean: isClean(entry) };

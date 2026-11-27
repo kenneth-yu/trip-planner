@@ -19,6 +19,7 @@ const itemPrivateData = z.object({
   phone: z.string().optional(),
   price: z.object({ amount: z.string(), currency: z.string() }).optional(),
   bookingSite: z.string().optional(),
+  notes: z.string().optional(),
 });
 
 export type ItemPrivateData = Omit<ItemPrivate, "travelerId">;
@@ -58,7 +59,7 @@ export const proposedItemSchema: z.ZodType<ProposedItem> = z.object({
   problems: z.array(z.string()),
 });
 
-export const importPayloadSchema = z.object({ raw: z.array(z.unknown()), proposed: proposedItemSchema });
+export const importPayloadSchema = z.object({ raw: z.array(z.unknown()), proposed: proposedItemSchema, unparsed: z.array(z.string()).default([]) });
 export type ImportPayload = z.infer<typeof importPayloadSchema>;
 
 export const activityPayloadSchema = z.object({ before: z.unknown(), after: z.unknown() });

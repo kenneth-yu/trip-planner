@@ -86,7 +86,7 @@ export function extractDeadlines(
   const deadlines: ParsedDeadline[] = [];
   const unparsed: string[] = [];
   const list = sentences(text);
-  list.forEach((sentence, i) => {
+  list.forEach((sentence) => {
     for (const p of DEADLINE_PATTERNS) {
       const m = p.re.exec(sentence);
       if (!m) continue;
@@ -94,15 +94,13 @@ export function extractDeadlines(
       const md = readMonthDay(m[1]);
       const date = md && zone ? inferDate(md, notAfter.setZone(zone)) : null;
       if (!date || !zone) {
-        unparsed.push(redactPrivate(sentence));
+        unparsed.push(sentence);
         break;
       }
       const clock = readClock(m[1]);
       let local = `${date}T${clock ?? "00:00"}`;
       if (!clock && p.whenNoTime === "end") local = DateTime.fromISO(date).plus({ days: 1 }).toFormat("yyyy-MM-dd'T'00:00");
-      const next = list[i + 1] ?? "";
-      const after = /^after that[,:]?\s*(.+?)\.?$/i.exec(next);
-      const consequence = after ? after[1].charAt(0).toUpperCase() + after[1].slice(1) : DEFAULT_CONSEQUENCE[p.kind];
+      const consequence = DEFAULT_CONSEQUENCE[p.kind];
       deadlines.push({ kind: p.kind, local, zone, consequence, sentence });
       break;
     }
@@ -171,24 +169,7 @@ export function extractRoute(summary: string, location: string, description: str
   return { from, to: to === from ? null : to };
 }
 
-const CODE_LABEL = "(?:reservation|confirmation(?: code| number)?|booking reference|booking ref|record locator|PNR)\\s*(?:code|number|no\\.?)?[:\\s#]+";
-const CODE_RE = new RegExp(`${CODE_LABEL}([A-Z0-9_]{5,})`, "i");
-
-const REDACTED = "[in private details]";
-
-const REDACTIONS: [RegExp, string][] = [
-  [new RegExp(`(${CODE_LABEL})[A-Z0-9_]{5,}`, "gi"), `$1${REDACTED}`],
-  [/\b(seat\s+)\d{1,2}[A-K]\b/gi, `$1${REDACTED}`],
-  [/\b(?:USD|JPY|HKD|CNY|RMB|EUR|GBP)\s?[\d,]+(?:\.\d{1,2})?\b/g, REDACTED],
-  [/\$[\d,]+(?:\.\d{2})?\b/g, REDACTED],
-  [/\+\d{1,3}[\s.-]?\(?\d{1,4}\)?(?:[\s.-]?\d{2,4}){2,4}\b/g, REDACTED],
-  [/\(?\b\d{2,4}\)?[\s.-]\d{3,4}[\s.-]\d{3,4}\b/g, REDACTED],
-  [/\b\d{3}[\s.-]\d{4}\b/g, REDACTED],
-];
-
-export function redactPrivate(text: string): string {
-  return REDACTIONS.reduce((out, [re, replacement]) => out.replace(re, replacement), text);
-}
+const CODE_RE = /(?:reservation|confirmation(?: code| number)?|booking reference|booking ref|record locator|PNR)\s*(?:code|number|no\.?)?[:\s#]+([A-Z0-9_]{5,})/i;
 
 export function extractPrivate(text: string): Omit<ItemPrivate, "travelerId"> {
   const out: Omit<ItemPrivate, "travelerId"> = {};

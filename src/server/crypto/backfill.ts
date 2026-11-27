@@ -38,7 +38,7 @@ export async function sealLegacyRows(db: Db): Promise<BackfillCounts> {
     for (const row of rows) {
       await tx
         .update(t.importedItems)
-        .set({ sealed: sealJson({ raw: row.raw ?? [], proposed: row.proposed }, "import", row.id), raw: null, proposed: null })
+        .set({ sealed: sealJson({ raw: row.raw ?? [], proposed: row.proposed, unparsed: [] }, "import", row.id), raw: null, proposed: null })
         .where(eq(t.importedItems.id, row.id));
     }
     return rows.length;

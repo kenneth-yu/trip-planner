@@ -78,7 +78,7 @@ async function exercise() {
     [{ ...events[0], description: "Free cancellation until sometime. Confirmation: ZZTOP99 seat 12A. Call +1 212 555 0100." }],
     { source: "google_calendar", label: "Jacob" },
   );
-  const first = present((await listInbox(ctx, TRIP_ID, kenny)).find((e) => e.proposed.notes.includes("Confirmation")));
+  const first = present((await listInbox(ctx, TRIP_ID, kenny)).find((e) => e.proposed.private.some((p) => p.notes?.includes("Confirmation"))));
   await approveEntry(ctx, TRIP_ID, first.id, kenny);
   await importCalendarEvents(
     ctx,
@@ -111,20 +111,17 @@ describe("sensitive data is sealed at rest", () => {
     }
   });
 
-  it("no secret appears in any table, including items.notes and the inbox sidecar columns", async () => {
+  it("no secret appears in any table, including items.notes and deadlines", async () => {
     const { db } = await exercise();
     const text = await everyTableText(db);
     for (const secret of SECRETS) expect(text, secret).not.toContain(secret);
-    const pending = await db.select().from(t.importedItems).where(eq(t.importedItems.state, "pending"));
-    expect(pending.length).toBeGreaterThan(0);
-    expect(JSON.stringify(pending.map((r) => r.unparsed))).toContain("Free cancellation until sometime");
   });
 
-  it("an approved import keeps the readable part of the description and moves the secrets to private details", async () => {
+  it("an approved import keeps the whole description as a private note and leaves the shared notes empty", async () => {
     const { ctx } = await exercise();
     const view = await getTripView(ctx, TRIP_ID, kenny);
-    const item = present(view.items.find((i) => i.notes.includes("Free cancellation until sometime")));
-    expect(item.notes).not.toMatch(/ZZTOP99|12A/);
+    const item = present(view.items.find((i) => i.private.some((p) => p.notes?.includes("Free cancellation until sometime"))));
+    expect(item.notes).toBe("");
     expect(item.private.map((p) => [p.confirmationCode, p.seat])).toContainEqual(["ZZTOP99", "12A"]);
   });
 
