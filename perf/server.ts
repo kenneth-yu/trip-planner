@@ -56,6 +56,7 @@ export async function startPerfServer(): Promise<PerfServer> {
     PGLITE_DIR: path.join(dir, "db"),
     DATABASE_URL: "",
     REVIEW_SERVER: "1",
+    DEV_SIGN_IN: "",
     TRUST_PROXY: "0",
     EMAIL_API_KEY: "",
     EMAIL_FROM: "",
