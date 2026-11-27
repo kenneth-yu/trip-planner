@@ -10,15 +10,40 @@ export type Db = PgDatabase<PgQueryResultHKT, Schema>;
 
 const MIGRATIONS = path.join(process.cwd(), "drizzle");
 
-export async function createPgliteDb(dataDir?: string): Promise<Db> {
+async function migratedPglite(dataDir?: string) {
   const { PGlite } = await import("@electric-sql/pglite");
   const { drizzle } = await import("drizzle-orm/pglite");
   const { migrate } = await import("drizzle-orm/pglite/migrator");
   if (dataDir) await mkdir(dataDir, { recursive: true });
   const client = new PGlite(dataDir);
-  const db = drizzle(client, { schema });
-  await migrate(db, { migrationsFolder: MIGRATIONS });
-  return db;
+  await migrate(drizzle(client, { schema }), { migrationsFolder: MIGRATIONS });
+  return client;
+}
+
+let migratedSnapshot: Promise<Blob> | undefined;
+
+async function takeMigratedSnapshot(): Promise<Blob> {
+  const template = await migratedPglite();
+  const snapshot = await template.dumpDataDir("none");
+  await template.close();
+  return snapshot;
+}
+
+async function migratedInMemorySnapshot(): Promise<Blob> {
+  migratedSnapshot ??= takeMigratedSnapshot();
+  try {
+    return await migratedSnapshot;
+  } catch (e) {
+    migratedSnapshot = undefined;
+    throw e;
+  }
+}
+
+export async function createPgliteDb(dataDir?: string): Promise<Db> {
+  const { PGlite } = await import("@electric-sql/pglite");
+  const { drizzle } = await import("drizzle-orm/pglite");
+  const client = dataDir ? await migratedPglite(dataDir) : new PGlite({ loadDataDir: await migratedInMemorySnapshot() });
+  return drizzle(client, { schema });
 }
 
 async function createPostgresDb(url: string): Promise<Db> {
