@@ -10,7 +10,7 @@ async function expectNoLeak(kenny: Page, secret: string, day: string): Promise<v
   }
 }
 
-test("an Only me plan never shows its title to the other traveler, and Show as busy shows only Busy", async ({ pageSignedInAs }) => {
+test("an Only me plan never shows its title to the other traveler", async ({ pageSignedInAs }) => {
   const secret = "Surprise dinner for Kenny";
   const jacob = await pageSignedInAs("jacob", `/trips/${DECEMBER_TRIP}`);
   await addPlan(jacob, DECEMBER_TRIP, { title: secret, date: "2026-12-03", starts: "19:00", ends: "21:00", onlyMe: true });
@@ -19,11 +19,14 @@ test("an Only me plan never shows its title to the other traveler, and Show as b
   const kenny = await pageSignedInAs("kenny", `/trips/${DECEMBER_TRIP}?day=2026-12-03`);
   await expect(kenny.getByRole("heading", { name: "Asia, December 2026" })).toBeVisible();
   await expectNoLeak(kenny, secret, "2026-12-03");
+});
 
-  const busySecret = `${secret} part two`;
-  await addPlan(jacob, DECEMBER_TRIP, { title: busySecret, date: "2026-12-04", starts: "18:00", ends: "19:00", onlyMe: true, showAsBusy: true });
-  await kenny.goto(`/trips/${DECEMBER_TRIP}?day=2026-12-04`);
+test("an Only me plan shown as busy shows the other traveler only Busy", async ({ pageSignedInAs }) => {
+  const secret = "Ring shopping in Ginza";
+  const jacob = await pageSignedInAs("jacob", `/trips/${DECEMBER_TRIP}`);
+  await addPlan(jacob, DECEMBER_TRIP, { title: secret, date: "2026-12-04", starts: "18:00", ends: "19:00", onlyMe: true, showAsBusy: true });
+
+  const kenny = await pageSignedInAs("kenny", `/trips/${DECEMBER_TRIP}?day=2026-12-04`);
   await expect(kenny.getByText("Busy", { exact: true }).filter({ visible: true }).first()).toBeVisible();
   await expectNoLeak(kenny, secret, "2026-12-04");
-  await expectNoLeak(kenny, busySecret, "2026-12-04");
 });
