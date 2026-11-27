@@ -153,13 +153,15 @@ Every state chart is generated from the transition tables in `src/domain/state/*
 | `calendar-mirror` | Enforced | `mirror-service.ts`: the state is derived from the row (`enabled`, `lastError`, `lastSyncedAt`) and every change goes through `transition`. `TornDown` is never read back, because a member who left is stored as `enabled = false`, which reads as Off. `Connecting` is only seen between enabling and the first sync |
 | `inbox-entry` | Specification | `inbox-service.ts` claims an entry with one conditional `UPDATE ... WHERE state = 'pending'`, which has the same effect for Pending. Wired to the machine in WP-14 |
 | `item-visibility` | Specification | `projectTrip` reads `visibility`, `visibleToUserIds` and `showAsBusy`. Editing them goes through the machine in WP-10 |
+| `session` | Specification, checked | `adapter.ts` `lookupSession` derives the state from the stored row; `session-machine.test.ts` walks the machine against real rows |
 | `invite` | Specification | Invites are not built yet (WP-09) |
 | `view-link` | Specification | The view link is not built yet (WP-16) |
 
 - Inbox entry: the second of two concurrent decisions finds nothing to claim and fails. "Add all without conflicts" applies Add only to entries with no match, no differences and no problems.
 - Item visibility: the chart is the creator's setting, `visibility` (everyone, only me, specific people) plus `showAsBusy`. A hidden item is a Busy block for people who cannot see it when `showAsBusy` is on, and absent for them when it is off. Only the creator can change it, and that includes the owner, who cannot see or edit an item someone else hid from them.
 - Google Calendar mirror: sync is a diff. `buildMirrorEvents(view)` gives the events the calendar should hold, and `planMirrorSync` compares them with `mirror_events`, the event map of what was last pushed and its hash. The result is the minimal set of creates, updates and deletes. If someone deletes an event in Google, it is recreated on the next change: Google is a copy, the app is the source.
-- The session machine arrives with WP-01.
+- Session: Auth.js with database sessions. The cookie holds 32 random bytes and is issued for 400 days (the browser maximum); `auth_sessions` stores only the SHA-256 hash and the expiry, and that row is authoritative. The stored expiry rolls to 30 days from now at most once a day when a session is used more than a day into its window, so an active traveler stays signed in and an unused session ends 30 days after its last use. Sign out deletes the row and the cookie. There is no absolute lifetime yet (sign out everywhere is planned with WP-08).
+- Deep links through sign in: a signed out request is sent to `/sign-in?next=<path>`. The path comes from the `x-request-path` request header, which the WP-02 proxy sets from the real URL (path and query) and overwrites; until then a client-sent value is accepted only after `safeNextPath`, so it can only choose a same origin path for its own sign in. Without the header `loadTripPage` falls back to `/trips/<id>`.
 
 ## Sequences
 

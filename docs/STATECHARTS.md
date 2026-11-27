@@ -91,6 +91,19 @@ stateDiagram-v2
   SpecificBusy --> SpecificHidden: stopShowingBusy [people not listed see nothing]
 ```
 
+## Sign in session
+
+Machine: `session`
+
+```mermaid
+stateDiagram-v2
+  [*] --> SignedOut
+  SignedOut --> Active: signIn [Google, Apple, email link or dev sign in]
+  Active --> Active: roll [used more than a day into its window, stored expiry moves to 30 days from now]
+  Active --> SignedOut: expire [30 days unused, row deleted on lookup]
+  Active --> SignedOut: signOut [Sign out, row and cookie deleted]
+```
+
 ## View link
 
 Machine: `view-link`
