@@ -3,15 +3,8 @@ name: prod-smoke
 on:
   deployment_status:
   workflow_dispatch:
-    inputs:
-      url:
-        description: The production address, for example https://your-app.vercel.app
-        required: true
-        type: string
 
-permissions:
-  contents: read
-  issues: write
+permissions: {}
 
 concurrency:
   group: prod-smoke
@@ -21,7 +14,10 @@ jobs:
   smoke:
     name: smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event.deployment_status.state == 'success' && github.event.deployment_status.environment == 'Production') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -31,10 +27,15 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-      - name: Request the sign in page, the offline page and a bogus view link
+      - name: Log what triggered this run
+        env:
+          EVENT: ${{ github.event_name }}
+          DEPLOYMENT_URL: ${{ github.event.deployment_status.environment_url || github.event.deployment_status.target_url }}
+        run: echo "Triggered by $EVENT. The deployment address ($DEPLOYMENT_URL) is only logged, never requested; the pinned production alias is checked."
+      - name: Request the sign in page, the offline page and a bogus view link on the production alias
         id: smoke
         env:
-          SMOKE_URL: ${{ inputs.url || github.event.deployment_status.environment_url || github.event.deployment_status.target_url }}
+          SMOKE_URL: https://trip-planner-lilac-six.vercel.app
           SMOKE_REPORT: ${{ runner.temp }}/smoke.md
         run: node tools/ci/prod-smoke.mjs
       - name: Open or update the one prod-broken issue
@@ -50,7 +51,8 @@ jobs:
             echo
             cat "$REPORT"
           } > issue.md
-          number="$(gh api "repos/${GH_REPO}/issues?labels=prod-broken&state=open&per_page=1" --jq '.[0].number // empty')" || number=""
+          open_issues="$(gh api "repos/${GH_REPO}/issues?labels=prod-broken&state=open&per_page=100" --jq '.[] | select(.pull_request == null) | .number')"
+          number="$(printf '%s\n' "$open_issues" | head -n 1)"
           if [ -n "$number" ]; then
             gh api -X POST "repos/${GH_REPO}/issues/${number}/comments" -F body=@issue.md
           else
