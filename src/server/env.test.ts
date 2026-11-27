@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isRemoteDatabase, looksLikeProduction, parseServerEnv, SetupError } from "./env";
+import { appUrlRequired, isRemoteDatabase, looksLikeProduction, parseServerEnv, SetupError } from "./env";
 
 const secrets = {
   AUTH_SECRET: "auth-secret-value-0000000000000000000",
@@ -123,5 +123,28 @@ describe("server environment", () => {
 
   it("leaves TRUST_PROXY to its own check", () => {
     expect(parseServerEnv({ ...production, TRUST_PROXY: undefined }).deployment).toBe("production");
+  });
+});
+
+describe("the app url rule has one source", () => {
+  it("treats an unrecognised VERCEL_ENV under NODE_ENV=production as production", () => {
+    expect(failure({ ...production, VERCEL_ENV: "staging", APP_URL: undefined }).message).toContain("APP_URL");
+    expect(parseServerEnv({ ...production, VERCEL_ENV: "staging" }).deployment).toBe("production");
+  });
+
+  it("refuses at startup a preview that sends email links but has no app url", () => {
+    const preview = { ...production, VERCEL_ENV: "preview", APP_URL: undefined };
+    expect(parseServerEnv(preview).deployment).toBe("preview");
+    const email = { ...preview, EMAIL_API_KEY: "k", EMAIL_FROM: "a@example.test" };
+    expect(failure(email).message).toContain("APP_URL");
+    expect(parseServerEnv({ ...email, APP_URL: "https://preview.example.test" }).appUrl).toBe("https://preview.example.test");
+  });
+
+  it("answers the same for startup and for the auth config under the production env shape", () => {
+    expect(appUrlRequired(production)).toBe(true);
+    expect(appUrlRequired({ ...production, APP_URL: undefined })).toBe(true);
+    expect(appUrlRequired({ ...production, VERCEL_ENV: "preview" })).toBe(false);
+    expect(appUrlRequired({ ...production, VERCEL_ENV: "preview", EMAIL_API_KEY: "k", EMAIL_FROM: "a@example.test" })).toBe(true);
+    expect(appUrlRequired({ NODE_ENV: "development" })).toBe(false);
   });
 });
