@@ -68,7 +68,7 @@ export async function createIsolatedPostgresDb(url: string): Promise<IsolatedDb>
   assertSafeTestDatabaseUrl(url, process.env.DATABASE_URL);
   const schemaName = `t_${randomUUID().replaceAll("-", "")}`;
   await withAdminPool(url, (admin) => admin.query(`CREATE SCHEMA "${schemaName}"`));
-  const pool = new Pool({ connectionString: url, max: 2, options: `-c search_path=${schemaName}` });
+  const pool = new Pool({ connectionString: url, max: 2, idleTimeoutMillis: 200, options: `-c search_path=${schemaName}` });
   const close = async () => {
     open.delete(close);
     await pool.end();
