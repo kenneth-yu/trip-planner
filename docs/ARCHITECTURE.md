@@ -148,7 +148,7 @@ Every state chart is generated from the transition tables in `src/domain/state/*
 
 | Machine | Status | Where it is enforced |
 |---|---|---|
-| `assistant-token` | Enforced | `assistant-service.ts`: revoking works only from Active, a second revoke throws `InvalidTransition`, a revoked token never resolves |
+| `assistant-token` | Enforced | `assistant-service.ts`: revoking works only from Active, a second revoke throws `InvalidTransition` (the Disconnect action treats it as already disconnected), a revoked token never resolves |
 | `calendar-mirror` | Enforced | `mirror-service.ts`: the state is derived from the row (`enabled`, `lastError`, `lastSyncedAt`) and every change goes through `transition`. `TornDown` is never read back, because a member who left is stored as `enabled = false`, which reads as Off. `Connecting` is only seen between enabling and the first sync |
 | `inbox-entry` | Specification | `inbox-service.ts` claims an entry with one conditional `UPDATE ... WHERE state = 'pending'`, which has the same effect for Pending. Wired to the machine in WP-14 |
 | `item-visibility` | Specification | `projectTrip` reads `visibility`, `visibleToUserIds` and `showAsBusy`. Editing them goes through the machine in WP-10 |

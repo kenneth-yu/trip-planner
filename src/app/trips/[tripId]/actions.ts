@@ -9,6 +9,7 @@ import { createAssistantToken, revokeAssistantToken } from "@/server/services/as
 import { disableMirror, syncMirror } from "@/server/services/mirror-service";
 import { appUrl } from "@/server/app-context";
 import type { Choices } from "@/domain/import/matching";
+import { InvalidTransition } from "@/domain/state/machine";
 
 export interface ActionState {
   message: string | null;
@@ -68,7 +69,11 @@ export async function revokeAssistant(form: FormData) {
   const tripId = z.string().uuid().parse(form.get("tripId"));
   const tokenId = z.string().uuid().parse(form.get("tokenId"));
   const { ctx, user } = await loadTripPage(tripId);
-  await revokeAssistantToken(ctx, user.id, tokenId);
+  try {
+    await revokeAssistantToken(ctx, user.id, tokenId);
+  } catch (e) {
+    if (!(e instanceof InvalidTransition)) throw e;
+  }
   revalidatePath(`/trips/${tripId}/connect`);
 }
 
