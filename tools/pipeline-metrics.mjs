@@ -1,51 +1,46 @@
 import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
+import { countRuns, failingTestNames, reviewOf, runsForPullRequest } from "./pipeline-metrics-lib.mjs";
 
 const out = process.argv[2];
 if (!out) {
-  process.stderr.write("Usage: node tools/pipeline-metrics.mjs <output.json>\n");
+  process.stderr.write("Usage: node tools/pipeline-metrics.mjs <output.json>   (write under .pipeline/, which git ignores)\n");
   process.exit(2);
 }
 
-function gh(args) {
-  return JSON.parse(execFileSync("gh", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }));
+const PR_LIMIT = 500;
+const RUN_LIMIT = 1000;
+
+function describe(error) {
+  if (!(error instanceof Error)) return "unknown error";
+  const stderr = "stderr" in error && typeof error.stderr === "string" ? error.stderr.trim() : "";
+  return stderr || error.message;
 }
 
-const prs = gh(["pr", "list", "--state", "all", "--limit", "500", "--json", "number,title,state,createdAt,mergedAt,headRefName,comments"]);
-const runs = gh(["run", "list", "--limit", "1000", "--json", "databaseId,headBranch,headSha,conclusion,createdAt,workflowName,event,status"]);
+function gh(args) {
+  return execFileSync("gh", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+}
 
-const REVIEWERS = [
-  ["ux", /ux review/i],
-  ["security", /security/i],
-  ["qa", /\bqa\b/i],
-  ["product", /product review/i],
-];
-const BLOCKING = /(send back|not ready|blocked|rethink)/i;
-const CONDITIONAL = /(ready with fixes|clear with fixes|ship with changes|approve with changes|with changes|with fixes)/i;
-const OK = /(approve|ready|clear|ship)/i;
+function list(args, limit, what) {
+  const items = JSON.parse(gh([...args, "--limit", String(limit)]));
+  if (items.length >= limit) process.stderr.write(`warning: ${what} stopped at the limit of ${limit}; older ones are missing\n`);
+  return items;
+}
 
-function reviewOf(body) {
-  const first = body.split("\n").find((line) => line.trim().length > 0) ?? "";
-  if (!/^#+\s/.test(first) || !/review|re-check|re-review/i.test(first)) return null;
-  const kind = REVIEWERS.find(([, re]) => re.test(first));
-  if (!kind) return null;
-  const head = body.slice(0, 800);
-  const verdict = head.match(/verdict[^a-z]*([a-z][a-z ]{2,40})/i)?.[1] ?? "";
-  const outcome = BLOCKING.test(verdict) ? "blocking" : CONDITIONAL.test(verdict) ? "changes" : OK.test(verdict) ? "ok" : "unknown";
-  return { reviewer: kind[0], outcome };
+const prs = list(["pr", "list", "--state", "all", "--json", "number,title,state,createdAt,mergedAt,headRefName,comments"], PR_LIMIT, "pull request list");
+const runs = list(["run", "list", "--json", "databaseId,headBranch,headSha,conclusion,createdAt,workflowName,event,status"], RUN_LIMIT, "workflow run list");
+
+function commitShas(number) {
+  return gh(["api", "--paginate", `repos/kenneth-yu/trip-planner/pulls/${number}/commits`, "--jq", ".[].sha"])
+    .split("\n")
+    .filter((line) => /^[0-9a-f]{40}$/.test(line));
 }
 
 function failingTests(runId) {
   try {
-    const log = execFileSync("gh", ["run", "view", String(runId), "--log-failed"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-    const names = new Set();
-    for (const line of log.split("\n")) {
-      const found = line.match(/\d+\) (\[[a-z]+\] › .+?)\s*$/);
-      if (found) names.add(found[1]);
-    }
-    return [...names];
+    return failingTestNames(gh(["run", "view", String(runId), "--log-failed"]));
   } catch (error) {
-    process.stderr.write(`log unavailable for run ${runId}: ${error instanceof Error ? error.message.split("\n")[0] : "unknown"}\n`);
+    process.stderr.write(`log unavailable for run ${runId}: ${describe(error)}\n`);
     return null;
   }
 }
@@ -68,10 +63,11 @@ const rows = prs
     const reviews = pr.comments.map((c) => reviewOf(c.body)).filter((r) => r !== null);
     const blocking = reviews.filter((r) => r.outcome === "blocking");
     const changes = reviews.filter((r) => r.outcome === "changes");
-    const ci = runs
-      .filter((r) => r.headBranch === pr.headRefName && r.workflowName === "ci" && r.event === "pull_request" && r.status === "completed")
-      .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
-    const e2e = runs.filter((r) => r.headBranch === pr.headRefName && r.workflowName === "e2e" && r.status === "completed");
+    const mine = runsForPullRequest(runs, commitShas(pr.number)).filter((r) => r.status === "completed");
+    const ci = mine.filter((r) => r.workflowName === "ci" && r.event === "pull_request").sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+    const e2e = mine.filter((r) => r.workflowName === "e2e");
+    const ciCounts = countRuns(ci);
+    const e2eCounts = countRuns(e2e);
     return {
       pr: pr.number,
       title: pr.title,
@@ -93,14 +89,16 @@ const rows = prs
       qa_with_changes: changes.filter((r) => r.reviewer === "qa").length,
       product_with_changes: changes.filter((r) => r.reviewer === "product").length,
       first_ci: ci[0]?.conclusion ?? null,
-      ci_runs: ci.length,
-      ci_failures: ci.filter((r) => r.conclusion !== "success").length,
-      e2e_runs: e2e.length,
-      e2e_failures: e2e.filter((r) => r.conclusion !== "success").length,
+      ci_runs: ciCounts.total,
+      ci_failures: ciCounts.failures,
+      ci_cancelled: ciCounts.cancelled,
+      e2e_runs: e2eCounts.total,
+      e2e_failures: e2eCounts.failures,
+      e2e_cancelled: e2eCounts.cancelled,
       e2e_failing_tests: e2e.filter((r) => r.conclusion === "failure").map((r) => ({ run: r.databaseId, tests: failingTests(r.databaseId) })),
     };
   })
   .sort((a, b) => a.pr - b.pr);
 
-writeFileSync(out, JSON.stringify(rows));
+writeFileSync(out, JSON.stringify(rows), { mode: 0o600 });
 process.stdout.write(`${rows.length} pull requests\n`);
