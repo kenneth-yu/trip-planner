@@ -1,23 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useId, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
+import { createContext, useActionState, useContext, useEffect, useId, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import styles from "./item-form.module.css";
 import { emptyFormState, type FormState, type HintKind, type PlaceHint } from "./form-state";
 import { airlineFor } from "@/domain/import/airlines";
 import { arrivalAfter, dayNote, sameDayClockRoll } from "@/domain/import/arrival";
 import { offsetAt } from "@/domain/time/format";
-import type { ItemType, Visibility } from "@/domain/types";
+import type { ItemFormValues } from "@/domain/import/item-form";
+import type { ItemType } from "@/domain/types";
 
 export type { FormState } from "./form-state";
 
-export interface ItemFormValues {
-  type: ItemType;
-  fields: Record<string, string>;
-  seats: { traveler: string; seat: string }[];
-  visibility: Visibility;
-  visibleToUserIds: string[];
-  showAsBusy: boolean;
+export type { ItemFormValues };
+
+export interface EditingItem {
+  itemId: string;
+  focusField: string | null;
+  title: string;
 }
 
 export interface ItemFormProps {
@@ -31,6 +31,8 @@ export interface ItemFormProps {
   canChangeSharing: boolean;
   backHref: string;
   submission?: string;
+  editing?: EditingItem;
+  backLabel?: string;
 }
 
 const TYPES: { type: ItemType; label: string }[] = [
@@ -41,7 +43,7 @@ const TYPES: { type: ItemType; label: string }[] = [
 ];
 
 const LAST_TYPE_KEY = "trip-planner:last-add-type";
-const DETAIL_FIELDS = ["confirmationCode", "phone", "price", "notes", "deadlineDate", "deadlineTime", "person"];
+const DETAIL_FIELDS = ["confirmationCode", "bookingReference", "phone", "price", "notes", "deadlineDate", "deadlineTime", "person"];
 const DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
 const CLOCK_SHAPE = /^\d{2}:\d{2}$/;
 
@@ -80,8 +82,16 @@ function rememberType(type: string): void {
   }
 }
 
+const FormId = createContext<string | null>(null);
+
+function useFormId(): string {
+  const id = useContext(FormId);
+  if (id === null) throw new Error("Field must be rendered inside ItemForm so its label and error ids match its control.");
+  return id;
+}
+
 function Field({ label, name, error, note, reserve, children }: { label: string; name: string; error?: string; note?: ReactNode; reserve?: boolean; children: ReactNode }) {
-  const id = useId();
+  const id = useFormId();
   return (
     <div className={styles.field} data-invalid={error ? "true" : undefined}>
       <label htmlFor={`${id}-${name}`}>{label}</label>
@@ -96,8 +106,21 @@ function Field({ label, name, error, note, reserve, children }: { label: string;
   );
 }
 
+function firstName(name: string): string {
+  return name.split(" ")[0];
+}
+
 export function ItemForm(props: ItemFormProps): React.JSX.Element {
-  const { tripId, travelers, members, initial, action, hint, canChangeSharing, backHref, submission } = props;
+  const id = useId();
+  return (
+    <FormId.Provider value={id}>
+      <ItemFormBody {...props} id={id} />
+    </FormId.Provider>
+  );
+}
+
+function ItemFormBody(props: ItemFormProps & { id: string }): React.JSX.Element {
+  const { id, tripId, travelers, members, initial, action, hint, canChangeSharing, backHref, submission, editing } = props;
   const [state, formAction, pending] = useActionState<FormState, FormData>(action, emptyFormState);
   const [live, setLive] = useState(() => liveFrom(initial, state.values));
   const [hints, setHints] = useState<Record<string, PlaceHint>>({});
@@ -107,9 +130,25 @@ export function ItemForm(props: ItemFormProps): React.JSX.Element {
   const remembered = useSyncExternalStore(subscribeNever, readLastType, () => null);
   const type: ItemType = isItemType(live.type) ? live.type : (!initial && state.values.length === 0 && remembered) || "flight";
   const visibility = live.visibility ?? "everyone";
-  const hasDetails = DETAIL_FIELDS.some((f) => live[f] || errors[f]) || visibility !== "everyone" || Object.keys(live).some((k) => k.startsWith("seat:") && live[k]);
+  const hasDetails = DETAIL_FIELDS.some((f) => live[f] || errors[f]) || visibility !== "everyone" || Object.keys(live).some((k) => (k.startsWith("seat:") || k.startsWith("code:")) && live[k]) || Boolean(editing?.focusField);
   const [detailsOpen, setDetailsOpen] = useState(hasDetails);
-  const id = useId();
+  const summaryRef = useRef<HTMLParagraphElement>(null);
+  const errorCount = Object.keys(errors).filter((k) => k !== "form").length;
+  const focusField = editing?.focusField ?? null;
+
+  useEffect(() => {
+    if (!focusField) return;
+    const el = document.getElementById(`${id}-${focusField}`);
+    el?.focus();
+    el?.scrollIntoView({ block: "center" });
+  }, [focusField, id]);
+
+  const formRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    if (errorCount >= 2) summaryRef.current?.focus();
+    else if (errorCount === 1) formRef.current?.querySelector<HTMLElement>('[data-invalid="true"] :is(input, select, textarea)')?.focus();
+  }, [errorCount, state]);
 
   function track(e: FormEvent<HTMLFormElement>) {
     const el = e.target;
@@ -200,10 +239,29 @@ export function ItemForm(props: ItemFormProps): React.JSX.Element {
   const checkOutEstimated = (live.checkOutEdited ?? "0") !== "1";
   const sharingChoices = canChangeSharing && members.length > 0;
 
+  if (state.gone) {
+    return (
+      <div className={styles.form}>
+        <p role="alert">{state.gone === "denied" ? "You can no longer change this item." : "This item was deleted."}</p>
+        <Link href={`/trips/${tripId}`} className={styles.primaryLink}>
+          Back to the trip
+        </Link>
+      </div>
+    );
+  }
+
   return (
-    <form action={formAction} onChange={track} className={styles.form} noValidate>
+    <form action={formAction} onChange={track} className={styles.form} noValidate ref={formRef}>
       <input type="hidden" name="tripId" value={tripId} />
       {submission && <input type="hidden" name="submission" value={submission} />}
+      {editing && <input type="hidden" name="itemId" value={editing.itemId} />}
+      {editing && <input type="hidden" name="type" value={type} />}
+      {errorCount >= 2 && (
+        <p className={styles.error} role="alert" tabIndex={-1} ref={summaryRef}>
+          Check the {errorCount} fields marked below.
+        </p>
+      )}
+      {!editing && (
       <fieldset className={styles.types}>
         <legend className={styles.srOnly}>What are you adding</legend>
         {TYPES.map((t) => (
@@ -213,6 +271,7 @@ export function ItemForm(props: ItemFormProps): React.JSX.Element {
           </label>
         ))}
       </fieldset>
+      )}
 
       {type === "flight" && (
         <>
@@ -331,19 +390,36 @@ export function ItemForm(props: ItemFormProps): React.JSX.Element {
       {detailsOpen ? (
         <section className={styles.details} aria-label="More details">
           <h2 className={styles.detailsTitle}>More details</h2>
+          {editing && travelers.length > 1 ? (
+            <fieldset className={styles.group}>
+              <legend>Confirmation code</legend>
+              <p className={styles.note}>Fill in one if you share a code.</p>
+              {travelers.map((t) => (
+                <Field key={t.id} label={firstName(t.name)} name={`code:${t.id}`} error={errors[`code:${t.id}`]}>
+                  <input {...control(`code:${t.id}`)} autoComplete="off" autoCapitalize="characters" spellCheck={false} inputMode="text" />
+                </Field>
+              ))}
+            </fieldset>
+          ) : (
+            <Field label="Confirmation code" name="confirmationCode" error={errors.confirmationCode}>
+              <input {...control("confirmationCode")} autoComplete="off" autoCapitalize="characters" spellCheck={false} inputMode="text" />
+            </Field>
+          )}
           {type === "flight" && travelers.length > 0 && (
             <fieldset className={styles.group}>
               <legend>Seats</legend>
               {travelers.map((t) => (
-                <Field key={t.id} label={t.name} name={`seat:${t.id}`}>
-                  <input id={`${id}-seat:${t.id}`} name={`seat:${t.id}`} defaultValue={live[`seat:${t.id}`] ?? ""} placeholder="30K" autoComplete="off" autoCapitalize="characters" spellCheck={false} />
+                <Field key={t.id} label={editing ? firstName(t.name) : t.name} name={`seat:${t.id}`}>
+                  <input id={`${id}-seat:${t.id}`} name={`seat:${t.id}`} defaultValue={live[`seat:${t.id}`] ?? ""} placeholder="30K" autoComplete="off" autoCapitalize="characters" spellCheck={false} inputMode="text" />
                 </Field>
               ))}
             </fieldset>
           )}
-          <Field label="Confirmation code" name="confirmationCode" error={errors.confirmationCode}>
-            <input {...control("confirmationCode")} autoComplete="off" autoCapitalize="characters" spellCheck={false} />
-          </Field>
+          {editing && (
+            <Field label="Booking reference" name="bookingReference" error={errors.bookingReference}>
+              <input {...control("bookingReference")} autoComplete="off" autoCapitalize="characters" spellCheck={false} inputMode="text" />
+            </Field>
+          )}
           <Field label="Phone" name="phone" error={errors.phone}>
             <input {...control("phone")} type="tel" inputMode="tel" autoComplete="off" />
           </Field>
@@ -353,7 +429,7 @@ export function ItemForm(props: ItemFormProps): React.JSX.Element {
           <Field label="Notes" name="notes" error={errors.notes}>
             <textarea id={`${id}-notes`} name="notes" defaultValue={live.notes ?? ""} rows={3} maxLength={4000} />
           </Field>
-          {(type === "flight" || type === "stay") && (
+          {!editing && (type === "flight" || type === "stay") && (
           <div className={styles.pair}>
             <Field label="Free cancellation until" name="deadlineDate" error={errors.deadlineDate}>
               <input {...control("deadlineDate")} type="date" />
@@ -424,10 +500,10 @@ export function ItemForm(props: ItemFormProps): React.JSX.Element {
           </p>
         )}
         <button type="submit" disabled={pending}>
-          {props.submitLabel ?? `Add ${type}`}
+          {pending && editing ? "Saving" : (props.submitLabel ?? `Add ${type}`)}
         </button>
         <Link href={backHref} className={styles.back}>
-          Back to trip
+          {props.backLabel ?? "Back to trip"}
         </Link>
       </div>
     </form>

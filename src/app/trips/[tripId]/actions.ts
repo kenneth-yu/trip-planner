@@ -9,6 +9,7 @@ import { createAssistantToken, revokeAssistantToken } from "@/server/services/as
 import { disableMirror, syncMirror } from "@/server/services/mirror-service";
 import { appUrl } from "@/server/app-context";
 import type { Choices } from "@/domain/import/matching";
+import { UnknownTraveler } from "@/server/repo/trip-repo";
 import { InvalidTransition } from "@/domain/state/machine";
 
 export interface ActionState {
@@ -37,7 +38,7 @@ export async function decideEntry(_prev: ActionState, form: FormData): Promise<A
     if (action === "merge") await mergeEntry(ctx, tripId, entryId, requester, { choices: choicesFrom(form, "choice:"), keep: choicesFrom(form, "keep:") });
     if (action === "discard") await discardEntry(ctx, tripId, entryId, requester);
   } catch (e) {
-    if (e instanceof NeedsDecision) return { message: e.message, error: true };
+    if (e instanceof NeedsDecision || e instanceof UnknownTraveler) return { message: e.message, error: true };
     throw e;
   }
   revalidatePath(`/trips/${tripId}`, "layout");

@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
+import { z } from "zod";
 import * as t from "../db/schema";
-import { deleteItem, loadTripAggregate, saveItem, touchTrip, tripsForUser, type DbOrTx } from "../repo/trip-repo";
+import { deleteItem, loadTripAggregate, saveItem, touchTrip, tripsForUser, UnknownTraveler, type DbOrTx } from "../repo/trip-repo";
 import { insertActivity } from "../repo/activity-repo";
 import type { ServiceContext } from "./context";
-import { AccessDenied, assertCanEditItem, assertCanEditTrip, projectTrip, type TripView } from "@/domain/visibility/project";
+import { AccessDenied, assertCanEditItem, assertCanEditTrip, canSeeItem, projectTrip, type TripView } from "@/domain/visibility/project";
+import { itemPatchSchema, type ItemPatch } from "@/domain/item-patch";
 import { inputToProposal, InputProblem, placeQueries } from "@/domain/import/quick-add";
 import { placeContextFor } from "./place-service";
 import type { ProposedItem } from "@/domain/import/proposal";
@@ -134,28 +136,43 @@ export async function quickAddItem(
   return outcome.item;
 }
 
-export type ItemPatch = Partial<Pick<Item, "title" | "start" | "end" | "notes" | "location" | "travelerIds" | "visibility" | "visibleToUserIds" | "showAsBusy" | "status" | "flight" | "stay">>;
+export type { ItemPatch };
 
-export async function updateItem(ctx: ServiceContext, tripId: string, itemId: string, requester: Requester, patch: ItemPatch): Promise<Item> {
+const ItemId = z.string().uuid();
+
+async function lockItem(tx: DbOrTx, tripId: string, itemId: string): Promise<void> {
+  if (!ItemId.safeParse(itemId).success) throw new NotFound();
+  await tx.execute(sql`select id from items where id = ${itemId} and trip_id = ${tripId} for update`);
+}
+
+export async function updateItem(ctx: ServiceContext, tripId: string, itemId: string, requester: Requester, rawPatch: ItemPatch): Promise<Item> {
   const actorId = memberId(requester);
+  const parsed = itemPatchSchema.safeParse(rawPatch);
+  if (!parsed.success) throw new InputProblem("That change is not valid.");
+  const patch = parsed.data;
   const updated = await ctx.db.transaction(async (tx) => {
+    await lockItem(tx, tripId, itemId);
     const agg = await requireAggregate(tx, tripId);
     const before = agg.items.find((i) => i.id === itemId);
-    if (!before) throw new NotFound();
+    if (!before || !canSeeItem(before, requester)) throw new NotFound();
     assertCanEditItem(agg, requester, before);
     if ((patch.visibility || patch.visibleToUserIds || patch.showAsBusy !== undefined) && before.createdBy !== actorId) {
       throw new AccessDenied("Only the person who added this can change who sees it.");
     }
+    const knownTravelers = new Set(agg.travelers.map((x) => x.id));
+    if (patch.travelerIds?.some((id) => !knownTravelers.has(id))) throw new UnknownTraveler();
+    const travelerIds = patch.travelerIds ?? before.travelerIds;
+    if (patch.private?.some((row) => row.travelerId !== null && !travelerIds.includes(row.travelerId))) throw new InputProblem("That change is not valid.");
     const reviewed = patch.status === "confirmed" || patch.location !== undefined || patch.start !== undefined || patch.end !== undefined;
     const after: Item = {
       ...before,
       ...patch,
       status: reviewed && patch.status !== "needs_review" ? "confirmed" : (patch.status ?? before.status),
-      flags: reviewed ? [] : before.flags,
+      flags: patch.flags ?? (reviewed ? [] : before.flags),
       updatedBy: actorId,
       updatedAt: ctx.now().toISOString(),
     };
-    if (after.end.at < after.start.at) throw new Error("The end is before the start.");
+    if (after.end.at < after.start.at) throw new InputProblem("The end is before the start.");
     await saveItem(tx, after);
     await touchTrip(tx, tripId);
     await insertActivity(tx, { tripId, actorId, action: "updated", itemId, before, after });
@@ -168,15 +185,22 @@ export async function updateItem(ctx: ServiceContext, tripId: string, itemId: st
 export async function removeItem(ctx: ServiceContext, tripId: string, itemId: string, requester: Requester): Promise<void> {
   const actorId = memberId(requester);
   await ctx.db.transaction(async (tx) => {
+    await lockItem(tx, tripId, itemId);
     const agg = await requireAggregate(tx, tripId);
     const before = agg.items.find((i) => i.id === itemId);
-    if (!before) throw new NotFound();
+    if (!before || !canSeeItem(before, requester)) throw new NotFound();
     assertCanEditItem(agg, requester, before);
     await deleteItem(tx, tripId, itemId);
     await touchTrip(tx, tripId);
     await insertActivity(tx, { tripId, actorId, action: "deleted", itemId, before });
   });
   await ctx.onTripChanged(tripId);
+}
+
+export async function viewerTravelerId(ctx: ServiceContext, tripId: string, requester: Requester): Promise<string | null> {
+  if (requester.kind !== "member") return null;
+  const agg = await requireAggregate(ctx.db, tripId);
+  return agg.travelers.find((x) => x.userId === requester.userId)?.id ?? null;
 }
 
 export async function getUser(ctx: ServiceContext, userId: string) {
