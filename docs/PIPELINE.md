@@ -93,8 +93,9 @@ node tools/review-server.mjs
 node tools/review-server.mjs --dev
 ```
 
-- Default: `next build` then `next start` with `VERCEL_ENV=preview` and `DEV_SIGN_IN=1`, so you see the production build signed in (`/api/dev/sign-in?as=kenny`) on a scratch embedded database seeded with the demo trips.
+- Default: `next build` then `next start` with `REVIEW_SERVER=1` and `DEV_SIGN_IN=1` (a flag the app honours only when no Vercel variable and no `DATABASE_URL` is present), so you see the production build signed in (`/api/dev/sign-in?as=kenny`) on a scratch embedded database seeded with the demo trips.
 - `--dev` runs `next dev` instead. Use it only when asked: it is the heavy mode.
+- It listens on 127.0.0.1 only and passes the child process an allowlisted environment (no email, Google or database variables).
 - It refuses to start when `DATABASE_URL` is set in your shell or when the folder has an env file (`.env`, `.env.local` and the like), so it can never touch a real database or read real secrets. It never reads those files.
 - It stops itself after 45 minutes. The server runs under `timeout`, so it is killed on schedule even if the wrapper is killed. Stop it before you finish (Ctrl-C).
 - At most 2 review servers run at once across all worktrees. The lock lives in `trip-planner-review-servers` under the system temp directory, stale entries are removed, and a third start prints which pids and ports hold the slots.

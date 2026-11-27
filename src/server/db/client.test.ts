@@ -43,7 +43,6 @@ describe("migrations at open", () => {
 
   it("refuses to open a Vercel deployment without a database url", async () => {
     vi.stubEnv("VERCEL_ENV", "preview");
-    vi.stubEnv("VERCEL", "1");
     vi.stubEnv("DATABASE_URL", "");
     await expect(getDb()).rejects.toThrow(/DATABASE_URL/);
   });

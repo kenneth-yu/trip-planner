@@ -8,8 +8,19 @@ export const MAX_SERVERS = 2;
 export const LIMIT_MS = 45 * 60 * 1000;
 const KILL_AFTER_MS = 15000;
 
+const INHERITED = ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TMPDIR", "TZ"];
+
 export function stateDir(override = process.env.REVIEW_SERVER_DIR) {
-  return override || path.join(os.tmpdir(), "trip-planner-review-servers");
+  return override || path.join(os.tmpdir(), `trip-planner-review-servers-${os.userInfo().uid}`);
+}
+
+export function childEnv(source, extra) {
+  const inherited = Object.fromEntries(INHERITED.filter((name) => source[name] !== undefined).map((name) => [name, source[name]]));
+  return { ...inherited, ...extra };
+}
+
+export function serverArgs({ dev, port }) {
+  return [dev ? "dev" : "start", "--hostname", "127.0.0.1", "--port", String(port)];
 }
 
 export function pidIsAlive(pid) {
@@ -36,18 +47,26 @@ function entryFile(dir, pid) {
   return path.join(dir, `${pid}.json`);
 }
 
+function readEntry(file) {
+  try {
+    const parsed = JSON.parse(readFileSync(file, "utf8"));
+    return typeof parsed === "object" && parsed !== null && Number.isInteger(parsed.port) ? parsed : null;
+  } catch (error) {
+    if (error instanceof SyntaxError) return null;
+    throw error;
+  }
+}
+
 export function liveEntries(dir, isAlive = pidIsAlive) {
-  mkdirSync(dir, { recursive: true });
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
   const live = [];
   for (const name of readdirSync(dir)) {
     if (!/^\d+\.json$/.test(name)) continue;
     const file = path.join(dir, name);
     const pid = Number(name.slice(0, -5));
-    if (isAlive(pid)) {
-      live.push({ pid, ...JSON.parse(readFileSync(file, "utf8")) });
-    } else {
-      rmSync(file, { force: true });
-    }
+    const entry = isAlive(pid) ? readEntry(file) : null;
+    if (entry) live.push({ pid, ...entry });
+    else rmSync(file, { force: true });
   }
   return live;
 }

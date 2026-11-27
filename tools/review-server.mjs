@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { claimSlot, freePort, LIMIT_MS, releaseSlot, runLimited, stateDir, TooManyServers } from "./review-server-lib.mjs";
+import { childEnv, claimSlot, freePort, LIMIT_MS, releaseSlot, runLimited, serverArgs, stateDir, TooManyServers } from "./review-server-lib.mjs";
 
 const args = process.argv.slice(2);
 const dev = args.includes("--dev");
@@ -35,10 +35,10 @@ const secrets = {
   TOKEN_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
   DATA_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
 };
-const base = { ...process.env, ...secrets, NEXT_TELEMETRY_DISABLED: "1", APP_URL: `http://localhost:${port}`, PGLITE_DIR: path.join(scratch, "db"), DATABASE_URL: "" };
+const base = childEnv(process.env, { ...secrets, NEXT_TELEMETRY_DISABLED: "1", APP_URL: `http://localhost:${port}`, PGLITE_DIR: path.join(scratch, "db") });
 const serverEnv = dev
   ? { ...base, DEV_SIGN_IN: "1" }
-  : { ...base, DEV_SIGN_IN: "1", VERCEL_ENV: "preview", AUTH_TRUST_HOST: "true", TRUST_PROXY: "0" };
+  : { ...base, DEV_SIGN_IN: "1", REVIEW_SERVER: "1", AUTH_TRUST_HOST: "true", TRUST_PROXY: "0" };
 
 let current = null;
 let finished = false;
@@ -51,7 +51,9 @@ function cleanup() {
   rmSync(scratch, { recursive: true, force: true });
 }
 
-for (const signal of ["SIGINT", "SIGTERM"]) {
+process.on("exit", cleanup);
+
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
   process.on(signal, () => {
     cleanup();
     process.exit(0);
@@ -73,7 +75,7 @@ async function step(command, commandArgs, env) {
 async function waitUntilReady() {
   for (let attempt = 0; attempt < 240; attempt += 1) {
     try {
-      const response = await fetch(`http://localhost:${port}/sign-in`);
+      const response = await fetch(`http://127.0.0.1:${port}/sign-in`);
       if (response.status >= 500) {
         cleanup();
         fail(`The server answered ${response.status} on /sign-in, so it is misconfigured. Its output is above.`);
@@ -104,7 +106,7 @@ if (seed.code !== 0) {
   fail("Seeding the demo data failed.");
 }
 
-current = runLimited(next, dev ? ["dev", "--port", String(port)] : ["start", "--port", String(port)], { cwd: root, env: serverEnv, limitMs: remaining() });
+current = runLimited(next, serverArgs({ dev, port }), { cwd: root, env: serverEnv, limitMs: remaining() });
 await waitUntilReady();
 process.stdout.write(`Review server: http://localhost:${port} (${dev ? "dev" : "production build as a local preview"}, stops after 45 minutes; sign in with /api/dev/sign-in?as=kenny)\n`);
 const finalResult = await current.done;

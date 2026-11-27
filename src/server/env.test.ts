@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appUrlRequired, isRemoteDatabase, looksLikeProduction, parseServerEnv, SetupError } from "./env";
+import { appUrlRequired, isRemoteDatabase, isReviewServer, looksLikeProduction, parseServerEnv, SetupError } from "./env";
 
 const secrets = {
   AUTH_SECRET: "auth-secret-value-0000000000000000000",
@@ -84,6 +84,42 @@ describe("server environment", () => {
     expect(failure({ ...selfHosted, DEV_SIGN_IN: "1" }).message).toContain("DEV_SIGN_IN");
   });
 
+  describe("the review server flag", () => {
+    const review = { NODE_ENV: "production", REVIEW_SERVER: "1", DEV_SIGN_IN: "1", TRUST_PROXY: "0" };
+
+    it("allows the embedded database and dev sign in under NODE_ENV=production", () => {
+      const env = parseServerEnv(review);
+      expect(env.deployment).toBe("local");
+      expect(env.devSignIn).toBe(true);
+      expect(env.databaseUrl).toBeUndefined();
+      expect(isReviewServer(review)).toBe(true);
+    });
+
+    it.each([
+      ["VERCEL", { VERCEL: "1" }],
+      ["VERCEL_ENV=preview", { VERCEL_ENV: "preview" }],
+      ["VERCEL_ENV=production", { VERCEL_ENV: "production" }],
+      ["DATABASE_URL", { DATABASE_URL: "postgres://u:p@localhost:5432/x" }],
+    ])("is refused when %s is present", (_name, extra) => {
+      const env = { ...review, ...extra };
+      expect(isReviewServer(env)).toBe(false);
+      expect(failure(env).message).toContain("REVIEW_SERVER");
+    });
+
+    it("never turns a full production environment into a review server", () => {
+      const env = { ...production, REVIEW_SERVER: "1", DEV_SIGN_IN: "1" };
+      const message = failure(env).message;
+      expect(message).toContain("REVIEW_SERVER");
+      expect(message).toContain("DEV_SIGN_IN");
+      expect(failure({ ...production, REVIEW_SERVER: "1" }).message).toContain("REVIEW_SERVER");
+    });
+
+    it("does nothing without the exact value 1", () => {
+      expect(isReviewServer({ NODE_ENV: "production", REVIEW_SERVER: "true" })).toBe(false);
+      expect(failure({ ...selfHosted, REVIEW_SERVER: "true", DEV_SIGN_IN: "1" }).message).toContain("DEV_SIGN_IN");
+    });
+  });
+
   it("allows dev sign in on a preview deployment", () => {
     const env = parseServerEnv({ ...production, VERCEL_ENV: "preview", APP_URL: undefined, DEV_SIGN_IN: "1" });
     expect(env.deployment).toBe("preview");
@@ -95,16 +131,7 @@ describe("server environment", () => {
   });
 
   it("refuses any Vercel deployment without a database url", () => {
-    expect(failure({ ...production, VERCEL_ENV: "preview", VERCEL: "1", DATABASE_URL: undefined }).message).toContain("DATABASE_URL");
-    expect(failure({ ...production, VERCEL_ENV: "production", VERCEL: "1", DATABASE_URL: undefined }).message).toContain("DATABASE_URL");
-    expect(failure({ ...production, VERCEL_ENV: "production", DATABASE_URL: undefined }).message).toContain("DATABASE_URL");
-  });
-
-  it("lets a local preview run on the embedded database only when Vercel did not set VERCEL", () => {
-    const local = parseServerEnv({ ...production, VERCEL_ENV: "preview", DEV_SIGN_IN: "1", DATABASE_URL: undefined, APP_URL: undefined });
-    expect(local.deployment).toBe("preview");
-    expect(local.databaseUrl).toBeUndefined();
-    expect(() => parseServerEnv({ ...production, VERCEL_ENV: "preview", VERCEL: "1", DATABASE_URL: undefined })).toThrow(/DATABASE_URL/);
+    expect(failure({ ...production, VERCEL_ENV: "preview", DATABASE_URL: undefined }).message).toContain("DATABASE_URL");
   });
 
   it("requires the secrets on a preview deployment too", () => {
