@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState, useSyncExternalStore } from "react";
+import { useActionState, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import pageStyles from "../../../ui/page.module.css";
 import styles from "./share.module.css";
 import { roleInWords } from "../../../invite/role-words";
@@ -10,7 +10,7 @@ function subscribeNothing() {
   return () => undefined;
 }
 
-const none: CreatedInviteState = { inviteId: null, url: null, role: null, error: null };
+const none: CreatedInviteState = { inviteId: null, travelerId: null, url: null, role: null, error: null };
 
 export function InviteForm({
   tripId,
@@ -54,8 +54,42 @@ export function InviteForm({
     }
   }
 
+  if (shown && state.url && state.role) {
+    const link = state.url;
+    const who = travelers.find((x) => x.id === state.travelerId)?.name.split(" ")[0];
+    return (
+      <div>
+        {who && <p>This link is for {who}.</p>}
+        <input className={styles.link} readOnly value={link} aria-label="Invite link" onFocus={(e) => e.currentTarget.select()} />
+        <div className={pageStyles.row}>
+          <button type="button" onClick={() => copy(link)}>
+            Copy link
+          </button>
+          {canShare && (
+            <button type="button" className="quiet" onClick={() => share(link)}>
+              Share
+            </button>
+          )}
+        </div>
+        <p role="status" className={pageStyles.muted}>
+          {copiedUrl === link ? "Link copied." : ""}
+        </p>
+        {copyProblem && (
+          <p role="alert" className={pageStyles.warning}>
+            {copyProblem}
+          </p>
+        )}
+        <p>One person can join with this link, as {roleInWords(state.role)}. It expires in 7 days.</p>
+        <p className={pageStyles.muted}>You will not see this link again. Create a new one if you lose it.</p>
+        <button type="button" className="quiet" onClick={() => setHidden(state)}>
+          Create another link
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <form action={action} onChange={() => setHidden(state)}>
+    <form action={action}>
       <input type="hidden" name="tripId" value={tripId} />
       <fieldset className={styles.group}>
         <legend>Role</legend>
@@ -83,33 +117,11 @@ export function InviteForm({
           </label>
         </fieldset>
       )}
-      <button disabled={pending}>Create invite link</button>
+      <button disabled={pending}>{pending ? "Creating link" : "Create invite link"}</button>
       {state.error && (
         <p role="alert" className={pageStyles.warning}>
           {state.error}
         </p>
-      )}
-      {shown && state.url && state.role && (
-        <div className={pageStyles.section}>
-          <input className={styles.link} readOnly value={state.url} aria-label="Invite link" onFocus={(e) => e.currentTarget.select()} />
-          <div className={pageStyles.row}>
-            <button type="button" onClick={() => copy(state.url ?? "")}>
-              {copiedUrl === state.url ? "Copied" : "Copy link"}
-            </button>
-            {canShare && (
-              <button type="button" className="quiet" onClick={() => share(state.url ?? "")}>
-                Share
-              </button>
-            )}
-          </div>
-          {copyProblem && (
-            <p role="alert" className={pageStyles.warning}>
-              {copyProblem}
-            </p>
-          )}
-          <p>One person can join with this link, as {roleInWords(state.role)}. It expires in 7 days.</p>
-          <p className={pageStyles.muted}>You will not see this link again. Create a new one if you lose it.</p>
-        </div>
       )}
     </form>
   );
@@ -144,6 +156,11 @@ type Removal = { step: "idle" } | { step: "asking" } | { step: "confirm"; hidden
 
 export function RemoveControl({ tripId, userId, name }: { tripId: string; userId: string; name: string }) {
   const [removal, setRemoval] = useState<Removal>({ step: "idle" });
+  const sentence = useRef<HTMLSpanElement>(null);
+  const confirming = removal.step === "confirm";
+  useEffect(() => {
+    if (confirming) sentence.current?.focus();
+  }, [confirming]);
   if (removal.step !== "confirm") {
     return (
       <button
@@ -163,14 +180,14 @@ export function RemoveControl({ tripId, userId, name }: { tripId: string; userId
     <form action={removeMemberAction} className={styles.inline}>
       <input type="hidden" name="tripId" value={tripId} />
       <input type="hidden" name="userId" value={userId} />
-      <span>
+      <span ref={sentence} tabIndex={-1} className={styles.sentence}>
         Remove {name}? They lose access to this trip.
         {removal.hidden > 0 && ` Their ${removal.hidden} private ${removal.hidden === 1 ? "item is" : "items are"} deleted too.`}
       </span>
+      <button className={`quiet ${styles.danger}`}>Remove {name.split(" ")[0]}</button>
       <button type="button" className="quiet" onClick={() => setRemoval({ step: "idle" })}>
         Cancel
       </button>
-      <button>Remove {name.split(" ")[0]}</button>
     </form>
   );
 }

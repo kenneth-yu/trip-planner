@@ -9,6 +9,7 @@ import { InvalidTransition } from "@/domain/state/machine";
 
 export interface CreatedInviteState {
   inviteId: string | null;
+  travelerId: string | null;
   url: string | null;
   role: "editor" | "viewer" | null;
   error: string | null;
@@ -26,9 +27,9 @@ export async function createInviteAction(_prev: CreatedInviteState, form: FormDa
   try {
     const { inviteId, url } = await createInvite(ctx, tripId, requester, { role, travelerId: traveler === NEW_TRAVELER ? undefined : traveler });
     revalidatePath(`/trips/${tripId}/share`);
-    return { inviteId, url, role, error: null };
+    return { inviteId, travelerId: traveler === NEW_TRAVELER ? null : traveler, url, role, error: null };
   } catch (e) {
-    if (e instanceof InputProblem) return { inviteId: null, url: null, role: null, error: e.message };
+    if (e instanceof InputProblem) return { inviteId: null, travelerId: null, url: null, role: null, error: e.message };
     throw e;
   }
 }

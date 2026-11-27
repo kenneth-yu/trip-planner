@@ -91,7 +91,7 @@ describe("the share actions", () => {
   });
 
   it("creates a link for the owner and returns it with its invite id, the page lists the pending invite with the newest first", async () => {
-    const created = await createInviteAction({ inviteId: null, url: null, role: null, error: null }, form({ tripId: TRIP_ID, role: "viewer", traveler: "new" }));
+    const created = await createInviteAction({ inviteId: null, travelerId: null, url: null, role: null, error: null }, form({ tripId: TRIP_ID, role: "viewer", traveler: "new" }));
     expect(created.error).toBeNull();
     expect(created.role).toBe("viewer");
     expect(created.url?.startsWith("https://trips.test/invite/tpi_")).toBe(true);
@@ -104,24 +104,24 @@ describe("the share actions", () => {
 
   it("says what is wrong when the traveler is not on the list, without throwing", async () => {
     const result = await createInviteAction(
-      { inviteId: null, url: null, role: null, error: null },
+      { inviteId: null, travelerId: null, url: null, role: null, error: null },
       form({ tripId: TRIP_ID, role: "editor", traveler: TRAVELERS.jacob }),
     );
-    expect(result).toEqual({ inviteId: null, url: null, role: null, error: "Pick someone from the list." });
+    expect(result).toEqual({ inviteId: null, travelerId: null, url: null, role: null, error: "Pick someone from the list." });
   });
 
   it("refuses an editor and refuses a bad role", async () => {
     world.requester = jacob;
-    await expect(createInviteAction({ inviteId: null, url: null, role: null, error: null }, form({ tripId: TRIP_ID, role: "editor", traveler: "new" }))).rejects.toThrow(
+    await expect(createInviteAction({ inviteId: null, travelerId: null, url: null, role: null, error: null }, form({ tripId: TRIP_ID, role: "editor", traveler: "new" }))).rejects.toThrow(
       AccessDenied,
     );
     world.requester = kenny;
-    await expect(createInviteAction({ inviteId: null, url: null, role: null, error: null }, form({ tripId: TRIP_ID, role: "owner", traveler: "new" }))).rejects.toThrow();
+    await expect(createInviteAction({ inviteId: null, travelerId: null, url: null, role: null, error: null }, form({ tripId: TRIP_ID, role: "owner", traveler: "new" }))).rejects.toThrow();
   });
 
   it("revokes an invite and treats a second revoke as already done", async () => {
     const ctx = present(world.ctx);
-    const created = await createInviteAction({ inviteId: null, url: null, role: null, error: null }, form({ tripId: TRIP_ID, role: "editor", traveler: "new" }));
+    const created = await createInviteAction({ inviteId: null, travelerId: null, url: null, role: null, error: null }, form({ tripId: TRIP_ID, role: "editor", traveler: "new" }));
     const inviteId = present(created.inviteId);
     await revokeInviteAction(form({ tripId: TRIP_ID, inviteId }));
     await expect(revokeInviteAction(form({ tripId: TRIP_ID, inviteId }))).resolves.toBeUndefined();
@@ -148,7 +148,7 @@ describe("the share actions", () => {
 
   it("does not let a joined person's invite link be used again from the list", async () => {
     const ctx = present(world.ctx);
-    const created = await createInviteAction({ inviteId: null, url: null, role: null, error: null }, form({ tripId: TRIP_ID, role: "editor", traveler: "new" }));
+    const created = await createInviteAction({ inviteId: null, travelerId: null, url: null, role: null, error: null }, form({ tripId: TRIP_ID, role: "editor", traveler: "new" }));
     await ctx.db.insert(t.users).values({ id: viewerId, name: "Vic Viewer", email: "vic@example.com" });
     await acceptInvite(ctx, present(present(created.url).split("/invite/")[1]), { id: viewerId, name: "Vic Viewer" });
     expect(await listInvites(ctx, TRIP_ID, kenny)).toEqual([]);

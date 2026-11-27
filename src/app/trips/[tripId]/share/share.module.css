@@ -43,3 +43,11 @@
   align-items: center;
   flex-wrap: wrap;
 }
+
+.danger {
+  color: var(--warning);
+}
+
+.sentence:focus {
+  outline: none;
+}
