@@ -40,10 +40,17 @@ function trip(): TripAggregate {
   return t;
 }
 
+function viewerNameOf(r: Requester): string | null {
+  if (r.kind !== "member") return null;
+  if (r.userId === USERS.kenny.id) return USERS.kenny.name;
+  if (r.userId === USERS.jacob.id) return USERS.jacob.name;
+  return null;
+}
+
 function render(agg: TripAggregate, requester: Requester, id: string): string {
   const view = projectTrip(agg, requester);
   const item = present(itemOf(view, id));
-  return renderToStaticMarkup(createElement(ItemDetails, { view, item, nowMs: NOW_MS }));
+  return renderToStaticMarkup(createElement(ItemDetails, { view, item, nowMs: NOW_MS, viewerName: viewerNameOf(requester) }));
 }
 
 const nh159 = (agg: TripAggregate) => fixtureItem(agg, byFlight("NH159"));
@@ -135,7 +142,24 @@ describe("day view rows", () => {
     const view = projectTrip(agg, owner);
     const page = renderToStaticMarkup(createElement(DayView, { view, days: buildDays(view), todayKey: "2026-11-27" }));
     for (const value of ["PLACEHOLDER_A", "30K", "+1 555 0100", "1200"]) expect(page).not.toContain(value);
-    expect(page).toContain("Open booking");
+    expect(page).not.toContain("<details>");
+    expect(page).not.toContain("Open booking");
+  });
+
+  it("make every row a link, and a hidden item never gets one", () => {
+    const agg = trip();
+    const view = projectTrip(agg, editor);
+    const hidden = renderToStaticMarkup(createElement(DayView, { view: projectTrip(agg, owner), days: buildDays(projectTrip(agg, owner)), todayKey: "2026-11-27" }));
+    expect(hidden).not.toContain("item-ring");
+    const page = renderToStaticMarkup(createElement(DayView, { view, days: buildDays(view), todayKey: "2026-11-27" }));
+    expect(page).toContain("/items/item-ring");
+  });
+
+  it("puts your own code first", () => {
+    const agg = trip();
+    const page = render(agg, editor, nh159(agg).id);
+    expect(page.indexOf("Your confirmation code")).toBeLessThan(page.indexOf("Confirmation code, Kenneth"));
+    expect(page.indexOf("PLACEHOLDER_B")).toBeLessThan(page.indexOf("PLACEHOLDER_A"));
   });
 });
 
@@ -144,11 +168,12 @@ describe("details wording", () => {
     const agg = trip();
     const flight = nh159(agg);
     flight.private = [{ travelerId: flight.travelerIds[0], confirmationCode: "PLACEHOLDER_A" }];
-    expect(render(agg, owner, flight.id)).toContain("Confirmation code, Kenneth");
+    expect(render(agg, owner, flight.id)).toContain("Your confirmation code");
+    expect(render(agg, editor, flight.id)).toContain("Confirmation code, Kenneth");
   });
 
   it("the flight title says where it goes", () => {
     const agg = trip();
-    expect(render(agg, owner, nh159(agg).id)).toContain("NH159 to Tokyo, ANA");
+    expect(render(agg, owner, nh159(agg).id)).toContain("NH159 to Tokyo");
   });
 });

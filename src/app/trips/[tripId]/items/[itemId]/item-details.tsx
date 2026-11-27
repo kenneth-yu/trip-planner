@@ -142,7 +142,7 @@ export function ItemDetails({ view, item, nowMs, viewerName }: { view: TripView;
       {sensitive && (
         <>
           <Field label="Confirmation code" entries={entriesFor(view, item, viewerName, priv, (p) => p.confirmationCode)} big />
-          <Field label="Booking reference" entries={entriesFor(view, item, priv, (p) => p.bookingReference)} />
+          <Field label="Booking reference" entries={entriesFor(view, item, viewerName, priv, (p) => p.bookingReference)} />
           {seats.length > 0 && (
             <section className={styles.field}>
               <div className={styles.fieldHead}>
@@ -152,7 +152,7 @@ export function ItemDetails({ view, item, nowMs, viewerName }: { view: TripView;
               <div className={styles.value}>{seatLine}</div>
             </section>
           )}
-          <Field label="Phone" entries={entriesFor(view, item, priv, (p) => p.phone)} />
+          <Field label="Phone" entries={entriesFor(view, item, viewerName, priv, (p) => p.phone)} />
           <Field label="Price" entries={prices} />
           {notes.map((n, i) => (
             <section key={i} className={styles.field}>
