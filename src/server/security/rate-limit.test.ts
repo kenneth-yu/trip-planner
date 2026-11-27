@@ -101,6 +101,12 @@ describe("ruleForRequest", () => {
     ["GET", "/api/mcpx"],
     ["GET", "/vault"],
     ["GET", "/invited"],
+    ["GET", "/invite/accept"],
+    ["GET", "/invite/join"],
+    ["POST", "/invite/join"],
+    ["GET", "/invite/lost"],
+    ["GET", "/invite/problem/expired"],
+    ["GET", "/invite/abc/def"],
     ["GET", "/api/auth/session"],
   ])("%s %s is not limited", (method, path) => {
     expect(ruleForRequest(method, path)).toBeNull();

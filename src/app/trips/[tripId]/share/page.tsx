@@ -26,7 +26,7 @@ export default async function SharePage({ params }: PageProps<"/trips/[tripId]/s
     <div className={pageStyles.narrow}>
       <section>
         <h2 className={pageStyles.sectionTitle}>Invite someone</h2>
-        <InviteForm tripId={tripId} travelers={travelers} />
+        <InviteForm tripId={tripId} travelers={travelers} pendingIds={invites.map((i) => i.id)} memberIds={members.map((m) => m.userId)} />
       </section>
       <section className={pageStyles.section}>
         <h2 className={pageStyles.sectionTitle}>People on this trip</h2>
@@ -44,7 +44,7 @@ export default async function SharePage({ params }: PageProps<"/trips/[tripId]/s
               {m.role !== "owner" && (
                 <span className={styles.actions}>
                   <RoleControl tripId={tripId} userId={m.userId} role={m.role === "viewer" ? "viewer" : "editor"} />
-                  <RemoveControl tripId={tripId} userId={m.userId} firstName={m.name.split(" ")[0] ?? m.name} />
+                  <RemoveControl tripId={tripId} userId={m.userId} name={m.name} />
                 </span>
               )}
             </li>

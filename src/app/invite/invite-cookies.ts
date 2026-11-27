@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 export const INVITE_COOKIE = "trip-invite";
+export const CONSENT_COOKIE = "trip-invite-ok";
 export const NOTICE_COOKIE = "trip-joined";
 
 const INVITE_MAX_AGE_SECONDS = 60 * 60;
@@ -16,6 +17,7 @@ function baseOptions(path: string, maxAge: number) {
 export const inviteCookieOptions = baseOptions("/invite", INVITE_MAX_AGE_SECONDS);
 export const noticeCookieOptions = baseOptions("/", NOTICE_MAX_AGE_SECONDS);
 export const clearInviteCookieOptions = { ...inviteCookieOptions, maxAge: 0 };
+export const consentCookieOptions = inviteCookieOptions;
 export const clearNoticeCookieOptions = { ...noticeCookieOptions, maxAge: 0 };
 
 export function redirectTo(path: string): NextResponse {

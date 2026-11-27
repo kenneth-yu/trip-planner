@@ -23,9 +23,11 @@ export const RATE_RULES: Record<RateRule["name"], RateRule> = {
   placeHint: { name: "placeHint", limit: 60, windowMs: MINUTE },
 };
 
+const INVITE_TOKEN_OPEN = /^\/invite\/(?!(?:accept|join|lost|problem)(?:\/|$))[^/]+\/?$/;
+
 const REQUEST_RULES: ReadonlyArray<{ rule: RateRule["name"]; test: (method: string, path: string) => boolean }> = [
   { rule: "signIn", test: (_m, p) => ["/api/auth/signin", "/api/auth/callback", "/api/auth/email"].some((s) => p === s || p.startsWith(`${s}/`)) },
-  { rule: "inviteAccept", test: (_m, p) => p.startsWith("/invite/") },
+  { rule: "inviteAccept", test: (_m, p) => INVITE_TOKEN_OPEN.test(p) },
   { rule: "viewLink", test: (_m, p) => p.startsWith("/v/") },
   { rule: "feed", test: (_m, p) => p.startsWith("/api/feed/") },
   { rule: "assistant", test: (_m, p) => p === "/api/mcp" || p.startsWith("/api/mcp/") },

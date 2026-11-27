@@ -30,8 +30,9 @@ vi.mock("@/server/auth/session", () => ({
 
 const mina = { id: "00000000-0000-4000-8100-000000000a01", name: "Mina Okafor" };
 
-function acceptRequest(cookie?: string) {
-  return new NextRequest("https://trips.test/invite/accept", { headers: cookie ? { cookie: `trip-invite=${cookie}` } : {} });
+function acceptRequest(cookie?: string, consent = true) {
+  const parts = cookie ? [`trip-invite=${cookie}`, ...(consent ? ["trip-invite-ok=1"] : [])] : [];
+  return new NextRequest("https://trips.test/invite/accept", { headers: parts.length ? { cookie: parts.join("; ") } : {} });
 }
 
 function tokenOf(url: string): string {
@@ -56,7 +57,7 @@ describe("opening an invite link", () => {
     const token = tokenOf(url);
     const response = await openLink(new Request(url), { params: Promise.resolve({ token }) });
     expect(response.status).toBe(303);
-    expect(response.headers.get("location")).toBe("/invite/accept");
+    expect(response.headers.get("location")).toBe("/invite/join");
     expect(response.headers.get("location")).not.toContain(token);
     const cookie = setCookies(response);
     expect(cookie).toContain(`trip-invite=${token}`);
@@ -64,6 +65,7 @@ describe("opening an invite link", () => {
     expect(cookie).toMatch(/SameSite=lax/i);
     expect(cookie).toMatch(/Max-Age=3600/i);
     expect(cookie).toMatch(/Path=\/invite/i);
+    expect(cookie).toMatch(/trip-invite-ok=;/);
   });
 
   it("sends a malformed token to the plain problem page and sets no cookie", async () => {
@@ -88,6 +90,17 @@ describe("accepting from the cookie", () => {
     expect(await db.select().from(t.memberships).where(eq(t.memberships.userId, mina.id))).toEqual([]);
   });
 
+  it("does not join a signed in visitor who has not pressed the button, as when a page sends them here", async () => {
+    const ctx = present(world.ctx);
+    const { url } = await createInvite(ctx, TRIP_ID, kenny, { role: "editor" });
+    const response = await accept(acceptRequest(tokenOf(url), false));
+    expect(response.headers.get("location")).toBe("/invite/join");
+    expect(setCookies(response)).not.toContain("trip-joined");
+    expect(await ctx.db.select().from(t.memberships).where(eq(t.memberships.userId, mina.id))).toEqual([]);
+    const [invite] = await ctx.db.select().from(t.invites);
+    expect(present(invite).acceptedAt).toBeNull();
+  });
+
   it("asks a signed out visitor to sign in and keeps the invite", async () => {
     world.user = null;
     const { url } = await createInvite(present(world.ctx), TRIP_ID, kenny, { role: "editor" });
@@ -103,6 +116,7 @@ describe("accepting from the cookie", () => {
     expect(response.headers.get("location")).toBe(`/trips/${TRIP_ID}`);
     const cookies = setCookies(response);
     expect(cookies).toMatch(/trip-invite=;/);
+    expect(cookies).toMatch(/trip-invite-ok=;/);
     const notice = present(response.headers.getSetCookie().find((c) => c.startsWith("trip-joined=")));
     expect(notice).toMatch(/HttpOnly/i);
     const value = present(notice.split(";")[0]?.split("=")[1]);

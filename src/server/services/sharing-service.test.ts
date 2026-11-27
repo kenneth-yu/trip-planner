@@ -163,6 +163,30 @@ describe("accepting invites", () => {
     expect(await db.select().from(t.travelers).where(eq(t.travelers.tripId, TRIP_ID))).toHaveLength(3);
   });
 
+  it("counts a second claim of a link the same person already used as success", async () => {
+    const { ctx } = await setup();
+    const { url } = await createInvite(ctx, TRIP_ID, kenny, { role: "editor" });
+    await acceptInvite(ctx, tokenOf(url), newcomer);
+    await expect(acceptInvite(ctx, tokenOf(url), newcomer)).resolves.toEqual({ tripId: TRIP_ID, role: "editor", alreadyMember: true, invitedRole: "editor" });
+  });
+
+  it("lets the same person claim twice at once without an error and without a second traveler", async () => {
+    const { ctx, db } = await setup();
+    const { url } = await createInvite(ctx, TRIP_ID, kenny, { role: "viewer" });
+    const results = await Promise.all([acceptInvite(ctx, tokenOf(url), newcomer), acceptInvite(ctx, tokenOf(url), newcomer)]);
+    expect(results.map((r) => r.role)).toEqual(["viewer", "viewer"]);
+    expect(results.filter((r) => !r.alreadyMember)).toHaveLength(1);
+    expect(await db.select().from(t.travelers).where(eq(t.travelers.userId, newcomer.id))).toHaveLength(1);
+  });
+
+  it("does not let a removed person reuse the link they used", async () => {
+    const { ctx } = await setup();
+    const { url } = await createInvite(ctx, TRIP_ID, kenny, { role: "editor" });
+    await acceptInvite(ctx, tokenOf(url), newcomer);
+    await removeMember(ctx, TRIP_ID, kenny, newcomer.id);
+    await expect(acceptInvite(ctx, tokenOf(url), newcomer)).rejects.toMatchObject({ problem: "unusable" });
+  });
+
   it("rejects an expired link and adds nobody", async () => {
     const { ctx, db } = await setup();
     const { url } = await createInvite(ctx, TRIP_ID, kenny, { role: "editor" });
@@ -221,6 +245,15 @@ describe("previewing an invite before sign in", () => {
     expect(await invitePreview(ctx, tokenOf(url))).toEqual({ tripName: present(trip).name, inviterFirstName: "Kenneth", role: "viewer" });
   });
 
+  it("does not show part of an email address as the inviter name", async () => {
+    const { ctx, db } = await setup();
+    await db.update(t.users).set({ name: "kenny" }).where(eq(t.users.id, USERS.kenny.id));
+    const { url } = await createInvite(ctx, TRIP_ID, kenny, { role: "viewer" });
+    expect(await invitePreview(ctx, tokenOf(url))).toMatchObject({ inviterFirstName: "A trip member" });
+    await db.update(t.users).set({ name: "kenny@example.com" }).where(eq(t.users.id, USERS.kenny.id));
+    expect(await invitePreview(ctx, tokenOf(url))).toMatchObject({ inviterFirstName: "A trip member" });
+  });
+
   it("says only expired or unusable for dead links", async () => {
     const { ctx } = await setup();
     const { inviteId, url } = await createInvite(ctx, TRIP_ID, kenny, { role: "viewer" });
@@ -251,6 +284,14 @@ describe("pending invites", () => {
     const text = JSON.stringify(list);
     expect(text).not.toContain(tokenOf(withTraveler.url));
     expect(text).not.toContain(hashToken(tokenOf(withTraveler.url)));
+  });
+
+  it("lists the newest first", async () => {
+    const { ctx, db } = await setup();
+    const first = await createInvite(ctx, TRIP_ID, kenny, { role: "viewer" });
+    const second = await createInvite(ctx, TRIP_ID, kenny, { role: "editor" });
+    await db.update(t.invites).set({ createdAt: new Date(ctx.now().getTime() - DAY_MS) }).where(eq(t.invites.id, first.inviteId));
+    expect((await listInvites(ctx, TRIP_ID, kenny)).map((i) => i.id)).toEqual([second.inviteId, first.inviteId]);
   });
 
   it("drops accepted, revoked and expired invites from the list", async () => {

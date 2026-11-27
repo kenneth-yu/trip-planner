@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import * as t from "../db/schema";
 import { generateToken, hashToken } from "../auth/tokens";
@@ -85,25 +85,45 @@ export interface AcceptedInvite {
   invitedRole: InviteRole;
 }
 
+async function membershipOf(db: DbOrTx, tripId: string, userId: string): Promise<Role | null> {
+  const [row] = await db
+    .select({ role: t.memberships.role })
+    .from(t.memberships)
+    .where(and(eq(t.memberships.tripId, tripId), eq(t.memberships.userId, userId)));
+  return row?.role ?? null;
+}
+
+async function alreadyClaimedBy(db: DbOrTx, invite: typeof t.invites.$inferSelect, userId: string): Promise<AcceptedInvite | null> {
+  if (invite.acceptedBy !== userId) return null;
+  const role = await membershipOf(db, invite.tripId, userId);
+  return role ? { tripId: invite.tripId, role, alreadyMember: true, invitedRole: invite.role } : null;
+}
+
 export async function acceptInvite(ctx: ServiceContext, token: string, user: { id: string; name: string }): Promise<AcceptedInvite> {
   return ctx.db.transaction(async (tx) => {
     const invite = await inviteByToken(tx, token);
     if (!invite) throw new InviteProblem("unusable");
     const now = ctx.now();
     const state = inviteState(invite, now);
-    if (state !== "Pending") throw problemFor(state);
-    const [existing] = await tx
-      .select({ role: t.memberships.role })
-      .from(t.memberships)
-      .where(and(eq(t.memberships.tripId, invite.tripId), eq(t.memberships.userId, user.id)));
-    if (existing) return { tripId: invite.tripId, role: existing.role, alreadyMember: true, invitedRole: invite.role };
+    if (state !== "Pending") {
+      const own = await alreadyClaimedBy(tx, invite, user.id);
+      if (own) return own;
+      throw problemFor(state);
+    }
+    const existing = await membershipOf(tx, invite.tripId, user.id);
+    if (existing) return { tripId: invite.tripId, role: existing, alreadyMember: true, invitedRole: invite.role };
     transition(inviteMachine, state, "accept");
     const claimed = await tx
       .update(t.invites)
       .set({ acceptedAt: now, acceptedBy: user.id })
       .where(and(eq(t.invites.id, invite.id), isNull(t.invites.acceptedAt), isNull(t.invites.revokedAt), sql`${t.invites.expiresAt} > ${now}`))
       .returning({ id: t.invites.id });
-    if (claimed.length === 0) throw new InviteProblem("unusable");
+    if (claimed.length === 0) {
+      const [latest] = await tx.select().from(t.invites).where(eq(t.invites.id, invite.id));
+      const own = latest ? await alreadyClaimedBy(tx, latest, user.id) : null;
+      if (own) return own;
+      throw new InviteProblem("unusable");
+    }
     await tx.insert(t.memberships).values({ tripId: invite.tripId, userId: user.id, role: invite.role });
     const linked = invite.travelerId
       ? await tx
@@ -117,6 +137,14 @@ export async function acceptInvite(ctx: ServiceContext, token: string, user: { i
   });
 }
 
+const UNNAMED_INVITER = "A trip member";
+
+function displayFirstName(name: string, email: string): string {
+  const local = email.split("@")[0]?.toLowerCase();
+  if (name.includes("@") || name.toLowerCase() === local) return UNNAMED_INVITER;
+  return name.split(" ")[0] || UNNAMED_INVITER;
+}
+
 export type InvitePreview = { tripName: string; inviterFirstName: string; role: InviteRole } | { problem: "expired" | "unusable" };
 
 export async function invitePreview(ctx: ServiceContext, token: string): Promise<InvitePreview> {
@@ -125,12 +153,12 @@ export async function invitePreview(ctx: ServiceContext, token: string): Promise
   const state = inviteState(invite, ctx.now());
   if (state !== "Pending") return { problem: state === "Expired" ? "expired" : "unusable" };
   const [row] = await ctx.db
-    .select({ tripName: t.trips.name, inviter: t.users.name })
+    .select({ tripName: t.trips.name, inviter: t.users.name, inviterEmail: t.users.email })
     .from(t.trips)
     .innerJoin(t.users, eq(t.users.id, invite.createdBy))
     .where(eq(t.trips.id, invite.tripId));
   if (!row) return { problem: "unusable" };
-  return { tripName: row.tripName, inviterFirstName: row.inviter.split(" ")[0] ?? row.inviter, role: invite.role };
+  return { tripName: row.tripName, inviterFirstName: displayFirstName(row.inviter, row.inviterEmail), role: invite.role };
 }
 
 export interface PendingInvite {
@@ -156,7 +184,7 @@ export async function listInvites(ctx: ServiceContext, tripId: string, requester
     .from(t.invites)
     .leftJoin(t.travelers, eq(t.travelers.id, t.invites.travelerId))
     .where(eq(t.invites.tripId, tripId))
-    .orderBy(asc(t.invites.createdAt));
+    .orderBy(desc(t.invites.createdAt));
   const now = ctx.now();
   return rows.filter((r) => inviteState(r, now) === "Pending").map((r) => ({ id: r.id, role: r.role, travelerName: r.travelerName, createdAt: r.createdAt, expiresAt: r.expiresAt }));
 }

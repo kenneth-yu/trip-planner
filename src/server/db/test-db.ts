@@ -37,7 +37,7 @@ async function withAdminPool<T>(url: string, run: (pool: Pool) => Promise<T>): P
 const open = new Set<() => Promise<void>>();
 
 export async function closeIsolatedPostgresDbs(): Promise<void> {
-  await Promise.all([...open].map((close) => close()));
+  for (const close of [...open]) await close();
 }
 
 async function migrateInOneTransaction(pool: Pool, schemaName: string): Promise<void> {

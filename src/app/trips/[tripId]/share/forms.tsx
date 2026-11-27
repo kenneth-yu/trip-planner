@@ -10,21 +10,38 @@ function subscribeNothing() {
   return () => undefined;
 }
 
-const none: CreatedInviteState = { url: null, role: null, error: null };
+const none: CreatedInviteState = { inviteId: null, url: null, role: null, error: null };
 
-export function InviteForm({ tripId, travelers }: { tripId: string; travelers: { id: string; name: string }[] }) {
+export function InviteForm({
+  tripId,
+  travelers,
+  pendingIds,
+  memberIds,
+}: {
+  tripId: string;
+  travelers: { id: string; name: string }[];
+  pendingIds: string[];
+  memberIds: string[];
+}) {
   const [state, action, pending] = useActionState(createInviteAction, none);
+  const [hidden, setHidden] = useState<CreatedInviteState | null>(null);
+  const [membersSeen, setMembersSeen] = useState(memberIds.join());
+  if (membersSeen !== memberIds.join()) {
+    setMembersSeen(memberIds.join());
+    setHidden(state);
+  }
+  const shown = state.url !== null && state.role !== null && state !== hidden && state.inviteId !== null && pendingIds.includes(state.inviteId);
   const canShare = useSyncExternalStore(subscribeNothing, () => typeof navigator.share === "function", () => false);
   const [copyProblem, setCopyProblem] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
 
   async function copy(url: string) {
     setCopyProblem(null);
     try {
       await navigator.clipboard.writeText(url);
-      setCopied(true);
+      setCopiedUrl(url);
     } catch (e) {
-      setCopied(false);
+      setCopiedUrl(null);
       setCopyProblem(e instanceof Error ? "Could not copy. Select the link and copy it." : "Could not copy.");
     }
   }
@@ -38,7 +55,7 @@ export function InviteForm({ tripId, travelers }: { tripId: string; travelers: {
   }
 
   return (
-    <form action={action}>
+    <form action={action} onChange={() => setHidden(state)}>
       <input type="hidden" name="tripId" value={tripId} />
       <fieldset className={styles.group}>
         <legend>Role</legend>
@@ -72,12 +89,12 @@ export function InviteForm({ tripId, travelers }: { tripId: string; travelers: {
           {state.error}
         </p>
       )}
-      {state.url && state.role && (
+      {shown && state.url && state.role && (
         <div className={pageStyles.section}>
           <input className={styles.link} readOnly value={state.url} aria-label="Invite link" onFocus={(e) => e.currentTarget.select()} />
           <div className={pageStyles.row}>
             <button type="button" onClick={() => copy(state.url ?? "")}>
-              {copied ? "Copied" : "Copy link"}
+              {copiedUrl === state.url ? "Copied" : "Copy link"}
             </button>
             {canShare && (
               <button type="button" className="quiet" onClick={() => share(state.url ?? "")}>
@@ -125,7 +142,7 @@ export function RoleControl({ tripId, userId, role }: { tripId: string; userId: 
 
 type Removal = { step: "idle" } | { step: "asking" } | { step: "confirm"; hidden: number };
 
-export function RemoveControl({ tripId, userId, firstName }: { tripId: string; userId: string; firstName: string }) {
+export function RemoveControl({ tripId, userId, name }: { tripId: string; userId: string; name: string }) {
   const [removal, setRemoval] = useState<Removal>({ step: "idle" });
   if (removal.step !== "confirm") {
     return (
@@ -147,13 +164,13 @@ export function RemoveControl({ tripId, userId, firstName }: { tripId: string; u
       <input type="hidden" name="tripId" value={tripId} />
       <input type="hidden" name="userId" value={userId} />
       <span>
-        Remove {firstName}? They lose access to this trip.
+        Remove {name}? They lose access to this trip.
         {removal.hidden > 0 && ` Their ${removal.hidden} private ${removal.hidden === 1 ? "item is" : "items are"} deleted too.`}
       </span>
-      <button>Remove</button>
       <button type="button" className="quiet" onClick={() => setRemoval({ step: "idle" })}>
         Cancel
       </button>
+      <button>Remove {name.split(" ")[0]}</button>
     </form>
   );
 }
