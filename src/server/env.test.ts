@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseServerEnv, SetupError } from "./env";
+import { isRemoteDatabase, looksLikeProduction, parseServerEnv, SetupError } from "./env";
 
 const secrets = {
   AUTH_SECRET: "auth-secret-value-0000000000000000000",
@@ -27,6 +27,25 @@ function failure(env: Record<string, string | undefined>): SetupError {
   }
   throw new Error("expected the environment to be refused");
 }
+
+describe("recognising a production shell", () => {
+  it("treats a database host that is not local as remote", () => {
+    expect(isRemoteDatabase("postgres://u:p@ep-cool.neon.tech/trips")).toBe(true);
+    expect(isRemoteDatabase("not a url")).toBe(true);
+    expect(isRemoteDatabase("postgres://u:p@localhost:5432/trips")).toBe(false);
+    expect(isRemoteDatabase("postgres://u:p@127.0.0.1/trips")).toBe(false);
+    expect(isRemoteDatabase(undefined)).toBe(false);
+    expect(isRemoteDatabase("")).toBe(false);
+  });
+
+  it("looks like production from the deployment variables or a remote database", () => {
+    expect(looksLikeProduction({})).toBe(false);
+    expect(looksLikeProduction({ VERCEL_ENV: "production" })).toBe(true);
+    expect(looksLikeProduction({ NODE_ENV: "production" })).toBe(true);
+    expect(looksLikeProduction({ DATABASE_URL: "postgres://u:p@ep-cool.neon.tech/trips" })).toBe(true);
+    expect(looksLikeProduction({ DATABASE_URL: "postgres://u:p@localhost/trips" })).toBe(false);
+  });
+});
 
 describe("server environment", () => {
   it("accepts a complete production environment", () => {

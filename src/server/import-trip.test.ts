@@ -99,6 +99,21 @@ describe("importing the december trip into an owner's account", () => {
     expect(await db.select().from(t.trips)).toEqual([]);
   });
 
+  it("refuses a laptop shell pointed at a remote database without the flag", async () => {
+    const db = await dbWithOwner();
+    const env = { DATABASE_URL: "postgres://u:p@ep-cool.neon.tech/trips" };
+    expect((await refusal(importDecemberTrip(db, { ownerEmail: OWNER.email, allowProduction: false, env }))).message).not.toContain("neon.tech");
+    expect(await db.select().from(t.trips)).toEqual([]);
+    await importDecemberTrip(db, { ownerEmail: OWNER.email, allowProduction: true, env });
+    expect(await db.select().from(t.trips)).toHaveLength(1);
+  });
+
+  it("allows a local database without the flag", async () => {
+    const db = await dbWithOwner();
+    await importDecemberTrip(db, { ownerEmail: OWNER.email, allowProduction: false, env: { DATABASE_URL: "postgres://u:p@localhost:5432/scratch" } });
+    expect(await db.select().from(t.trips)).toHaveLength(1);
+  });
+
   it("imports in production with the flag", async () => {
     const db = await dbWithOwner();
     await importDecemberTrip(db, { ownerEmail: OWNER.email, allowProduction: true, env: { VERCEL_ENV: "production" } });

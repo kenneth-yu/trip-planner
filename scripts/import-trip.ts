@@ -1,6 +1,7 @@
 import { parseArgs } from "node:util";
 import { getDb } from "../src/server/db/client";
-import { formatImportSummary, ImportRefused, importDecemberTrip } from "../src/server/import-trip";
+import { assertImportAllowed, formatImportSummary, ImportRefused, importDecemberTrip } from "../src/server/import-trip";
+import { failureMessage } from "../src/server/script-failure";
 
 const { values } = parseArgs({
   options: {
@@ -15,13 +16,14 @@ if (!ownerEmail) {
   process.exit(1);
 }
 
+let exitCode = 0;
 try {
-  const db = await getDb();
-  const summary = await importDecemberTrip(db, { ownerEmail, allowProduction: values["allow-production"], env: process.env });
+  const options = { ownerEmail, allowProduction: values["allow-production"], env: process.env };
+  assertImportAllowed(options);
+  const summary = await importDecemberTrip(await getDb(), options);
   process.stdout.write(formatImportSummary(summary));
-  process.exit(0);
 } catch (e) {
-  if (!(e instanceof ImportRefused)) throw e;
-  process.stderr.write(`${e.message}\n`);
-  process.exit(1);
+  process.stderr.write(e instanceof ImportRefused ? `${e.message}\n` : failureMessage("Import", e));
+  exitCode = 1;
 }
+process.exit(exitCode);

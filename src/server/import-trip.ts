@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import * as t from "./db/schema";
 import type { Db } from "./db/client";
+import { looksLikeProduction } from "./env";
 import { saveItem } from "./repo/trip-repo";
 import { buildFixtureTrip, TRAVELERS, USERS } from "@/fixtures/december-trip";
 import type { Item } from "@/domain/types";
@@ -29,8 +30,10 @@ export interface ImportSummary {
 const DEMO_EMAILS = new Set<string>(Object.values(USERS).map((user) => user.email));
 const DEMO_USER_IDS = new Set<string>(Object.values(USERS).map((user) => user.id));
 
-function isProductionEnv(env: Record<string, string | undefined>): boolean {
-  return env.VERCEL_ENV === "production" || env.NODE_ENV === "production";
+export function assertImportAllowed(options: Pick<ImportOptions, "allowProduction" | "env">): void {
+  if (looksLikeProduction(options.env) && !options.allowProduction) {
+    throw new ImportRefused("This looks like a production environment or a remote database. Run again with --allow-production if you mean to import there.");
+  }
 }
 
 function carriedOver(item: Item, tripId: string, ownerId: string, travelerIds: Map<string, string>, now: string): Item {
@@ -50,9 +53,7 @@ function carriedOver(item: Item, tripId: string, ownerId: string, travelerIds: M
 }
 
 export async function importDecemberTrip(db: Db, options: ImportOptions): Promise<ImportSummary> {
-  if (isProductionEnv(options.env) && !options.allowProduction) {
-    throw new ImportRefused("This looks like a production environment. Run again with --allow-production if you mean to import there.");
-  }
+  assertImportAllowed(options);
   const email = options.ownerEmail.trim().toLowerCase();
   const [owner] = await db.select({ id: t.users.id, email: t.users.email }).from(t.users).where(eq(t.users.email, email));
   if (!owner) throw new ImportRefused("No account has that email. Sign in once with Google on the site, then run this again.");

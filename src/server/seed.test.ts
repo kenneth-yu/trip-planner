@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createPgliteDb } from "./db/client";
 import * as t from "./db/schema";
-import { SeedRefused, seedEverything } from "./seed";
+import { assertSeedAllowed, SeedRefused, seedEverything } from "./seed";
 import { USERS } from "@/fixtures/december-trip";
 
 describe("seeding demo data", () => {
@@ -10,6 +10,28 @@ describe("seeding demo data", () => {
     await expect(seedEverything(db, { VERCEL_ENV: "production" })).rejects.toThrow(SeedRefused);
     expect(await db.select().from(t.trips)).toEqual([]);
     expect(await db.select().from(t.users)).toEqual([]);
+  });
+
+  it("refuses with NODE_ENV=production", async () => {
+    const db = await createPgliteDb();
+    await expect(seedEverything(db, { NODE_ENV: "production" })).rejects.toThrow(SeedRefused);
+    expect(await db.select().from(t.users)).toEqual([]);
+  });
+
+  it("refuses a laptop shell pointed at a remote database", async () => {
+    const db = await createPgliteDb();
+    const env = { DATABASE_URL: "postgres://u:p@ep-cool.neon.tech/trips" };
+    expect(() => assertSeedAllowed(env)).toThrow(SeedRefused);
+    await expect(seedEverything(db, env)).rejects.toThrow(SeedRefused);
+    expect(await db.select().from(t.users)).toEqual([]);
+  });
+
+  it("allows a remote database only on a preview deployment or with the preview flag", () => {
+    const remote = { DATABASE_URL: "postgres://u:p@ep-cool.neon.tech/trips" };
+    expect(() => assertSeedAllowed({ ...remote, VERCEL_ENV: "preview" })).not.toThrow();
+    expect(() => assertSeedAllowed(remote, true)).not.toThrow();
+    expect(() => assertSeedAllowed({ ...remote, NODE_ENV: "production" }, true)).toThrow(SeedRefused);
+    expect(() => assertSeedAllowed({ DATABASE_URL: "postgres://u:p@localhost:5432/trips" })).not.toThrow();
   });
 
   it("seeds an empty database on a preview deployment", async () => {

@@ -64,6 +64,18 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
   };
 }
 
+const LOCAL_DATABASE_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+export function isRemoteDatabase(url: string | undefined): boolean {
+  if (!url) return false;
+  const parsed = URL.parse(url);
+  return !parsed || !LOCAL_DATABASE_HOSTS.has(parsed.hostname);
+}
+
+export function looksLikeProduction(source: Record<string, string | undefined>): boolean {
+  return source.VERCEL_ENV === "production" || source.NODE_ENV === "production" || isRemoteDatabase(source.DATABASE_URL);
+}
+
 export function serverEnv(): ServerEnv {
   return parseServerEnv(process.env);
 }
