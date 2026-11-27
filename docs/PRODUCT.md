@@ -37,11 +37,10 @@ Each screen answers one question. If something does not help answer it, it belon
 **Question:** what's happening next?
 * Shows what is happening now, and the next two or three things, in local time
 * Before the trip: a countdown to departure and any deadlines that need a decision soon
-* After the trip: a quiet summary and a link to the day by day view
+* After the trip: a quiet summary and a link to the Trip view
 * This is what a share link opens to on a phone
 
 ### Trip (day by day)
-The nav calls this screen "Trip".
 **Question:** what does each day look like?
 * One section per calendar date where you are (rules in `TIME_RULES.md`)
 * Each line: time, what it is, place. Details (codes, address, phone) appear on tap.
