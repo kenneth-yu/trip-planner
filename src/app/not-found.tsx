@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "Page not found", robots: { index: fa
 
 export default function NotFound() {
   return (
-    <section className={pageStyles.page}>
+    <main className={pageStyles.page}>
       <h1 className={pageStyles.title}>This page isn&apos;t here.</h1>
       <p>Check the link, or start from your trips.</p>
       <div className={styles.stack}>
@@ -15,6 +15,6 @@ export default function NotFound() {
           Go to your trips
         </Link>
       </div>
-    </section>
+    </main>
   );
 }
