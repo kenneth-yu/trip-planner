@@ -9,7 +9,9 @@ Every path a person or an assistant can take through the app, where it lives, an
 | Member | On a phone, see what is next and pick a day from a strip | `/trips/[id]` on phone | `upNext`, `dayStrip` | `trip-grid.test.ts` |
 | Member | On desktop, see what to decide and what to check beside the day list | `/trips/[id]` (1000px and wider) | `loadAttention` | `deadlines.test.ts`, `checks.test.ts` |
 | Member | See deadlines and problems | `/trips/[id]/deadlines` | `buildDeadlineLines`, `runChecks`, `disagreementFindings` | `deadlines.test.ts`, `checks.test.ts`, `services.test.ts` |
-| Editor | Quick add a flight, stay, plan or transfer | form or API (UI pending) | `quickAddItem` | `quick-add.test.ts`, `services.test.ts` |
+| Editor | Add a flight, stay, plan or transfer in local time, with place hints and a next day arrival; a repeated submit adds it once; lands on the item's day marked Added | `/trips/[id]/add`, Add in the trip nav | `parseItemForm`, `quickAddItem`, `placeHint` | `item-form.test.ts`, `create-trip.test.ts`, `quick-add.test.ts`, `services.test.ts`, `nav.test.ts` |
+| Signed in person | Create a trip | `/trips/new` | `createTrip` | `create-trip.test.ts` |
+| Editor | An empty trip offers Add flight or stay; viewers see a plain sentence | `/trips/[id]` | `DayView` | `empty-trip.test.ts` |
 | Editor | Review imported items: add, merge, discard, add all clean | `/trips/[id]/inbox` | `approveEntry`, `mergeEntry`, `discardEntry`, `approveAllClean` | `services.test.ts`, `pipeline.test.ts` |
 | Editor | Import calendar events | service (Google and .ics UI pending) | `importCalendarEvents` | `pipeline.test.ts`, `services.test.ts` |
 | Member | Connect Claude or ChatGPT; Disconnect again on a stale page shows it as disconnected | `/trips/[id]/connect` | `createAssistantToken`, `revokeAssistantToken` | `server.test.ts`, `actions.test.ts` |
@@ -18,7 +20,7 @@ Every path a person or an assistant can take through the app, where it lives, an
 | Assistant | Propose calendar-shaped events | `/api/mcp` `import_calendar_events` | `importCalendarEvents` | `server.test.ts` |
 | Assistant | Read the review inbox | `/api/mcp` `list_review_inbox` | `listInbox` | `server.test.ts` |
 | Member | Mirror the trip to Google Calendar | `/trips/[id]/connect`, `/api/google/*` | `enableMirror`, `syncMirror`, `syncTripMirrors` | `mirror-service.test.ts`, `calendar-mirror.test.ts`, `auth.test.ts` |
-| Creator | Hide an item, or show it only as busy | service (UI pending) | `quickAddItem` sharing, `updateItem` | `project.test.ts`, `services.test.ts`, `checks.test.ts`, `calendar-mirror.test.ts` |
+| Creator | Hide an item, or show it only as busy | `/trips/[id]/add` (Who can see this); editing pending | `quickAddItem` sharing, `updateItem` | `project.test.ts`, `services.test.ts`, `checks.test.ts`, `calendar-mirror.test.ts` |
 | Developer | Try the UI on an empty, a sparse and a packed trip | `npm run db:seed`, then the home page | `seedEverything`, `src/fixtures/demo-trips.ts` | `demo-trips.test.ts`, `services.test.ts` (seeding) |
 | Anyone adding items | Places resolve to a time zone on their own (airports, about 7,000 cities, country, optional address lookup); unclear ones are flagged, never guessed silently | quick add, `add_items`, calendar import | `resolvePlace`, `placeZone`, `placeContextFor`, `unsurePlace` check | `resolve-place.test.ts`, `quick-add.test.ts`, `places.test.ts` |
 | Anyone | View link, invites, roles | not built | | |
