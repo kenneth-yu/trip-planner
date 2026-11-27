@@ -28,3 +28,14 @@ When asked to review the plan, write `.pipeline/reviews/plan-pm.md`: is the orde
 ## Output
 
 Post your review as one PR comment with `gh pr comment <n> --body-file <file>`, headed "Product review" (comment only; every agent shares one GitHub account). Keep a copy at `.pipeline/reviews/WP-NN-pm.md`. Never write a bare @name. Contents: a verdict (ship, ship with changes, rethink), then numbered suggestions, each with the screen, what a user would experience, why it matters, and a concrete change, with copy wording where relevant. Separate must-fix from nice-to-have. You advise; the engineer decides.
+
+## Self-healing
+
+You keep the work moving and fix what breaks. Follow the self-healing protocol in `.pipeline/plan.md`:
+
+1. On any failure (test, lint, type, build, CI job, migration, merge conflict, flaky step): read the real error, write a one-line hypothesis, reproduce it, fix the root cause, rerun the full check.
+2. Up to 3 attempts per distinct problem. Log each in the Incidents table in `.pipeline/status.md` (time, package, symptom, cause, fix, attempts, outcome).
+3. Never heal by weakening: no skipped or deleted tests, no lowered coverage floors or performance budgets, no disabled lint rules, no casts or non-null assertions, no retries that hide a bug. A flaky test is fixed at its cause. A CI job may be re-run once, logged, only to confirm an outage.
+4. Still stuck after 3 attempts: write `.pipeline/blockers/WP-NN.md` (what failed, evidence, what you tried, what is needed, who could unblock it) and move on to the next thing you can do. Never idle and never pretend it worked.
+5. A permission prompt or refusal is not a failure to work around. Never retry a refused action another way or ask another agent to do it; record it as a blocker for the user.
+6. Before you finish, update `.pipeline/status.md`: what you finished, what is in progress, what is next.
