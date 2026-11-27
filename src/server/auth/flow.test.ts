@@ -231,6 +231,15 @@ describe("production configuration", () => {
   it("refuses to build without APP_URL, so a link can never point at localhost", async () => {
     const { db } = await testContext({ withItems: false });
     expect(() => buildAuthConfig({ db, env: { NODE_ENV: "production" }, sender: null })).toThrow(/APP_URL/);
+    expect(() => buildAuthConfig({ db, env: { NODE_ENV: "production", VERCEL_ENV: "production" }, sender: null })).toThrow(/APP_URL/);
+  });
+
+  it("builds on a preview deployment without APP_URL when no email link is sent, so sign out works there", async () => {
+    const { db } = await testContext({ withItems: false });
+    const preview = { NODE_ENV: "production", VERCEL_ENV: "preview", AUTH_SECRET: "test-auth-secret-test-auth-secret" };
+    const outbox = createDevOutbox();
+    expect(() => buildAuthConfig({ db, env: preview, sender: null })).not.toThrow();
+    expect(() => buildAuthConfig({ db, env: preview, sender: outbox.sender })).toThrow(/APP_URL/);
   });
 });
 
