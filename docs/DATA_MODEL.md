@@ -32,7 +32,7 @@ Exactly one owner membership per trip, matching `Trip.ownerId`.
 * `id`
 * `tripId`
 * `role`: `editor` | `viewer`
-* `email` (optional; when set, only that email can accept)
+* `travelerId` (optional; the trip's traveler the invitee becomes, set null if that traveler is deleted)
 * `tokenHash` (store a hash, never the raw token)
 * `createdBy` (User)
 * `expiresAt` (default 7 days)

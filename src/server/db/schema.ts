@@ -77,7 +77,7 @@ export const invites = pgTable("invites", {
   id: uuid("id").primaryKey().defaultRandom(),
   tripId: uuid("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
   role: text("role", { enum: ["editor", "viewer"] }).notNull(),
-  email: text("email"),
+  travelerId: uuid("traveler_id").references(() => travelers.id, { onDelete: "set null" }),
   tokenHash: text("token_hash").notNull().unique(),
   createdBy: uuid("created_by").notNull().references(() => users.id),
   expiresAt: ts("expires_at").notNull(),

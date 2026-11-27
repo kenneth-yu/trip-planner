@@ -31,10 +31,10 @@ Sharing has to be the easiest part of the app. One tap to share, nothing to expl
 Inviting is owner only in v1.
 
 ## Invites
-1. Owner taps Share, picks a role (editor or viewer), then either types an email or copies an invite link.
-2. The invitee opens the link, signs in, and is added to the trip with that role.
-3. Invites expire after 7 days. The owner sees pending invites and can resend or revoke them.
-4. An invite tied to an email can only be accepted by that email. An invite link without an email can be accepted by one person, then it is used up.
+1. Owner taps Share, picks a role (editor or viewer) and, optionally, which traveler the person is, then creates an invite link and sends it however they like. The app never sends email.
+2. Whoever opens the link signs in (an account is created by signing in) and is added to the trip with that role, then lands on the trip.
+3. A link works once and expires after 7 days. It is shown once; the owner sees pending invites without the link, can revoke them, and makes a new link instead of re-sending.
+4. Opening a link never changes the role of someone already on the trip.
 
 ## The view link
 * One switch: "Anyone with the link can view".
