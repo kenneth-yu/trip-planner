@@ -5,9 +5,9 @@ import { requestContext } from "./app-context";
 import { getTripView, NotFound } from "./services/trip-service";
 import { AccessDenied } from "@/domain/visibility/project";
 import { safeNextPath, signInPath } from "@/domain/auth/next-path";
+import { REQUEST_PATH_HEADER } from "./security/request-path";
 import type { Requester } from "@/domain/types";
 
-export const REQUEST_PATH_HEADER = "x-request-path";
 export const NOT_ON_ACCOUNT_PATH = "/not-on-your-account";
 
 async function pathToReturnTo(fallback: string): Promise<string> {

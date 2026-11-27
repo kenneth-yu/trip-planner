@@ -18,6 +18,8 @@ Every path a person or an assistant can take through the app, where it lives, an
 | Signed in person | Sign out (session row and cookie deleted) | home, Sign out | `signOutAction` | `flow.test.ts`, `home.test.ts` |
 | Signed in person | Opening a trip that is not theirs, or does not exist, shows the same "This trip is not on your account." page | `/not-on-your-account` | `loadTripPage` | `web.test.ts` |
 | Developer | Demo accounts sign in, development and previews only (refused in production) | `/sign-in` "Demo accounts", `/api/dev/sign-in`, `/api/dev/outbox` | `devSignInEnabled` | `auth.test.ts`, `dev-routes.test.ts`, `home.test.ts` |
+| Anyone | Too many sign in attempts, invite or view link opens, feed or assistant calls get "Too many requests" (429 with Retry-After); quick add and place hints are limited per person | every request through `src/proxy.ts`; add form | `ruleForRequest`, `consumeRateLimit` | `rate-limit.test.ts`, `proxy-routes.test.ts`, `proxy.test.ts` |
+| Anyone | Every response carries security headers and a per request CSP nonce | `src/proxy.ts` | `securityHeaders` | `headers.test.ts` |
 | Signed in person | Create a trip | `/trips/new` | `createTrip` | `create-trip.test.ts` |
 | Editor | An empty trip offers Add flight or stay; viewers see a plain sentence | `/trips/[id]` | `DayView` | `empty-trip.test.ts` |
 | Editor | Review imported items: add, merge, discard, add all clean | `/trips/[id]/inbox` | `approveEntry`, `mergeEntry`, `discardEntry`, `approveAllClean` | `services.test.ts`, `pipeline.test.ts` |
