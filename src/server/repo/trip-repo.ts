@@ -1,6 +1,9 @@
+import { randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client";
 import * as t from "../db/schema";
+import { openJson, SealError, sealJson } from "../crypto/sealed";
+import { itemPrivateSchema } from "../crypto/schemas";
 import type { Deadline, Item, ItemPrivate, TripAggregate } from "@/domain/types";
 
 const iso = (d: Date) => d.toISOString();
@@ -46,6 +49,11 @@ export async function loadTripAggregate(db: DbOrTx, tripId: string): Promise<Tri
   };
 }
 
+function openPrivate(row: typeof t.itemPrivate.$inferSelect) {
+  if (row.sealed === null) throw new SealError("Private booking data has not been sealed yet.");
+  return openJson(row.sealed, itemPrivateSchema, "item_private", row.id);
+}
+
 function rowToItem(r: typeof t.items.$inferSelect, privates: (typeof t.itemPrivate.$inferSelect)[], dls: (typeof t.deadlines.$inferSelect)[]): Item {
   return {
     id: r.id,
@@ -65,7 +73,7 @@ function rowToItem(r: typeof t.items.$inferSelect, privates: (typeof t.itemPriva
     status: r.status,
     notes: r.notes,
     flags: r.flags,
-    private: privates.map((p): ItemPrivate => ({ travelerId: p.travelerId, ...p.data })),
+    private: privates.map((p): ItemPrivate => ({ travelerId: p.travelerId, ...openPrivate(p) })),
     deadlines: dls.map(
       (d): Deadline => ({
         id: d.id,
@@ -115,7 +123,10 @@ export async function saveItem(db: DbOrTx, item: Item): Promise<void> {
   await db.delete(t.deadlines).where(eq(t.deadlines.itemId, item.id));
   if (item.private.length) {
     await db.insert(t.itemPrivate).values(
-      item.private.map(({ travelerId, ...data }) => ({ itemId: item.id, travelerId, data })),
+      item.private.map(({ travelerId, ...data }) => {
+        const id = randomUUID();
+        return { id, itemId: item.id, travelerId, sealed: sealJson(data, "item_private", id) };
+      }),
     );
   }
   if (item.deadlines.length) {

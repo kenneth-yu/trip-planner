@@ -143,7 +143,8 @@ export const itemPrivate = pgTable("item_private", {
   id: uuid("id").primaryKey().defaultRandom(),
   itemId: uuid("item_id").notNull().references(() => items.id, { onDelete: "cascade" }),
   travelerId: uuid("traveler_id").references(() => travelers.id, { onDelete: "set null" }),
-  data: jsonb("data").$type<Omit<ItemPrivate, "travelerId">>().notNull(),
+  data: jsonb("data").$type<Omit<ItemPrivate, "travelerId">>(),
+  sealed: text("sealed"),
 });
 
 export const deadlines = pgTable("deadlines", {
@@ -172,8 +173,9 @@ export const importedItems = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     batchId: uuid("batch_id").notNull().references(() => importBatches.id, { onDelete: "cascade" }),
     tripId: uuid("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
-    raw: jsonb("raw").$type<unknown[]>().notNull(),
-    proposed: jsonb("proposed").$type<ProposedItem>().notNull(),
+    raw: jsonb("raw").$type<unknown[]>(),
+    proposed: jsonb("proposed").$type<ProposedItem>(),
+    sealed: text("sealed"),
     matchItemId: uuid("match_item_id").references(() => items.id, { onDelete: "set null" }),
     matchStrength: text("match_strength", { enum: ["strong", "possible"] }),
     differences: jsonb("differences").$type<Difference[]>().notNull().default([]),
@@ -211,6 +213,7 @@ export const activity = pgTable(
     via: text("via").notNull().default("app"),
     before: jsonb("before"),
     after: jsonb("after"),
+    sealed: text("sealed"),
   },
   (t) => [index("activity_trip_at_idx").on(t.tripId, t.at)],
 );
