@@ -85,7 +85,7 @@ export function DeleteAccountSection({ blocking, hasSharedSpecificItems }: { blo
             />
           </div>
           {message && (
-            <p role="alert" className={pageStyles.warning}>
+            <p role="alert" className={`${pageStyles.warning} ${styles.error}`}>
               {message}
             </p>
           )}

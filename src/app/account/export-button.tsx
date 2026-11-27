@@ -29,7 +29,7 @@ export function ExportButton() {
       link.href = url;
       link.download = fileNameFrom(res.headers.get("content-disposition"));
       link.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
     } catch (e) {
       if (!(e instanceof TypeError)) throw e;
       setFailed(true);
@@ -44,7 +44,7 @@ export function ExportButton() {
         {pending ? "Preparing your file" : "Download your data"}
       </button>
       {failed && (
-        <p role="alert" className={pageStyles.warning}>
+        <p role="alert" className={`${pageStyles.warning} ${styles.error}`}>
           {FAILURE}
         </p>
       )}

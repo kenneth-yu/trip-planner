@@ -2,6 +2,7 @@
   display: inline-flex;
   align-items: center;
   min-height: 44px;
+  min-width: 44px;
   color: var(--muted);
   font-size: var(--size-small);
 }
@@ -42,7 +43,17 @@
 @media (min-width: 640px) {
   .danger {
     width: auto;
+    align-self: flex-start;
   }
+}
+
+.error {
+  margin: 0 0 16px;
+  padding-bottom: 4px;
+}
+
+.signOut {
+  min-height: 44px;
 }
 
 .primary {

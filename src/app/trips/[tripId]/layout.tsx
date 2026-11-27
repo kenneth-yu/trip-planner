@@ -3,6 +3,7 @@ import styles from "../../ui/page.module.css";
 import { loadTripPage } from "@/server/web";
 import { buildTripGrid, tripSpan } from "@/domain/timeline/trip-grid";
 import { TripNav } from "./nav";
+import { JoinedNotice } from "@/app/invite/joined-notice";
 
 function listOf(names: string[]): string {
   return names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
@@ -38,7 +39,8 @@ export default async function TripLayout({ children, params }: LayoutProps<"/tri
           {others.length > 0 && ` · with ${listOf(others)}`}
         </p>
       )}
-      <TripNav tripId={tripId} canEdit={view.permissions.canEdit} />
+      <JoinedNotice tripId={tripId} />
+      <TripNav tripId={tripId} canEdit={view.permissions.canEdit} canManageSharing={view.permissions.canManageSharing} />
       {children}
     </main>
   );

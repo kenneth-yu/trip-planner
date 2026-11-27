@@ -3,7 +3,7 @@ import { z } from "zod";
 export const NOTICE_COOKIE = "trip-notice";
 
 const Notice = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("trip-deleted"), name: z.string().min(1).max(200) }),
+  z.object({ kind: z.literal("trip-deleted") }),
   z.object({ kind: z.literal("account-deleted") }),
 ]);
 
@@ -32,5 +32,5 @@ export function noticeText(value: string | undefined): string | null {
   }
   const parsed = Notice.safeParse(raw);
   if (!parsed.success) return null;
-  return parsed.data.kind === "trip-deleted" ? `Deleted ${parsed.data.name}.` : "Your account is deleted.";
+  return parsed.data.kind === "trip-deleted" ? "Trip deleted." : "Your account is deleted.";
 }

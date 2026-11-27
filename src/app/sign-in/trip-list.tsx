@@ -34,7 +34,9 @@ export function TripList({ trips, signOut }: { trips: { id: string; name: string
         </Link>
       </p>
       <form action={signOut}>
-        <button type="submit">Sign out</button>
+        <button type="submit" className={accountStyles.signOut}>
+          Sign out
+        </button>
       </form>
     </main>
   );

@@ -17,7 +17,9 @@ export interface DeleteTripState {
 const Input = z.object({ tripId: z.string().uuid(), confirm: z.string().max(500) });
 
 export async function deleteTripAction(_prev: DeleteTripState, form: FormData): Promise<DeleteTripState> {
-  const { tripId, confirm } = Input.parse({ tripId: form.get("tripId"), confirm: form.get("confirm") ?? "" });
+  const parsed = Input.safeParse({ tripId: form.get("tripId"), confirm: form.get("confirm") ?? "" });
+  if (!parsed.success) notFound();
+  const { tripId, confirm } = parsed.data;
   const { ctx, requester, view } = await loadTripPage(tripId);
   if (view.permissions.role !== "owner") notFound();
   if (!confirmationMatches(confirm, view.trip.name)) return { status: "mismatch" };
@@ -29,6 +31,6 @@ export async function deleteTripAction(_prev: DeleteTripState, form: FormData): 
     console.error(`Trip ${tripId} was not deleted: ${e instanceof Error ? e.name : "unknown error"}`);
     return { status: "failed" };
   }
-  (await cookies()).set(NOTICE_COOKIE, noticeValue({ kind: "trip-deleted", name: view.trip.name }), noticeCookieOptions);
+  (await cookies()).set(NOTICE_COOKIE, noticeValue({ kind: "trip-deleted" }), noticeCookieOptions);
   redirect("/");
 }

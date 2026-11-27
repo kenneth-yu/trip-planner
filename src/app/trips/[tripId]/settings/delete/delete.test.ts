@@ -137,7 +137,8 @@ describe("deleting a trip", () => {
     const name = await tripName(ctx);
     await expect(deleteTripAction(idle, form({ tripId: TRIP_ID, confirm: `  ${name.toUpperCase()} ` }))).rejects.toThrow("redirect:/");
     expect(await trips(ctx)).toBe(0);
-    expect(noticeText(world.jar.get("trip-notice"))).toBe(`Deleted ${name}.`);
+    expect(noticeText(world.jar.get("trip-notice"))).toBe("Trip deleted.")
+    expect(world.jar.get("trip-notice")).not.toContain(name);
   });
 
   it("checks the confirmation on the server and keeps everything on a mismatch", async () => {
@@ -176,6 +177,7 @@ describe("deleting a trip", () => {
   });
 
   it("parses its input", async () => {
-    await expect(deleteTripAction(idle, form({ tripId: "nope", confirm: "x" }))).rejects.toThrow();
+    await expect(deleteTripAction(idle, form({ tripId: "nope", confirm: "x" }))).rejects.toThrow("notFound");
+    await expect(deleteTripAction(idle, form({ tripId: "00000000-0000-4000-8300-0000000000ff", confirm: "x" }))).rejects.toThrow();
   });
 });

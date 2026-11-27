@@ -9,7 +9,7 @@ vi.mock("./notice-actions", () => ({ clearOneTimeNotice: async () => undefined }
 
 describe("the one time status lines", () => {
   it("says which trip was deleted and that the account is deleted", () => {
-    expect(noticeText(noticeValue({ kind: "trip-deleted", name: "Lisbon, someday" }))).toBe("Deleted Lisbon, someday.");
+    expect(noticeText(noticeValue({ kind: "trip-deleted" }))).toBe("Trip deleted.");
     expect(noticeText(noticeValue({ kind: "account-deleted" }))).toBe("Your account is deleted.");
   });
 
@@ -17,11 +17,10 @@ describe("the one time status lines", () => {
     expect(noticeText(undefined)).toBeNull();
     expect(noticeText("not json")).toBeNull();
     expect(noticeText('{"kind":"other"}')).toBeNull();
-    expect(noticeText('{"kind":"trip-deleted","name":""}')).toBeNull();
   });
 
   it("renders as a status region and renders nothing without a line", () => {
-    expect(renderToStaticMarkup(createElement(OneTimeNotice, { text: "Deleted Lisbon, someday." }))).toContain('role="status"');
+    expect(renderToStaticMarkup(createElement(OneTimeNotice, { text: "Trip deleted." }))).toContain('role="status"');
     expect(renderToStaticMarkup(createElement(OneTimeNotice, { text: null }))).toBe("");
   });
 });

@@ -11,7 +11,7 @@ export function OneTimeNotice({ text }: { text: string | null }) {
   }, [text]);
   if (!shown) return null;
   return (
-    <p role="status" className={`${styles.page} ${styles.muted}`} style={{ paddingBottom: 0 }}>
+    <p role="status" className={styles.page} style={{ paddingBottom: 0 }}>
       {shown}
     </p>
   );

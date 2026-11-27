@@ -22,7 +22,7 @@ test("delete a trip you made: wrong name is refused, any case matches, the line 
   await page.getByLabel("Type the trip name to confirm").fill("  scratch WEEKEND ");
   await page.getByRole("button", { name: "Delete trip" }).click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("status")).toHaveText("Deleted Scratch weekend.");
+  await expect(page.getByRole("status")).toHaveText("Trip deleted.");
   await expect(page.getByRole("link", { name: "Scratch weekend" })).toHaveCount(0);
 
   await expect.poll(async () => (await page.context().cookies()).some((c) => c.name === "trip-notice" && c.value !== "")).toBe(false);

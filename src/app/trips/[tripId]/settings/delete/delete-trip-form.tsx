@@ -42,7 +42,7 @@ export function DeleteTripForm({ tripId, tripName }: { tripId: string; tripName:
         />
       </div>
       {message && (
-        <p role="alert" className={pageStyles.warning}>
+        <p role="alert" className={`${pageStyles.warning} ${styles.error}`}>
           {message}
         </p>
       )}

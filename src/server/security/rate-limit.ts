@@ -5,7 +5,7 @@ import { appSecret } from "../auth/tokens";
 import type { DbOrTx } from "../repo/trip-repo";
 
 export interface RateRule {
-  name: "signIn" | "inviteAccept" | "viewLink" | "feed" | "assistant" | "quickAdd" | "placeHint" | "dataExport";
+  name: "signIn" | "inviteAccept" | "inviteLookup" | "viewLink" | "feed" | "assistant" | "quickAdd" | "placeHint" | "dataExport";
   limit: number;
   windowMs: number;
 }
@@ -16,6 +16,7 @@ const PRUNE_AFTER_MS = 24 * 60 * MINUTE;
 export const RATE_RULES: Record<RateRule["name"], RateRule> = {
   signIn: { name: "signIn", limit: 10, windowMs: 15 * MINUTE },
   inviteAccept: { name: "inviteAccept", limit: 20, windowMs: 15 * MINUTE },
+  inviteLookup: { name: "inviteLookup", limit: 60, windowMs: 15 * MINUTE },
   viewLink: { name: "viewLink", limit: 120, windowMs: MINUTE },
   feed: { name: "feed", limit: 60, windowMs: MINUTE },
   assistant: { name: "assistant", limit: 120, windowMs: MINUTE },
@@ -24,9 +25,12 @@ export const RATE_RULES: Record<RateRule["name"], RateRule> = {
   dataExport: { name: "dataExport", limit: 6, windowMs: 15 * MINUTE },
 };
 
+const INVITE_TOKEN_OPEN = /^\/invite\/(?!(?:accept|join|lost|problem)(?:\/|$))[^/]+\/?$/;
+
 const REQUEST_RULES: ReadonlyArray<{ rule: RateRule["name"]; test: (method: string, path: string) => boolean }> = [
   { rule: "signIn", test: (_m, p) => ["/api/auth/signin", "/api/auth/callback", "/api/auth/email"].some((s) => p === s || p.startsWith(`${s}/`)) },
-  { rule: "inviteAccept", test: (_m, p) => p.startsWith("/invite/") },
+  { rule: "inviteAccept", test: (_m, p) => INVITE_TOKEN_OPEN.test(p) },
+  { rule: "inviteLookup", test: (_m, p) => p === "/invite/join" || p === "/invite/accept" },
   { rule: "viewLink", test: (_m, p) => p.startsWith("/v/") },
   { rule: "feed", test: (_m, p) => p.startsWith("/api/feed/") },
   { rule: "assistant", test: (_m, p) => p === "/api/mcp" || p.startsWith("/api/mcp/") },
