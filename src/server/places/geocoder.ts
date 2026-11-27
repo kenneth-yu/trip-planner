@@ -16,22 +16,30 @@ export function nominatimGeocoder(opts: { userAgent: string; minIntervalMs?: num
   const minInterval = opts.minIntervalMs ?? 1100;
   let lastStart = Number.NEGATIVE_INFINITY;
   let queue: Promise<void> = Promise.resolve();
-  const takeTurn = async () => {
+  const waitForInterval = async () => {
     for (let wait = lastStart + minInterval - Date.now(); wait > 0; wait = lastStart + minInterval - Date.now()) {
       await new Promise((resolve) => setTimeout(resolve, wait));
     }
-    lastStart = Date.now();
   };
   return {
     async lookup(query) {
-      const turn = queue.then(takeTurn);
-      queue = turn;
-      await turn;
       const url = new URL(opts.baseUrl ?? "https://nominatim.openstreetmap.org/search");
       url.searchParams.set("q", query);
       url.searchParams.set("format", "jsonv2");
       url.searchParams.set("limit", "1");
-      const res = await fetchImpl(url, { headers: { "user-agent": opts.userAgent, "accept-language": "en" } });
+      const previous = queue;
+      const turn = Promise.withResolvers<void>();
+      queue = turn.promise;
+      await previous;
+      await waitForInterval();
+      let pending: Promise<Response>;
+      try {
+        pending = fetchImpl(url, { headers: { "user-agent": opts.userAgent, "accept-language": "en" } });
+      } finally {
+        lastStart = Date.now();
+        turn.resolve();
+      }
+      const res = await pending;
       if (!res.ok) throw new Error(`Address lookup failed: ${res.status}`);
       const [hit] = NominatimResult.parse(await res.json());
       return hit ? { lat: Number(hit.lat), lng: Number(hit.lon), label: hit.display_name } : null;
