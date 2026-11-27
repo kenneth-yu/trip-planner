@@ -75,6 +75,18 @@
     },
     "/trips/[tripId]/items/[itemId]": {
       "budgetGzipBytes": 151000
+    },
+    "/invite/join": {
+      "budgetGzipBytes": 146000
+    },
+    "/invite/lost": {
+      "budgetGzipBytes": 150000
+    },
+    "/invite/problem/[kind]": {
+      "budgetGzipBytes": 146000
+    },
+    "/trips/[tripId]/share": {
+      "budgetGzipBytes": 153000
     }
   }
 }
