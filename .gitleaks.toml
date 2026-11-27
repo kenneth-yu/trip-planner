@@ -13,4 +13,4 @@ regexes = ['''PLACEHOLDER_[A-Z0-9]+''']
 description = "CI-only dummy encryption key used to build the app, only in the CI workflow"
 condition = "AND"
 paths = ['''^\.github/workflows/ci\.yml$''']
-regexes = ['''ZmFrZS1jaS1rZXktbm90LWZvci1yZWFsLWRhdGEtMDA=''']
+regexes = ['''ZmFrZS1jaS1rZXktbm90LWZvci1yZWFsLWRhdGEtMDA''']
