@@ -1,4 +1,8 @@
-import type { ItemType, Visibility, Zone } from "../types";
+import type { ItemPrivate, ItemType, Visibility, Zone, ZonedTime } from "../types";
+import type { ItemPatch } from "../item-patch";
+import type { ProposedItem } from "./proposal";
+import type { VisibleItem } from "../visibility/project";
+import { toLocal } from "../time/format";
 import { airportByCode, airportsInCity } from "../time/places";
 import { resolvePlace, type PlaceQuery } from "../time/resolve-place";
 import { airlineFor } from "./airlines";
@@ -7,6 +11,15 @@ import { DEFAULT_CHECK_IN, DEFAULT_CHECK_OUT } from "./calendar-event";
 import { ItemInput } from "./quick-add";
 
 export type FormEntries = [string, string][];
+
+export interface ItemFormValues {
+  type: ItemType;
+  fields: Record<string, string>;
+  seats: { traveler: string; seat: string }[];
+  visibility: Visibility;
+  visibleToUserIds: string[];
+  showAsBusy: boolean;
+}
 
 export interface FormSharing {
   visibility: Visibility;
@@ -59,6 +72,7 @@ const FIELD_OF_KEY: Record<string, string> = {
   fromCity: "from",
   toCity: "to",
   confirmationCode: "confirmationCode",
+  bookingReference: "bookingReference",
   phone: "phone",
   price: "price",
   notes: "notes",
@@ -292,6 +306,7 @@ function details(e: Entries, p: Parse): void {
   }
   Object.assign(p.fields, {
     confirmationCode: e.get("confirmationCode") || undefined,
+    bookingReference: e.get("bookingReference") || undefined,
     phone: e.get("phone") || undefined,
     price: parsedPrice ?? undefined,
     notes: e.get("notes") || undefined,
@@ -333,4 +348,213 @@ export function parseItemForm(entries: FormEntries, options: ParseOptions = {}):
     return { ok: false, errors: Object.keys(errors).length ? errors : { form: FORM_ERROR }, values: entries };
   }
   return { ok: true, input: parsed.data, sharing: share };
+}
+
+const SYMBOL_OF_CURRENCY: Record<string, string> = { USD: "$", GBP: "£", EUR: "€", JPY: "¥" };
+
+function priceText(price: { amount: string; currency: string }): string {
+  const symbol = SYMBOL_OF_CURRENCY[price.currency];
+  return symbol ? `${symbol}${price.amount}` : `${price.currency} ${price.amount}`;
+}
+
+function localDate(t: VisibleItem["start"]): string {
+  return toLocal(t).toFormat("yyyy-LL-dd");
+}
+
+function localClock(t: VisibleItem["start"]): string {
+  return toLocal(t).toFormat("HH:mm");
+}
+
+function placeText(location: VisibleItem["location"]): string {
+  return location?.address ?? location?.city ?? "";
+}
+
+function typeFields(item: VisibleItem): Record<string, string> {
+  if (item.type === "flight" && item.flight) {
+    return {
+      flightNumber: item.flight.flightNumber,
+      ...(item.flight.airline && item.flight.airline !== airlineFor(item.flight.flightNumber) ? { airline: item.flight.airline } : {}),
+      date: localDate(item.start),
+      from: item.flight.fromAirport,
+      to: item.flight.toAirport,
+      departs: localClock(item.start),
+      arrives: localClock(item.end),
+    };
+  }
+  if (item.type === "stay") {
+    return {
+      name: item.stay?.propertyName ?? item.title,
+      place: placeText(item.location),
+      checkInDate: localDate(item.start),
+      checkInTime: localClock(item.start),
+      checkInEdited: item.startIsEstimated ? "0" : "1",
+      checkOutDate: localDate(item.end),
+      checkOutTime: localClock(item.end),
+      checkOutEdited: item.endIsEstimated ? "0" : "1",
+    };
+  }
+  if (item.type === "transfer") {
+    return {
+      from: item.transfer?.fromPlace?.city ?? "",
+      to: item.transfer?.toPlace?.city ?? "",
+      mode: item.transfer?.mode ?? "",
+      date: localDate(item.start),
+      departs: localClock(item.start),
+      arrives: localClock(item.end),
+    };
+  }
+  return {
+    title: item.title,
+    place: placeText(item.location),
+    date: localDate(item.start),
+    starts: localClock(item.start),
+    ...(item.endIsEstimated ? {} : { ends: localClock(item.end) }),
+  };
+}
+
+function firstOf(rows: ItemPrivate[], pick: (row: ItemPrivate) => string | undefined): string {
+  for (const row of rows) {
+    const value = pick(row);
+    if (value) return value;
+  }
+  return "";
+}
+
+function privateFields(item: VisibleItem, travelers: { id: string }[]): Record<string, string> {
+  const rows = item.private;
+  const price = rows.find((r) => r.price)?.price;
+  const notes = [...rows.flatMap((r) => (r.notes ? [r.notes] : [])), ...(item.notes ? [item.notes] : [])].join("\n\n");
+  const shared = rows.find((r) => r.travelerId === null || !travelers.some((t) => t.id === r.travelerId));
+  const codes: Record<string, string> =
+    travelers.length <= 1
+      ? { confirmationCode: firstOf(rows, (r) => r.confirmationCode) }
+      : Object.fromEntries(travelers.map((t) => [`code:${t.id}`, rows.find((r) => r.travelerId === t.id)?.confirmationCode ?? shared?.confirmationCode ?? ""]));
+  return {
+    ...codes,
+    bookingReference: firstOf(rows, (r) => r.bookingReference),
+    phone: firstOf(rows, (r) => r.phone),
+    price: price ? priceText(price) : "",
+    notes,
+  };
+}
+
+export function itemToFormValues(item: VisibleItem, travelers: { id: string; name: string }[]): ItemFormValues {
+  const fields = { ...typeFields(item), ...privateFields(item, travelers) };
+  const seats = travelers.flatMap((t) => {
+    const seat = item.private.find((r) => r.travelerId === t.id)?.seat;
+    return seat ? [{ traveler: t.id, seat }] : [];
+  });
+  return {
+    type: item.type,
+    fields: Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== "")),
+    seats,
+    visibility: item.visibility,
+    visibleToUserIds: item.visibleToUserIds,
+    showAsBusy: item.showAsBusy,
+  };
+}
+
+export function entriesOfValues(values: ItemFormValues): FormEntries {
+  return [["type", values.type], ...Object.entries(values.fields), ...values.seats.map((s): [string, string] => [`seat:${s.traveler}`, s.seat])];
+}
+
+export type EditFormResult =
+  | { ok: true; input: ItemInput; private: ItemPrivate[] }
+  | { ok: false; errors: Record<string, string>; values: FormEntries };
+
+export interface EditOptions extends ParseOptions {
+  travelerIds: readonly string[];
+  previous: readonly ItemPrivate[];
+}
+
+const CODE_MAX = 60;
+const SEAT_MAX = 20;
+
+function compact(row: ItemPrivate): ItemPrivate[] {
+  const { travelerId, ...data } = row;
+  return Object.values(data).some((v) => v !== undefined) ? [{ travelerId, ...data }] : [];
+}
+
+export function parseEditForm(entries: FormEntries, options: EditOptions): EditFormResult {
+  const ids = options.travelerIds;
+  const foreign = entries.some(([k]) => (k.startsWith("seat:") || k.startsWith("code:")) && !ids.includes(k.slice(k.indexOf(":") + 1)));
+  if (foreign) return { ok: false, errors: { form: FORM_ERROR }, values: entries };
+  const e = new Entries(entries);
+  const errors: Record<string, string> = {};
+  for (const id of ids) {
+    if (e.get(`seat:${id}`).length > SEAT_MAX) errors[`seat:${id}`] = MESSAGES.tooLong;
+    if (e.get(`code:${id}`).length > CODE_MAX) errors[`code:${id}`] = MESSAGES.tooLong;
+  }
+  const parsed = parseItemForm(entries, options);
+  if (!parsed.ok) return { ok: false, errors: { ...parsed.errors, ...errors }, values: entries };
+  if (Object.keys(errors).length) return { ok: false, errors, values: entries };
+  const input = parsed.input;
+  const single = ids.length === 1;
+  const upper = (value: string | undefined): string | undefined => value?.toUpperCase();
+  const perTraveler = ids.map((id) => ({ id, seat: upper(e.get(`seat:${id}`) || undefined), code: single ? undefined : upper(e.get(`code:${id}`) || undefined) }));
+  const distinctCodes = [...new Set(perTraveler.flatMap((p) => (p.code ? [p.code] : [])))];
+  const sharedCode = single ? upper(input.confirmationCode) : distinctCodes.length === 1 ? distinctCodes[0] : undefined;
+  const sharedRow: ItemPrivate = {
+    travelerId: single ? ids[0] : null,
+    confirmationCode: sharedCode,
+    bookingReference: upper(input.bookingReference),
+    phone: input.phone,
+    price: input.price,
+    notes: input.notes,
+    bookingSite: options.previous.find((r) => r.bookingSite)?.bookingSite,
+  };
+  if (single) return { ok: true, input, private: compact({ ...sharedRow, seat: perTraveler[0].seat }) };
+  const rows = perTraveler.flatMap((p) => compact({ travelerId: p.id, seat: p.seat, confirmationCode: distinctCodes.length > 1 ? p.code : undefined }));
+  return { ok: true, input, private: [...rows, ...compact(sharedRow)] };
+}
+
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => a.localeCompare(b));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+const sameValue = (a: unknown, b: unknown): boolean => canonical(a) === canonical(b);
+
+function placeIdentity(location: { name?: string; address?: string; city?: string } | null | undefined) {
+  return location ? { name: location.name, address: location.address, city: location.city } : null;
+}
+
+function sameMoment(a: ZonedTime, b: ZonedTime): boolean {
+  return Date.parse(a.at) === Date.parse(b.at) && a.zone === b.zone;
+}
+
+export function editPatch(before: VisibleItem, proposal: ProposedItem, rows: ItemPrivate[]): ItemPatch {
+  const patch: ItemPatch = {};
+  const sameEndpoints = sameValue({ from: placeIdentity(proposal.transfer?.fromPlace), to: placeIdentity(proposal.transfer?.toPlace) }, { from: placeIdentity(before.transfer?.fromPlace), to: placeIdentity(before.transfer?.toPlace) });
+  if (proposal.title !== before.title && !(before.type === "transfer" && sameEndpoints)) patch.title = proposal.title;
+  if (!sameMoment(proposal.start, before.start) || proposal.startIsEstimated !== before.startIsEstimated) {
+    patch.start = proposal.start;
+    patch.startIsEstimated = proposal.startIsEstimated;
+  }
+  if (!sameMoment(proposal.end, before.end) || proposal.endIsEstimated !== before.endIsEstimated) {
+    patch.end = proposal.end;
+    patch.endIsEstimated = proposal.endIsEstimated;
+  }
+  if (!sameValue(placeIdentity(proposal.location), placeIdentity(before.location))) patch.location = proposal.location;
+  if (proposal.flight && !sameValue(proposal.flight, before.flight)) patch.flight = proposal.flight;
+  const stay = proposal.stay && { ...proposal.stay, lateArrivalCutoff: before.stay?.lateArrivalCutoff };
+  if (stay && !sameValue(stay, before.stay)) patch.stay = stay;
+  if (proposal.transfer && !sameValue({ mode: proposal.transfer.mode, from: placeIdentity(proposal.transfer.fromPlace), to: placeIdentity(proposal.transfer.toPlace) }, { mode: before.transfer?.mode, from: placeIdentity(before.transfer?.fromPlace), to: placeIdentity(before.transfer?.toPlace) })) {
+    patch.transfer = proposal.transfer;
+  }
+  if (patch.start || patch.end || patch.location) {
+    patch.flags = proposal.problems;
+    patch.status = proposal.status;
+  }
+  if (!sameValue(rows, before.private) || before.notes !== "") {
+    patch.private = rows;
+    patch.notes = "";
+  }
+  return patch;
 }

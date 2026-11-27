@@ -142,6 +142,7 @@ flowchart LR
   - `differences`: records inside one import disagree (CX509 at 8:50am vs 9:00am). A person must pick before adding.
   - `match.differences`: the import disagrees with an item already on the trip. A person must pick per field to merge.
 - Per traveler fields (seat, confirmation code) never conflict. They become one private row per traveler, which is the NH159 case.
+- A traveler is removed only when no item lists them or gives them a seat. `saveItem` holds every traveler an item names with `FOR SHARE`, and `removeTraveler` locks the traveler row `FOR UPDATE` and re-reads all items, so an edit and a removal at the same time can never leave an item pointing at a missing traveler (the edit is refused with `UnknownTraveler`). The removal check reads every item, hidden ones included; only the visible items leave the service.
 
 ## State charts
 

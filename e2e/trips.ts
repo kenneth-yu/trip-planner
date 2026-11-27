@@ -1,6 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 
 export const DECEMBER_TRIP = "00000000-0000-4000-8300-000000000001";
+export const STANFORD_HOTEL = "00000000-0000-4000-8400-000000000005";
 export const LISBON_TRIP = "00000000-0000-4000-8300-000000000101";
 
 export async function addPlan(page: Page, tripId: string, plan: { title: string; date: string; starts: string; ends: string; onlyMe?: boolean; showAsBusy?: boolean }): Promise<void> {

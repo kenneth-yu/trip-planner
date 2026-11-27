@@ -123,15 +123,22 @@ describe("home page content for a signed in person", () => {
   });
 
   it("lists trips and always ends with a Sign out button", () => {
-    const html = renderToStaticMarkup(createElement(TripList, { trips: [{ id: "t1", name: "Japan and Hong Kong" }], signOut }));
+    const html = renderToStaticMarkup(createElement(TripList, { trips: [{ id: "t1", name: "Japan and Hong Kong", role: "owner" as const }], signOut }));
     expect(html).toContain("Japan and Hong Kong");
     expect(html).toContain('href="/trips/t1"');
     expect(html.indexOf("Japan and Hong Kong")).toBeLessThan(html.indexOf("Sign out"));
     expect(html).not.toContain("Continue as");
   });
 
+  it.each([["owner", true], ["editor", true], ["viewer", false]] as const)("shows a Settings link to a %s: %s", (role, shown) => {
+    const html = renderToStaticMarkup(createElement(TripList, { trips: [{ id: "t1", name: "Japan and Hong Kong", role }], signOut }));
+    expect(html.includes('href="/trips/t1/settings"')).toBe(shown);
+    expect(html.includes('aria-label="Settings for Japan and Hong Kong"')).toBe(shown);
+    expect(html).toContain('href="/trips/t1"');
+  });
+
   it("offers New trip under a list of trips too", () => {
-    const html = renderToStaticMarkup(createElement(TripList, { trips: [{ id: "t1", name: "Japan and Hong Kong" }], signOut }));
+    const html = renderToStaticMarkup(createElement(TripList, { trips: [{ id: "t1", name: "Japan and Hong Kong", role: "owner" as const }], signOut }));
     expect(html).toContain('href="/trips/new"');
     expect(html.indexOf("Japan and Hong Kong")).toBeLessThan(html.indexOf(">New trip<"));
   });

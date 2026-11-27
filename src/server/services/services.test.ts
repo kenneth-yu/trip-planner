@@ -41,8 +41,8 @@ describe("trip service on a real database", () => {
   it("only the creator changes who can see an item, and hidden items cannot be edited by others", async () => {
     const { ctx } = await testContext({ withItems: false });
     const secret = await quickAddItem(ctx, TRIP_ID, jacob, { type: "plan", title: "Ring shopping", city: "Hong Kong", startLocal: "2026-12-05T20:00", endLocal: "2026-12-05T21:00" }, { visibility: "only_me" });
-    await expect(updateItem(ctx, TRIP_ID, secret.id, kenny, { title: "Found it" })).rejects.toThrow(AccessDenied);
-    await expect(removeItem(ctx, TRIP_ID, secret.id, kenny)).rejects.toThrow(AccessDenied);
+    await expect(updateItem(ctx, TRIP_ID, secret.id, kenny, { title: "Found it" })).rejects.toThrow(NotFound);
+    await expect(removeItem(ctx, TRIP_ID, secret.id, kenny)).rejects.toThrow(NotFound);
     const shared = await quickAddItem(ctx, TRIP_ID, jacob, { type: "plan", title: "Dinner", city: "Hong Kong", startLocal: "2026-12-05T19:00", endLocal: "2026-12-05T20:00" });
     await expect(updateItem(ctx, TRIP_ID, shared.id, kenny, { visibility: "only_me" })).rejects.toThrow(/Only the person who added this/);
   });
@@ -68,7 +68,7 @@ describe("review inbox (phase 2 acceptance on a real database)", () => {
     expect((await disagreementFindings(ctx, TRIP_ID, kenny)).map((f) => f.sentence)).toEqual(["Two records for CX509 disagree on departure: 9:00am and 8:50am."]);
 
     const added = await approveAllClean(ctx, TRIP_ID, kenny);
-    expect(added).toBeGreaterThan(5);
+    expect(added.added).toBeGreaterThan(5);
     await approveEntry(ctx, TRIP_ID, cx509.id, kenny, { choices: { start: 1 } });
     const view = await getTripView(ctx, TRIP_ID, kenny);
     const flight = present(view.items.find((i) => i.flight?.flightNumber === "CX509"));
@@ -84,7 +84,7 @@ describe("review inbox (phase 2 acceptance on a real database)", () => {
     const total = present((await listInbox(ctx, TRIP_ID, kenny)).find((e) => e.proposed.title.startsWith("Stay at Total")));
     expect(total.match?.strength).toBe("possible");
     expect(total.clean).toBe(false);
-    await expect(approveAllClean(ctx, TRIP_ID, kenny)).resolves.toBe(0);
+    await expect(approveAllClean(ctx, TRIP_ID, kenny)).resolves.toEqual({ added: 0, alreadyDecided: 0, alreadyByYou: 0, needYou: 0, withoutRemovedTraveler: 0 });
   });
 
   it("merging a re-imported NH159 adds Jacob's seat without touching Kenny's", async () => {
@@ -220,7 +220,7 @@ describe("inbox entry transitions come from the state table", () => {
         await discardEntry(ctx, TRIP_ID, clean[1].id, jacob);
       },
     };
-    await expect(approveAllClean(racing, TRIP_ID, kenny)).resolves.toBe(2);
+    await expect(approveAllClean(racing, TRIP_ID, kenny)).resolves.toEqual({ added: 2, alreadyDecided: 1, alreadyByYou: 0, needYou: 0, withoutRemovedTraveler: 0 });
     expect(await listInbox(ctx, TRIP_ID, kenny)).toEqual([]);
   });
 });

@@ -55,6 +55,24 @@ stateDiagram-v2
   Merged --> [*]
 ```
 
+### Draft pull requests and CI
+
+- An engineer keeps the pull request a draft only while still building. CI does not run on a draft (gitleaks does), so work in progress pushes cost nothing.
+- The engineer marks it ready for review at the moment it asks for reviews, so CI runs alongside the reviews and the reviewers have results before they finish. Reviewers never review without CI.
+- Each review-fix push reruns CI, and the concurrency group cancels the superseded run. Do not re-run a workflow run created while the pull request was a draft: it keeps the draft state and stays skipped. Push a commit or mark the pull request ready instead.
+- Pull requests that change only Markdown files or `.pipeline/` skip the heavy jobs: a small `changes` job decides, and the jobs it skips report "skipped", which counts as passing for required checks (a workflow level path filter would leave them pending forever). Performance (`measure`) runs on pushes to main, nightly, and on pull requests only when they change `src/app`, `src/server`, `src/components`, `perf/`, `next.config.*`, the package files or the perf workflow and its config, or carry the `perf` label.
+- CI on a pull request is five jobs: `static` (lint, typecheck, statecharts, audit, migrations), `test`, `postgres`, `prod-build` (one production build used for the end to end tests and the production guard checks) and `gitleaks`.
+
+### Merging under the branch ruleset
+
+Main has a ruleset with no bypass: every change goes through a pull request (no approvals needed), no force push or branch deletion, the required checks are `test`, `postgres` and `gitleaks`, and the branch must be up to date with main before it merges. So every merge goes like this, one merge at a time:
+
+1. Update the branch with main: `gh api -X PUT repos/kenneth-yu/trip-planner/pulls/<n>/update-branch`.
+2. Wait for the required checks on the new head.
+3. Merge: `gh pr merge <n> --merge --delete-branch --match-head-commit <sha>`.
+
+A job that its `if` skips (a draft, or a documentation-only change) reports "skipped", which counts as passing for a required check.
+
 ## How conflicts are avoided
 
 - Each wave's packages own disjoint files. Shared hot files (database schema, migrations, domain types, navigation, package files, feature map, architecture doc) have one owner per wave or change only in an architect prep commit on main.
@@ -86,9 +104,17 @@ Then open `http://localhost:8766/?url=http://localhost:3000/trips/<trip id>`. Th
 
 ## Running an app from a worktree
 
-Each reviewer runs their own copy so nobody touches the main dev database:
+Use the review server. It picks a free port, seeds the demo trips into a scratch database, and prints the URL:
 
 ```bash
-PGLITE_DIR=<main>/.pipeline/scratch/WP-NN/db DATA_ENCRYPTION_KEY=<base64 32 bytes> npm run db:seed
-PGLITE_DIR=<main>/.pipeline/scratch/WP-NN/db DEV_SIGN_IN=1 SESSION_SECRET=<32+ chars> TOKEN_ENCRYPTION_KEY=<base64 32 bytes> DATA_ENCRYPTION_KEY=<base64 32 bytes> npx next dev --port 31NN
+node tools/review-server.mjs
+node tools/review-server.mjs --dev
 ```
+
+- Default: `next build` then `next start` with `REVIEW_SERVER=1` and `DEV_SIGN_IN=1` (a flag the app honours only when no Vercel variable and no `DATABASE_URL` is present), so you see the production build signed in (`/api/dev/sign-in?as=kenny`) on a scratch embedded database seeded with the demo trips.
+- `--dev` runs `next dev` instead. Use it only when asked: it is the heavy mode.
+- It listens on 127.0.0.1 only and passes the child process an allowlisted environment (no email, Google or database variables).
+- It refuses to start when `DATABASE_URL` is set in your shell or when the folder has an env file (`.env`, `.env.local` and the like), so it can never touch a real database or read real secrets. It never reads those files.
+- It stops itself after 45 minutes. The server runs under `timeout`, so it is killed on schedule even if the wrapper is killed. Stop it before you finish (Ctrl-C).
+- At most 2 review servers run at once across all worktrees. The lock lives in `trip-planner-review-servers` under the system temp directory, stale entries are removed, and a third start prints which pids and ports hold the slots.
+- Secrets are generated per run and never printed. The scratch database is deleted on exit. Never point it at a real database.

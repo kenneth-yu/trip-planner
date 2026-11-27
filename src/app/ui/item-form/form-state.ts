@@ -4,6 +4,7 @@ export interface FormState {
   errors: Record<string, string>;
   message: string | null;
   values: FormEntries;
+  gone?: "denied" | "deleted";
 }
 
 export const emptyFormState: FormState = { errors: {}, message: null, values: [] };

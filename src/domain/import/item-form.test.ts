@@ -3,7 +3,10 @@ import { buildFixtureTrip, byFlight, byTitle, fixtureItem, TRAVELERS, USERS } fr
 import { inputToProposal } from "./quick-add";
 import { arrivalAfter, dayNote, sameDayClockRoll } from "./arrival";
 import { airlineFor } from "./airlines";
-import { FORM_ERROR, MESSAGES, parseClock, parseItemForm, parseTripId, type FormEntries } from "./item-form";
+import { editPatch, entriesOfValues, FORM_ERROR, itemToFormValues, MESSAGES, parseClock, parseEditForm, parseItemForm, parseTripId, type FormEntries } from "./item-form";
+import { projectTrip, type VisibleItem } from "../visibility/project";
+import { present } from "@/testing/present";
+import type { ProposedItem } from "./proposal";
 
 const trip = buildFixtureTrip();
 const places = { homeZone: "America/New_York" };
@@ -400,5 +403,115 @@ describe("limits and ids", () => {
 
   it("uses one message for a place we cannot find", () => {
     expect(MESSAGES.place).toBe("We can't find that place. Try an airport code like HND.");
+  });
+});
+
+describe("itemToFormValues round trip", () => {
+  const owner = { kind: "member" as const, userId: USERS.kenny.id, homeZone: "America/New_York" };
+  const view = projectTrip(trip, owner);
+
+  function visible(p: ProposedItem, id: string): VisibleItem {
+    return {
+      ...p,
+      id,
+      tripId: view.trip.id,
+      visibility: "everyone",
+      visibleToUserIds: [],
+      showAsBusy: false,
+      flags: p.problems,
+      deadlines: [],
+      createdBy: USERS.kenny.id,
+      updatedBy: USERS.kenny.id,
+      createdAt: "2026-11-20T12:00:00.000Z",
+      updatedAt: "2026-11-20T12:00:00.000Z",
+    };
+  }
+
+  const nozomi = visible(
+    inputToProposal({ type: "transfer", title: "Nozomi 17 to Kyoto", mode: "train", fromCity: "Tokyo", toCity: "Kyoto", country: "Japan", startLocal: "2027-03-11T09:00", endLocal: "2027-03-11T11:15" }, view.travelers, places),
+    "transfer-1",
+  );
+  const dinner = visible(inputToProposal({ type: "plan", title: "Tim Ho Wan", city: "Hong Kong", startLocal: "2026-12-11T11:00", endLocal: "2026-12-11T12:30" }, view.travelers, places), "plan-1");
+
+  function roundTrip(item: VisibleItem) {
+    const travelers = view.travelers.filter((t) => item.travelerIds.includes(t.id));
+    const parsed = parseEditForm(entriesOfValues(itemToFormValues(item, travelers)), { travelerIds: item.travelerIds, previous: item.private });
+    if (!parsed.ok) throw new Error(JSON.stringify(parsed.errors));
+    const proposal = inputToProposal({ ...parsed.input, travelers: item.travelerIds }, view.travelers, places);
+    return { proposal, patch: editPatch(item, proposal, parsed.private), parsed };
+  }
+
+  it.each([
+    ["NH159", view.items.find((i) => i.flight?.flightNumber === "NH159")],
+    ["CX509", view.items.find((i) => i.flight?.flightNumber === "CX509")],
+    ["Hotel Resol Ueno", view.items.find((i) => i.title === "Hotel Resol Ueno")],
+    ["a plan", dinner],
+    ["a transfer", nozomi],
+  ])("%s comes back from its own form values with no change", (_, found) => {
+    const item = found ?? dinner;
+    const { patch } = roundTrip(item);
+    expect(patch).toEqual({});
+  });
+
+  it("reads the Nozomi time in its own zone and keeps the instant right when 9:00 becomes 9:30", () => {
+    const entries = entriesOfValues(itemToFormValues(nozomi, view.travelers)).map(([k, v]): [string, string] => (k === "departs" ? [k, "09:30"] : [k, v]));
+    const parsed = parseEditForm(entries, { travelerIds: nozomi.travelerIds, previous: [] });
+    if (!parsed.ok) throw new Error("expected ok");
+    const proposal = inputToProposal({ ...parsed.input, travelers: nozomi.travelerIds }, view.travelers, places);
+    expect(proposal.start).toEqual({ at: "2027-03-11T00:30:00.000Z", zone: "Asia/Tokyo" });
+    expect(editPatch(nozomi, proposal, parsed.private).start).toEqual(proposal.start);
+  });
+
+  it("keeps an arrival in its own zone, not the home zone", () => {
+    const nh159Item = present(view.items.find((i) => i.flight?.flightNumber === "NH159"));
+    const values = itemToFormValues(nh159Item, view.travelers);
+    expect(values.fields).toMatchObject({ date: "2026-12-01", departs: "00:55", arrives: "05:25", to: "HND" });
+  });
+
+  it("flags a time in a clock change gap instead of shifting it silently", () => {
+    const item = visible(inputToProposal({ type: "plan", title: "Early run", city: "New York", startLocal: "2027-03-14T01:00", endLocal: "2027-03-14T03:00" }, view.travelers, places), "plan-2");
+    const entries = entriesOfValues(itemToFormValues(item, view.travelers)).map(([k, v]): [string, string] => (k === "starts" ? [k, "02:30"] : k === "ends" ? [k, "04:00"] : [k, v]));
+    const parsed = parseEditForm(entries, { travelerIds: item.travelerIds, previous: [] });
+    if (!parsed.ok) throw new Error("expected ok");
+    const proposal = inputToProposal({ ...parsed.input, travelers: item.travelerIds }, view.travelers, places);
+    expect(proposal.problems.length).toBeGreaterThan(0);
+    const patch = editPatch(item, proposal, parsed.private);
+    expect(patch.flags).toEqual(proposal.problems);
+    expect(patch.status).toBe("needs_review");
+  });
+
+  it("offers a code field per traveler for two travelers and one field for one", () => {
+    const flight = present(view.items.find((i) => i.flight?.flightNumber === "NH159"));
+    expect(Object.keys(itemToFormValues(flight, view.travelers).fields).filter((k) => k.startsWith("code:"))).toHaveLength(2);
+    const single = itemToFormValues(flight, view.travelers.slice(0, 1));
+    expect(Object.keys(single.fields)).toContain("confirmationCode");
+    expect(Object.keys(single.fields).some((k) => k.startsWith("code:"))).toBe(false);
+  });
+
+  it("rejects seats and codes for travelers who are not on the item and too long values", () => {
+    const item = present(view.items.find((i) => i.flight?.flightNumber === "NH159"));
+    const base = entriesOfValues(itemToFormValues(item, view.travelers));
+    expect(parseEditForm([...base, ["seat:not-a-traveler", "1A"]], { travelerIds: item.travelerIds, previous: [] }).ok).toBe(false);
+    const tooLong = base.map(([k, v]): [string, string] => (k === `seat:${TRAVELERS.kenny}` ? [k, "x".repeat(21)] : [k, v]));
+    const long = parseEditForm(tooLong, { travelerIds: item.travelerIds, previous: [] });
+    expect(long.ok ? null : long.errors[`seat:${TRAVELERS.kenny}`]).toBe(MESSAGES.tooLong);
+  });
+
+  it("saves codes, booking references and seats in capitals", () => {
+    const item = present(view.items.find((i) => i.flight?.flightNumber === "NH159"));
+    const base = entriesOfValues(itemToFormValues(item, view.travelers)).filter(([k]) => !k.startsWith("code:") && !k.startsWith("seat:"));
+    const parsed = parseEditForm([...base, [`code:${TRAVELERS.kenny}`, "ab12cd"], [`seat:${TRAVELERS.kenny}`, "14b"], ["bookingReference", "ref9"]], { travelerIds: item.travelerIds, previous: [] });
+    if (!parsed.ok) throw new Error(JSON.stringify(parsed.errors));
+    expect(parsed.private.map((r) => [r.confirmationCode, r.seat, r.bookingReference])).toEqual([[undefined, "14B", undefined], ["AB12CD", undefined, "REF9"]]);
+  });
+
+  it("stores unusual codes and prices as text", () => {
+    const item = present(view.items.find((i) => i.title === "Hotel Resol Ueno"));
+    const base = entriesOfValues(itemToFormValues(item, view.travelers)).filter(([k]) => !k.startsWith("code:"));
+    const entries: FormEntries = [...base, [`code:${TRAVELERS.kenny}`, "<script>1</script> é"], ["price", "$1,200.00"], ["bookingReference", "ab 12"]];
+    const parsed = parseEditForm(entries, { travelerIds: item.travelerIds, previous: [] });
+    if (!parsed.ok) throw new Error(JSON.stringify(parsed.errors));
+    expect(parsed.private.find((r) => r.confirmationCode)?.confirmationCode).toBe("<SCRIPT>1</SCRIPT> É");
+    expect(parsed.private.find((r) => r.price)?.price).toEqual({ amount: "1200.00", currency: "USD" });
   });
 });

@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { loadTripPage } from "@/server/web";
 import { listTripMembers } from "@/server/services/member-service";
+import { UnknownTraveler } from "@/server/repo/trip-repo";
 import { quickAddItem } from "@/server/services/trip-service";
 import { placeContextFor } from "@/server/services/place-service";
 import { RATE_RULES, consumeRateLimit } from "@/server/security/rate-limit";
@@ -49,6 +50,7 @@ export async function addItem(_prev: FormState, form: FormData): Promise<FormSta
     const item = await quickAddItem(ctx, tripId, requester, parsed.input, parsed.sharing, { idempotencyKey: submission.success ? submission.data : undefined });
     landing = `/trips/${tripId}?day=${localDateKey(item.start)}&added=${item.id}`;
   } catch (e) {
+    if (e instanceof UnknownTraveler) return { errors: {}, message: e.message, values: entries };
     console.error("Quick add failed", { tripId, error: e instanceof Error ? e.name : "unknown" });
     return { errors: {}, message: FORM_ERROR, values: entries };
   }
