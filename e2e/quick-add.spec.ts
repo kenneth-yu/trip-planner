@@ -3,8 +3,8 @@ import { LISBON_TRIP } from "./trips";
 
 test("quick add NH159 from the Add link shows both local times and the Added marker", async ({ page, signIn }) => {
   await signIn("kenny", `/trips/${LISBON_TRIP}`);
-  await page.getByRole("navigation").getByRole("link", { name: "Add" }).click();
-  await expect(page.getByRole("heading", { name: "Add to trip" })).toBeVisible();
+  await page.getByRole("navigation").getByRole("link", { name: "Add", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Add to trip", exact: true })).toBeVisible();
 
   await page.locator("[name=flightNumber]").fill("NH159");
   await page.locator("[name=date]").fill("2026-12-01");
@@ -14,7 +14,7 @@ test("quick add NH159 from the Add link shows both local times and the Added mar
   await page.locator("[name=arrives]").fill("05:25");
   await expect(page.getByText("Departs (New York time)")).toBeVisible();
   await expect(page.getByText("Arrives (Tokyo time)")).toBeVisible();
-  await page.getByRole("button", { name: "Add flight" }).click();
+  await page.getByRole("button", { name: "Add flight", exact: true }).click();
 
   await expect(page).toHaveURL(/day=2026-12-01&added=/);
   await expect(page.getByText("Added", { exact: true }).filter({ visible: true }).first()).toBeVisible();

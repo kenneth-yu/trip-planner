@@ -10,10 +10,10 @@ async function seriousProblems(page: Page): Promise<string[]> {
 
 test("Lisbon: Kenneth picks Jacob and gets one link to send, with no accessibility problems", async ({ page, signIn }) => {
   await signIn("kenny", `/trips/${LISBON_TRIP}/share`);
-  await expect(page.getByRole("heading", { name: "People from your trips" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "People from your trips", exact: true })).toBeVisible();
   expect(await seriousProblems(page)).toEqual([]);
 
-  await page.getByRole("button", { name: "Jacob Feldman Invite" }).click();
+  await page.getByRole("button", { name: "Jacob Feldman Invite", exact: true }).click();
   const line = page.getByText("Send this link to Jacob.");
   await expect(line).toBeVisible();
   await expect(line).toBeFocused();
@@ -23,19 +23,19 @@ test("Lisbon: Kenneth picks Jacob and gets one link to send, with no accessibili
 
   await page.reload();
   await expect(page.getByText("Send this link to Jacob.")).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "People from your trips" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "People from your trips", exact: true })).toBeVisible();
 });
 
 test("December: Jacob is already a member, so Kenneth sees no list", async ({ page, signIn }) => {
   await signIn("kenny", `/trips/${DECEMBER_TRIP}/share`);
-  await expect(page.getByRole("heading", { name: "Invite someone" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "People from your trips" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Invite someone", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "People from your trips", exact: true })).toHaveCount(0);
   await expect(page.getByText("No one yet")).toHaveCount(0);
   expect(await seriousProblems(page)).toEqual([]);
 });
 
 test("Jacob, an editor on December, gets the not found page on Share and no list", async ({ pageSignedInAs }) => {
   const page = await pageSignedInAs("jacob", `/trips/${DECEMBER_TRIP}/share`);
-  await expect(page.getByRole("heading", { name: "This page isn't here." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "This page isn't here.", exact: true })).toBeVisible();
   await expect(page.getByText("People from your trips")).toHaveCount(0);
 });

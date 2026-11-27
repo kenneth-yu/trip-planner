@@ -1,6 +1,7 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
+import { exactNames } from "./tools/eslint-rules/exact-names.mjs";
 
 const noComments = {
   meta: {
@@ -24,7 +25,7 @@ const noComments = {
   },
 };
 
-const principles = { rules: { "no-comments": noComments } };
+const principles = { rules: { "no-comments": noComments, "exact-names": exactNames } };
 
 const outsideLayer = (layers) => layers.flatMap((l) => [`@/${l}/*`, `**/${l}/*`]);
 
@@ -62,6 +63,10 @@ export default defineConfig([
       "no-console": ["error", { allow: ["error"] }],
       "no-restricted-imports": ["error", { paths: [{ name: "luxon", message: "Import DateTime from src/domain/time/luxon, which turns on throwOnInvalid." }] }],
     },
+  },
+  {
+    files: ["e2e/**/*.ts"],
+    rules: { "principles/exact-names": "error" },
   },
   {
     files: ["eslint.config.mjs"],

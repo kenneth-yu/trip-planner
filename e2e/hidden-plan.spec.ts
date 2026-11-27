@@ -17,7 +17,7 @@ test("an Only me plan never shows its title to the other traveler, and Show as b
   await expect(jacob.getByText(secret).filter({ visible: true }).first()).toBeVisible();
 
   const kenny = await pageSignedInAs("kenny", `/trips/${DECEMBER_TRIP}?day=2026-12-03`);
-  await expect(kenny.getByRole("heading", { name: "Asia, December 2026" })).toBeVisible();
+  await expect(kenny.getByRole("heading", { name: "Asia, December 2026", exact: true })).toBeVisible();
   await expectNoLeak(kenny, secret, "2026-12-03");
 
   const busySecret = `${secret} part two`;

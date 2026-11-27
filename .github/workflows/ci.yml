@@ -207,6 +207,22 @@ jobs:
           node -e "const { Client } = require('pg'); const c = new Client({ connectionString: process.env.DATABASE_URL }); c.connect().then(() => c.query('create database trip_e2e')).then(() => c.end())"
       - id: build
         run: npx next build
+      - name: Page routes this pull request touches, for the axe check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            files="$(gh api "repos/${GH_REPO}/pulls/${PR}/files" --paginate --jq '.[] | .filename, (.previous_filename // empty)')" || files=""
+            total="$(gh api "repos/${GH_REPO}/pulls/${PR}" --jq .changed_files)" || total=""
+            routes="$(printf '%s\n' "$files" | CHANGED_TOTAL="$total" node tools/ci/changed-routes.mjs)" || routes="$(node tools/ci/changed-routes.mjs --all)"
+          else
+            routes="$(node tools/ci/changed-routes.mjs --all)"
+          fi
+          echo "Routes for axe: ${routes:-none}"
+          echo "AXE_ROUTES=$routes" >> "$GITHUB_ENV"
       - name: End to end tests against the production build
         env:
           E2E_PRODUCTION_BUILD: "1"

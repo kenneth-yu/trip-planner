@@ -4,7 +4,7 @@ import { DECEMBER_TRIP } from "./trips";
 
 const PACKED_TRIP = "00000000-0000-4000-8300-000000000103";
 
-const stripOf = (page: Page) => page.getByRole("navigation", { name: "Days of the trip" });
+const stripOf = (page: Page) => page.getByRole("navigation", { name: "Days of the trip", exact: true });
 const chipFor = (page: Page, day: string) => stripOf(page).locator(`a[href$="day=${day}"]`);
 
 async function gapUnderStrip(strip: Locator, target: Locator): Promise<number | null> {
