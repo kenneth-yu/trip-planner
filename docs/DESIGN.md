@@ -113,7 +113,7 @@ Each component lists what it shows and why.
 
 ## Copy
 
-* Sentence case everywhere. No exclamation marks. No "please", "simply", "successfully".
+* Sentence case, no emoji, no exclamation marks and no "please", "simply" or "successfully" are enforced by the `copy/copy` lint rule; its message says what to write instead.
 * Buttons are verbs: "Add flight", "Invite", "Copy link".
 * Times as people say them: "8:50am", "noon", "midnight". Durations rounded sensibly: "14h 30m", "about 45 min".
 * Places by city first, airport second: "Tokyo, Narita".

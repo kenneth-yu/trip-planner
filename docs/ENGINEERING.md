@@ -123,8 +123,25 @@ People and agents copy what they see. Delete dead code, deprecated paths, scaffo
 | 5. Boundaries | `no-restricted-imports` per directory | `eslint.config.mjs` |
 | 6. Wrong thing impossible | Types and APIs in `src/domain` and `src/server/services` | code |
 | 7. Verified | 100+ tests, `npm run check` | CI on every push and pull request |
+| 7. Rate limits cannot be forgotten | A test lists every route handler and server action and fails when one has no rate limit rule, unless it is in the reasoned allowlist | `src/server/security/rate-limit-coverage.test.ts` |
+| UI copy | `copy/copy` lint rule over JSX text and string props in `src/app`: no emoji, no filler words, no exclamation marks, no "N/A" or "12:00pm", sentence case for headings and buttons | `tools/lint/copy.mjs`, `eslint.config.mjs` |
+| Accessibility | Playwright phone project: axe (zero serious or critical), 44 by 44 px tap targets and 3:1 form field borders on every page of the four demo trips, light and dark; fails when a new page is not on the list | `e2e/a11y.spec.ts`, `e2e/a11y-pages.ts` |
+| Branch is current | CI job fails a pull request that lacks a commit in `tools/ci/required-commits.txt` or is more than 40 commits behind main | `tools/ci/branch-current.sh`, `branch-current` job in `ci.yml` |
 | 9. Behavior has a model | State machines in `src/domain/state`, generated `docs/STATECHARTS.md`, `statecharts` CI job | `npm run docs:statecharts:check` |
 | 1, 8, 10 to 12 | Pull request checklist and review | `.github/pull_request_template.md` |
+
+## Stack defaults (ask before changing)
+
+- Next.js (App Router) with TypeScript strict, Postgres with Drizzle and checked-in migrations, Auth.js (Google, Apple, email link; no passwords).
+- Luxon for all time zone math, with no manual offset arithmetic anywhere. Airport time zones come from a maintained dataset, not a hand typed list.
+- Plain CSS modules or Tailwind, whichever keeps docs/DESIGN.md easiest to follow; no component library that brings its own look.
+- Installable PWA, no offline sync in v1. Vitest for unit tests, Playwright for end to end flows.
+
+## How to work
+
+- Build one phase at a time from `docs/PHASES.md`; a phase is done when its acceptance checks pass against the fixture trip.
+- Time logic and permission logic get unit tests before UI is built on them, using the fixture trip's flights (`docs/TIME_RULES.md` lists the expected outputs).
+- When a rule in the docs seems wrong or a case is not covered, stop and ask instead of inventing behavior.
 
 ## Definition of done
 

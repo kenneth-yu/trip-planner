@@ -1,6 +1,7 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
+import copyPlugin from "./tools/lint/copy.mjs";
 
 const noComments = {
   meta: {
@@ -62,6 +63,11 @@ export default defineConfig([
       "no-console": ["error", { allow: ["error"] }],
       "no-restricted-imports": ["error", { paths: [{ name: "luxon", message: "Import DateTime from src/domain/time/luxon, which turns on throwOnInvalid." }] }],
     },
+  },
+  {
+    files: ["src/app/**/*.tsx"],
+    plugins: { copy: copyPlugin },
+    rules: { "copy/copy": ["error", { properNouns: ["Google Calendar", "Google", "Apple"] }] },
   },
   {
     files: ["eslint.config.mjs"],

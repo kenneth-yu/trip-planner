@@ -182,3 +182,19 @@ jobs:
       - name: Migrate an empty database with drizzle
         run: npx vitest run src/server/db/migrate.test.ts
       - run: npm test
+
+  branch-current:
+    name: branch current
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch main
+        run: git fetch --no-tags origin main:refs/remotes/origin/main
+      - name: Fail a branch that lacks commits main's tooling needs
+        run: bash tools/ci/branch-current.sh origin/main tools/ci/required-commits.txt 40

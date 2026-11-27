@@ -111,11 +111,11 @@ Each screen answers one question. What follows is what answers it, in order, wha
 ## Mechanical checks (asked of the architect)
 
 - **Type floor:** no `font-size` under 13px (0.8125rem) in any CSS module. Stylelint rule, or a test over the CSS modules.
-- **Targets:** in the e2e phone project, every visible link, button, summary and input is at least 44 by 44 CSS px, apart from inline links inside running text.
+- **Targets (enforced):** `e2e/a11y.spec.ts` checks that every visible link, button, summary and input is at least 44 by 44 CSS px on every page of the demo trips, apart from inline links inside running text.
 - **One filled button:** in the e2e phone project, at most one visible filled button per page state.
-- **Copy:** a test over `src/app/**/*.tsx` string literals rejects "please", "simply", "successfully", "N/A", "!", "12:00am" and "12:00pm" in UI copy.
-- **Contrast:** a unit test computes every text and background token pair, and every input border against its ground, in both modes. Text pairs need 4.5:1; borders and UI parts need 3:1. This fails today on `--rule` as an input border (1.25:1).
-- **axe** on every page in both e2e projects: zero serious or critical (WP-12).
+- **Copy (enforced):** the `copy/copy` lint rule over `src/app/**/*.tsx` rejects emoji, "please", "simply", "successfully", "N/A", "!", "12:00am" and "12:00pm", and title case in headings and buttons.
+- **Contrast:** form field borders need 3:1 against their ground, in both modes (enforced in `e2e/a11y.spec.ts`). A unit test over every text and background token pair at 4.5:1 is still to do.
+- **axe (enforced):** `e2e/a11y.spec.ts` runs axe on every page of the four demo trips in light and dark: zero serious or critical.
 
 ## Anti-patterns in this app
 

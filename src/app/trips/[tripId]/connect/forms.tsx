@@ -10,9 +10,9 @@ export function AssistantForm({ tripId, canSuggest }: { tripId: string; canSugge
     <form action={action}>
       <input type="hidden" name="tripId" value={tripId} />
       <div className={styles.row}>
-        <input name="label" placeholder="Name, like Jacob's Claude" required maxLength={80} />
+        <input name="label" aria-label="Link name" placeholder="Name, like Jacob's Claude" required maxLength={80} />
         {canSuggest ? (
-          <select name="scope" defaultValue="propose">
+          <select name="scope" defaultValue="propose" aria-label="What this link can do">
             <option value="propose">Can suggest items</option>
             <option value="read">Read only</option>
           </select>
