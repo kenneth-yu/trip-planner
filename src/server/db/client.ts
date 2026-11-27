@@ -22,11 +22,15 @@ async function migratedPglite(dataDir?: string) {
 
 let migratedSnapshot: Promise<Blob> | undefined;
 
-async function takeMigratedSnapshot(): Promise<Blob> {
+export async function takeMigratedSnapshot(): Promise<Blob> {
   const template = await migratedPglite();
   const snapshot = await template.dumpDataDir("none");
   await template.close();
   return snapshot;
+}
+
+export function startFromMigratedSnapshot(snapshot: Blob): void {
+  migratedSnapshot = Promise.resolve(snapshot);
 }
 
 async function migratedInMemorySnapshot(): Promise<Blob> {
