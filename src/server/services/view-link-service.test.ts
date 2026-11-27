@@ -79,6 +79,16 @@ describe("view link lifecycle", () => {
     expect(await resolveViewLink(ctx, fresh)).toBe(TRIP_ID);
   });
 
+  it("turning it on again starts with deadlines off", async () => {
+    const { ctx } = await setup();
+    await enableViewLink(ctx, TRIP_ID, kenny);
+    await setLinkShowsDeadlines(ctx, TRIP_ID, kenny, true);
+    await disableViewLink(ctx, TRIP_ID, kenny);
+    const token = tokenOf((await enableViewLink(ctx, TRIP_ID, kenny)).url);
+    expect((await getViewLinkSettings(ctx, TRIP_ID, kenny)).showsDeadlines).toBe(false);
+    expect((await loadViewLinkTrip(ctx, token, "UTC"))?.items.flatMap((i) => i.deadlines)).toEqual([]);
+  });
+
   it("refuses the wrong transitions", async () => {
     const { ctx } = await setup();
     await expect(rotateViewLink(ctx, TRIP_ID, kenny)).rejects.toThrow(InvalidTransition);

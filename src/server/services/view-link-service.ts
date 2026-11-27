@@ -49,7 +49,7 @@ export async function enableViewLink(ctx: ServiceContext, tripId: string, reques
   const rows = await ctx.db
     .insert(t.shareLinks)
     .values({ tripId, tokenHash: hashToken(token), enabled: true, showsDeadlines: false })
-    .onConflictDoUpdate({ target: t.shareLinks.tripId, set: { tokenHash: hashToken(token), enabled: true, rotatedAt: ctx.now() }, setWhere: eq(t.shareLinks.enabled, false) })
+    .onConflictDoUpdate({ target: t.shareLinks.tripId, set: { tokenHash: hashToken(token), enabled: true, showsDeadlines: false, rotatedAt: ctx.now() }, setWhere: eq(t.shareLinks.enabled, false) })
     .returning({ tripId: t.shareLinks.tripId });
   if (rows.length === 0) throw new InvalidTransition(viewLinkMachine.name, "On", "enable");
   return { url: urlFor(ctx, token) };
