@@ -15,7 +15,8 @@ concurrency:
 jobs:
   lint:
     name: lint
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, trip-planner]
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -30,7 +31,8 @@ jobs:
 
   typecheck:
     name: typecheck
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, trip-planner]
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -45,7 +47,8 @@ jobs:
 
   test:
     name: test
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, trip-planner]
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -78,7 +81,8 @@ jobs:
 
   build:
     name: build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, trip-planner]
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 15
     env:
       SESSION_SECRET: ci-only-secret-ci-only-secret-0000000
@@ -99,7 +103,8 @@ jobs:
 
   audit:
     name: audit
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, trip-planner]
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -113,7 +118,8 @@ jobs:
 
   migrations:
     name: migrations
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, trip-planner]
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -137,7 +143,8 @@ jobs:
 
   statecharts:
     name: statecharts
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, trip-planner]
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -152,7 +159,8 @@ jobs:
 
   postgres:
     name: postgres
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, trip-planner]
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 15
     services:
       postgres:
@@ -162,15 +170,15 @@ jobs:
           POSTGRES_PASSWORD: ci-only-postgres
           POSTGRES_DB: trip_test
         ports:
-          - 5432:5432
+          - 5432
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-    env:
-      TEST_DATABASE_URL: postgres://postgres:ci-only-postgres@localhost:5432/trip_test
     steps:
+      - name: Point at this job's Postgres port
+        run: echo "TEST_DATABASE_URL=postgres://postgres:ci-only-postgres@localhost:${{ job.services.postgres.ports[5432] }}/trip_test" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -181,11 +189,13 @@ jobs:
       - run: npm ci
       - name: Migrate an empty database with drizzle
         run: npx vitest run src/server/db/migrate.test.ts
-      - run: npm test
+      - name: Run every other test against Postgres
+        run: npm test -- --exclude src/server/db/migrate.test.ts
 
   prod-guard:
     name: prod-guard
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, trip-planner]
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 15
     services:
       postgres:
@@ -195,19 +205,20 @@ jobs:
           POSTGRES_PASSWORD: ci-only-postgres
           POSTGRES_DB: trip_prod_guard
         ports:
-          - 5432:5432
+          - 5432
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
     env:
-      DATABASE_URL: postgres://postgres:ci-only-postgres@localhost:5432/trip_prod_guard
       APP_URL: https://ci.example.test
       TRUST_PROXY: "1"
       SESSION_SECRET: ci-only-secret-ci-only-secret-0000000
       AUTH_SECRET: ci-only-auth-secret-ci-only-auth-0000000
     steps:
+      - name: Point at this job's Postgres port
+        run: echo "DATABASE_URL=postgres://postgres:ci-only-postgres@localhost:${{ job.services.postgres.ports[5432] }}/trip_prod_guard" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -229,13 +240,14 @@ jobs:
         run: |
           npx tsx scripts/migrate.ts
           npx tsx scripts/migrate.ts
-          table="$(psql "$DATABASE_URL" -tAc "select to_regclass('public.users')")"
+          table="$(node -e "const { Client } = require('pg'); const c = new Client({ connectionString: process.env.DATABASE_URL }); c.connect().then(() => c.query(\"select to_regclass('public.users') as t\")).then((r) => { console.log(r.rows[0].t ?? ''); return c.end(); })")"
           echo "users table: $table"
           [ "$table" = "users" ] || { echo "::error::the users table does not exist after migrating"; exit 1; }
       - run: npx next build
       - name: Production serves no dev routes and sends security headers
         run: |
-          npx next start -p 3100 > start.log 2>&1 &
+          node node_modules/next/dist/bin/next start -p 3100 > start.log 2>&1 &
+          server=$!
           for i in $(seq 1 30); do curl -s -o /dev/null localhost:3100/sign-in && break; sleep 1; done
           for route in "/api/dev/sign-in?as=kenny" /api/dev/outbox; do
             code=$(curl -s -o /dev/null -w '%{http_code}' "localhost:3100$route")
@@ -256,13 +268,14 @@ jobs:
             echo "$csp" | grep -q "frame-ancestors 'none'" || { echo "::error::$page CSP lacks frame-ancestors none"; exit 1; }
             if echo "$csp" | grep -o "script-src[^;]*" | grep -q "unsafe-"; then echo "::error::$page CSP allows unsafe script"; exit 1; fi
           done
-          for pid in $(ss -ltnp | grep ':3100 ' | sed 's/.*pid=\([0-9]*\).*/\1/'); do kill "$pid"; done
+          kill "$server"
           exit 0
       - name: Production refuses dev sign in
         env:
           DEV_SIGN_IN: "1"
         run: |
-          npx next start -p 3101 > refuse.log 2>&1 &
+          node node_modules/next/dist/bin/next start -p 3101 > refuse.log 2>&1 &
+          server=$!
           for i in $(seq 1 30); do curl -s -o /dev/null localhost:3101/sign-in && break; sleep 1; done
           code=$(curl -s -o /dev/null -w '%{http_code}' "localhost:3101/api/dev/sign-in?as=kenny")
           echo "dev sign in answered $code"
@@ -272,5 +285,5 @@ jobs:
           [ "$home" = "500" ] || { echo "::error::the sign in page answered $home, expected 500 because startup refused"; exit 1; }
           grep -q "instrumentation hook" refuse.log || { echo "::error::startup did not refuse in the instrumentation hook"; exit 1; }
           grep -q "DEV_SIGN_IN" refuse.log || { echo "::error::the refusal did not name DEV_SIGN_IN"; exit 1; }
-          for pid in $(ss -ltnp | grep ':3101 ' | sed 's/.*pid=\([0-9]*\).*/\1/'); do kill "$pid"; done
+          kill "$server"
           exit 0
