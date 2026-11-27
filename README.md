@@ -19,7 +19,7 @@ Fill in `.env.local`:
 | `AUTH_SECRET` | `openssl rand -base64 32`. Signs Auth.js sign in state |
 | `APP_URL` | The address people open, `http://localhost:3000` locally. Emailed sign in links are built on it; required in production |
 | `DEV_SIGN_IN` | `1` to show "Demo accounts" (Kenneth, Jacob) on the sign in screen and the email link through a local outbox (never in production) |
-| `TRUST_PROXY` | `1` behind a proxy that appends the client address (Vercel), `0` when clients connect directly. Rate limits key on the client address |
+| `TRUST_PROXY` | `1` behind a proxy that appends the client address (Vercel). Required in production. `0` makes every client share each rate limit budget, so use it only for a single user setup |
 | `DATABASE_URL` | Postgres URL. Leave empty to use an embedded database in `.data/pglite` |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Sign in with Google and the Google Calendar mirror |
 | `AUTH_APPLE_ID`, `AUTH_APPLE_SECRET` | Optional. Shows Sign in with Apple |

@@ -1,14 +1,16 @@
 # Delivery pipeline
 
-How work gets built here: one architect plans and integrates, engineers build in parallel, and three reviewers scrutinize every pull request before it merges. The roles are defined in `.claude/agents/`.
+How work gets built here: one architect plans and integrates, a UX lead specifies every screen before it is built, engineers build in parallel, and reviewers scrutinize every pull request before it merges: QA, security and product on every PR, plus two UX reviewers (phone and desktop) and the UX lead's verdict on every PR that adds or changes a screen. The roles are defined in `.claude/agents/`.
 
 | Role | Model | Does | Never does |
 |---|---|---|---|
-| Architect, dev lead (`architect`) | Opus | Plans work packages, sorts dependencies, owns shared files, merges, resolves conflicts, final QA on main | Merges with a failing check or an open critical or high security finding |
+| Architect, dev lead (`architect`) | Opus | Plans work packages, sorts dependencies, owns shared files, merges, resolves conflicts, final QA on main | Merges with a failing check, an open critical or high security finding, or a UX lead send back |
 | Engineer (`engineer`) | Sonnet | Builds one work package test first in its own worktree, opens the PR, decides on each review point | Commits to main, adds dependencies, edits files another package owns |
 | QA reviewer (`qa-reviewer`) | Sonnet | Proves defects with tests or by running the app, checks the acceptance tests | Edits the code |
 | Security reviewer (`security-reviewer`) | Sonnet | Reviews access control, data exposure, tokens, input handling, outbound calls, logging | Edits the code, pastes personal data into comments |
 | Product manager (`product-manager`) | Sonnet | Reviews the plan and every user facing PR as a user on a phone | Edits the code |
+| UX lead (`ux-lead`) | Opus | Owns docs/UX.md, writes a design spec in `.pipeline/specs/WP-NN.md` before any screen is built, gives the final UX verdict on every user facing PR | Edits application code; a "send back" blocks the merge until the lead signs off |
+| UX reviewer (`ux-reviewer`) | Sonnet | Reviews one user facing PR on one device class (phone or desktop) against docs/UX.md, docs/DESIGN.md and the spec, with screenshots and axe | Edits the code, resizes anyone's browser window |
 
 ## Flow
 
@@ -16,6 +18,8 @@ How work gets built here: one architect plans and integrates, engineers build in
 flowchart LR
   A[Architect plans a wave<br/>.pipeline/plan.md] --> PM0[PM reviews the plan]
   PM0 --> A2[Architect adjusts plan,<br/>prep commits on main]
+  A2 --> UXS[UX lead writes a spec<br/>for each package with a screen]
+  UXS --> E1
   A2 --> E1[Engineer WP-01<br/>worktree + branch]
   A2 --> E2[Engineer WP-02]
   A2 --> E3[Engineer WP-n]
@@ -23,6 +27,11 @@ flowchart LR
   PR1 --> QA[QA review]
   PR1 --> SEC[Security review]
   PR1 --> PMR[Product review]
+  PR1 --> UXP[UX review, phone]
+  PR1 --> UXD[UX review, desktop]
+  UXP --> UXL[UX lead verdict]
+  UXD --> UXL
+  UXL --> R
   QA --> R[Engineer applies or declines<br/>each point, replies on the PR]
   SEC --> R
   PMR --> R
@@ -38,8 +47,8 @@ stateDiagram-v2
   Building --> Open: tests pass, npm run check passes, PR opened
   Open --> InReview: CI green
   Open --> Building: CI red
-  InReview --> Addressing: QA, security and product reviews posted
-  Addressing --> ReadyToMerge: every point applied or declined with a reason,<br/>no open critical or high security finding
+  InReview --> Addressing: QA, security, product and (for screens) UX reviews posted
+  Addressing --> ReadyToMerge: every point applied or declined with a reason,<br/>no open critical or high security finding,<br/>no UX lead send back
   Addressing --> Building: changes needed
   ReadyToMerge --> Merged: architect merges in planned order
   ReadyToMerge --> Building: conflict or failure the architect sends back
