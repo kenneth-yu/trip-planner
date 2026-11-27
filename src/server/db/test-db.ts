@@ -69,10 +69,14 @@ export async function createIsolatedPostgresDb(url: string): Promise<IsolatedDb>
   const schemaName = `t_${randomUUID().replaceAll("-", "")}`;
   await withAdminPool(url, (admin) => admin.query(`CREATE SCHEMA "${schemaName}"`));
   const pool = new Pool({ connectionString: url, max: 2, idleTimeoutMillis: 200, options: `-c search_path=${schemaName}` });
-  const close = async () => {
-    open.delete(close);
-    await pool.end();
-    await withAdminPool(url, (admin) => admin.query(`DROP SCHEMA "${schemaName}" CASCADE`));
+  let closing: Promise<void> | undefined;
+  const close = () => {
+    closing ??= (async () => {
+      open.delete(close);
+      await pool.end();
+      await withAdminPool(url, (admin) => admin.query(`DROP SCHEMA "${schemaName}" CASCADE`));
+    })();
+    return closing;
   };
   open.add(close);
   try {
