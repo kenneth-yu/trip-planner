@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { notFound } from "next/navigation";
 import styles from "../../../ui/page.module.css";
 import { loadTripPage } from "@/server/web";
@@ -20,6 +21,7 @@ export default async function AddPage({ params }: PageProps<"/trips/[tripId]/add
         action={addItem}
         hint={placeHint}
         canChangeSharing
+        submission={randomUUID()}
         backHref={`/trips/${tripId}`}
       />
     </div>

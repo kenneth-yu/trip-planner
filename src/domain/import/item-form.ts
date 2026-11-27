@@ -1,8 +1,8 @@
 import type { ItemType, Visibility, Zone } from "../types";
 import { airportByCode, airportsInCity } from "../time/places";
-import { resolvePlace } from "../time/resolve-place";
+import { resolvePlace, type PlaceQuery } from "../time/resolve-place";
 import { airlineFor } from "./airlines";
-import { arrivalAfter } from "./arrival";
+import { arrivalAfter, sameDayClockRoll } from "./arrival";
 import { DEFAULT_CHECK_IN, DEFAULT_CHECK_OUT } from "./calendar-event";
 import { ItemInput } from "./quick-add";
 
@@ -23,7 +23,7 @@ export const FORM_ERROR = "That did not save. Your entries are still here. Try a
 export const MESSAGES = {
   flightNumber: "Enter the flight number.",
   flightNumberShape: "That does not look like a flight number. Try NH 159.",
-  place: "We cannot find that place. Try the airport code, like HND.",
+  place: "We can't find that place. Try an airport code like HND.",
   cityOrAddress: "Enter a city or address.",
   time: "Enter a time like 8:50am.",
   date: "Choose a date.",
@@ -33,7 +33,37 @@ export const MESSAGES = {
   name: "Enter a name.",
   title: "Enter a title.",
   price: "Enter a price like $240.",
+  tooLong: "That is too long.",
+  tooMany: "Too many tries. Wait a minute and try again.",
 } as const;
+
+export type ZoneOf = (query: PlaceQuery, isoDate: string) => Zone | null;
+
+export interface ParseOptions {
+  memberIds?: readonly string[] | null;
+  zoneOf?: ZoneOf;
+}
+
+const TRIP_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function parseTripId(value: unknown): string | null {
+  return typeof value === "string" && TRIP_ID.test(value) ? value : null;
+}
+
+const FIELD_OF_KEY: Record<string, string> = {
+  flightNumber: "flightNumber",
+  name: "name",
+  title: "title",
+  address: "place",
+  city: "place",
+  fromCity: "from",
+  toCity: "to",
+  confirmationCode: "confirmationCode",
+  phone: "phone",
+  price: "price",
+  notes: "notes",
+  airline: "airline",
+};
 
 export const ITEM_TYPES: ItemType[] = ["flight", "stay", "plan", "transfer"];
 
@@ -81,9 +111,9 @@ export function placeQueryFor(text: string): { city?: string; address?: string }
   return /[,\d]/.test(value) ? { address: value } : { city: value };
 }
 
-function zoneOfPlace(text: string): Zone {
-  const resolved = resolvePlace(placeQueryFor(text));
-  return resolved.status === "unknown" ? "UTC" : resolved.zone;
+function defaultZoneOf(query: PlaceQuery): Zone | null {
+  const resolved = resolvePlace(query);
+  return resolved.status === "unknown" ? null : resolved.zone;
 }
 
 function parsePrice(text: string): { amount: string; currency: string } | null {
@@ -125,6 +155,7 @@ type Fields = Record<string, unknown>;
 interface Parse {
   fields: Fields;
   errors: Record<string, string>;
+  zoneOf: ZoneOf;
 }
 
 function requireDate(e: Entries, name: string, p: Parse): string {
@@ -216,14 +247,9 @@ function plan(e: Entries, p: Parse): void {
   if (!place) p.errors.place = MESSAGES.cityOrAddress;
   const date = requireDate(e, "date", p);
   const starts = requireClock(e, "starts", p);
-  const ends = requireClock(e, "ends", p);
-  let endLocal = "";
-  if (!p.errors.date && starts && ends) {
-    const zone = place ? zoneOfPlace(place) : "UTC";
-    if (ends >= starts) endLocal = `${date}T${ends}`;
-    else endLocal = arrivalAfter(`${date}T${starts}`, zone, ends, zone)?.local ?? "";
-    if (!endLocal) p.errors.ends = MESSAGES.arrivalBeforeDeparture;
-  }
+  const endsRaw = e.get("ends");
+  const ends = endsRaw ? requireClock(e, "ends", p) : "";
+  const endLocal = !p.errors.date && starts && ends ? sameDayClockRoll(date, starts, ends).local : undefined;
   Object.assign(p.fields, { type: "plan", title, ...placeQueryFor(place), startLocal: `${date}T${starts}`, endLocal });
 }
 
@@ -238,9 +264,17 @@ function transfer(e: Entries, p: Parse): void {
   const mode = MODES.find((m) => m === e.get("mode"));
   let endLocal = "";
   if (from && to && !p.errors.date && departs && arrives) {
-    const arrival = arrivalAfter(`${date}T${departs}`, zoneOfPlace(from), arrives, zoneOfPlace(to));
-    if (arrival) endLocal = arrival.local;
-    else p.errors.arrives = MESSAGES.arrivalBeforeDeparture;
+    const fromZone = p.zoneOf(placeQueryFor(from), date);
+    const toZone = p.zoneOf(placeQueryFor(to), date);
+    if (fromZone && toZone) {
+      const arrival = arrivalAfter(`${date}T${departs}`, fromZone, arrives, toZone);
+      if (arrival) endLocal = arrival.local;
+      else p.errors.arrives = MESSAGES.arrivalBeforeDeparture;
+    } else if (arrives > departs) {
+      endLocal = `${date}T${arrives}`;
+    } else {
+      p.errors.arrives = MESSAGES.arrivalBeforeDeparture;
+    }
   }
   Object.assign(p.fields, { type: "transfer", mode, fromCity: from, toCity: to, startLocal: `${date}T${departs}`, endLocal });
 }
@@ -277,9 +311,9 @@ function sharing(e: Entries, p: Parse, memberIds: readonly string[] | null): For
   };
 }
 
-export function parseItemForm(entries: FormEntries, memberIds: readonly string[] | null = null): ItemFormResult {
+export function parseItemForm(entries: FormEntries, options: ParseOptions = {}): ItemFormResult {
   const e = new Entries(entries);
-  const p: Parse = { fields: {}, errors: {} };
+  const p: Parse = { fields: {}, errors: {}, zoneOf: options.zoneOf ?? defaultZoneOf };
   const type = ITEM_TYPES.find((t) => t === e.get("type"));
   if (type === "flight") flight(e, p);
   else if (type === "stay") stay(e, p);
@@ -287,9 +321,16 @@ export function parseItemForm(entries: FormEntries, memberIds: readonly string[]
   else if (type === "transfer") transfer(e, p);
   else p.errors.type = "Choose what you are adding.";
   details(e, p);
-  const share = sharing(e, p, memberIds);
+  const share = sharing(e, p, options.memberIds ?? null);
   if (Object.keys(p.errors).length) return { ok: false, errors: p.errors, values: entries };
   const parsed = ItemInput.safeParse(p.fields);
-  if (!parsed.success) return { ok: false, errors: { form: FORM_ERROR }, values: entries };
+  if (!parsed.success) {
+    const errors: Record<string, string> = {};
+    for (const issue of parsed.error.issues) {
+      const field = FIELD_OF_KEY[String(issue.path[0])];
+      if (field && issue.code === "too_big") errors[field] = MESSAGES.tooLong;
+    }
+    return { ok: false, errors: Object.keys(errors).length ? errors : { form: FORM_ERROR }, values: entries };
+  }
   return { ok: true, input: parsed.data, sharing: share };
 }

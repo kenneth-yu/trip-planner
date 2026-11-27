@@ -5,7 +5,8 @@ import { useActionState, useId, useState, useSyncExternalStore, type FormEvent, 
 import styles from "./item-form.module.css";
 import { emptyFormState, type FormState, type HintKind, type PlaceHint } from "./form-state";
 import { airlineFor } from "@/domain/import/airlines";
-import { arrivalAfter } from "@/domain/import/arrival";
+import { arrivalAfter, dayNote, sameDayClockRoll } from "@/domain/import/arrival";
+import { offsetAt } from "@/domain/time/format";
 import type { ItemType, Visibility } from "@/domain/types";
 
 export type { FormState } from "./form-state";
@@ -29,6 +30,7 @@ export interface ItemFormProps {
   submitLabel?: string;
   canChangeSharing: boolean;
   backHref: string;
+  submission?: string;
 }
 
 const TYPES: { type: ItemType; label: string }[] = [
@@ -78,13 +80,13 @@ function rememberType(type: string): void {
   }
 }
 
-function Field({ label, name, error, note, children }: { label: string; name: string; error?: string; note?: ReactNode; children: ReactNode }) {
+function Field({ label, name, error, note, reserve, children }: { label: string; name: string; error?: string; note?: ReactNode; reserve?: boolean; children: ReactNode }) {
   const id = useId();
   return (
     <div className={styles.field} data-invalid={error ? "true" : undefined}>
       <label htmlFor={`${id}-${name}`}>{label}</label>
       {children}
-      {note && <p className={styles.note}>{note}</p>}
+      {(note || reserve) && <p className={`${styles.note} ${reserve ? styles.reserved : ""}`}>{note}</p>}
       {error && (
         <p className={styles.error} id={`${id}-${name}-error`} role="alert">
           {error}
@@ -95,7 +97,7 @@ function Field({ label, name, error, note, children }: { label: string; name: st
 }
 
 export function ItemForm(props: ItemFormProps): React.JSX.Element {
-  const { tripId, travelers, members, initial, action, hint, canChangeSharing, backHref } = props;
+  const { tripId, travelers, members, initial, action, hint, canChangeSharing, backHref, submission } = props;
   const [state, formAction, pending] = useActionState<FormState, FormData>(action, emptyFormState);
   const [live, setLive] = useState(() => liveFrom(initial, state.values));
   const [hints, setHints] = useState<Record<string, PlaceHint>>({});
@@ -132,17 +134,25 @@ export function ItemForm(props: ItemFormProps): React.JSX.Element {
   const zoneNote = (name: string): ReactNode => {
     const h = hintFor(name);
     if (!h || h.status === "empty") return null;
-    if (h.status === "missing") return <span className={styles.warning}>{h.message}</span>;
+    if (h.status === "missing" || h.status === "limited") return errors[name] === h.message ? null : <span className={styles.warning}>{h.message}</span>;
     return (
       <>
         {h.line}
-        {h.warning && <span className={styles.warning}> {h.warning}</span>}
+        {h.warning && <span className={styles.warning}>{h.line ? " " : ""}{h.warning}</span>}
       </>
     );
   };
-  const timeLabel = (base: string, name: string) => {
+  const sameClock = (a: string, b: string): boolean => {
+    const first = found(a);
+    const second = found(b);
+    if (!first || !second || !DATE_SHAPE.test(live.date ?? "")) return false;
+    const noon = `${live.date}T12:00:00.000Z`;
+    return offsetAt(first.zone, noon) === offsetAt(second.zone, noon);
+  };
+  const timeLabel = (base: string, name: string, other?: string) => {
     const h = found(name);
-    return h ? `${base} (${h.city} time)` : base;
+    if (!h || (other && sameClock(name, other))) return base;
+    return `${base} (${h.city} time)`;
   };
 
   const placeProps = (name: string, kind: HintKind, placeholder: string) => ({
@@ -173,14 +183,14 @@ export function ItemForm(props: ItemFormProps): React.JSX.Element {
   const arriveClock = live[arriveName] ?? "";
   const fromZone = found("from")?.zone;
   const toZone = found("to")?.zone;
-  const planZone = found("place")?.zone ?? "UTC";
-  let overnight: string | null = null;
+    let overnight: string | null = null;
   if (DATE_SHAPE.test(live.date ?? "") && CLOCK_SHAPE.test(departClock) && CLOCK_SHAPE.test(arriveClock) && !errors[arriveName]) {
     const departLocal = `${live.date}T${departClock}`;
     if ((type === "flight" || type === "transfer") && fromZone && toZone) {
-      if (arrivalAfter(departLocal, fromZone, arriveClock, toZone)?.nextDay) overnight = "Lands the next day";
-    } else if (type === "plan" && arriveClock < departClock && arrivalAfter(departLocal, planZone, arriveClock, planZone)?.nextDay) {
-      overnight = "Ends the next day";
+      const arrival = arrivalAfter(departLocal, fromZone, arriveClock, toZone);
+      overnight = arrival ? dayNote(arrival.dayOffset, "Lands") : null;
+    } else if (type === "plan") {
+      overnight = dayNote(sameDayClockRoll(live.date ?? "", departClock, arriveClock).dayOffset, "Ends");
     }
   }
 
@@ -193,6 +203,7 @@ export function ItemForm(props: ItemFormProps): React.JSX.Element {
   return (
     <form action={formAction} onChange={track} className={styles.form} noValidate>
       <input type="hidden" name="tripId" value={tripId} />
+      {submission && <input type="hidden" name="submission" value={submission} />}
       <fieldset className={styles.types}>
         <legend className={styles.srOnly}>What are you adding</legend>
         {TYPES.map((t) => (
@@ -216,17 +227,17 @@ export function ItemForm(props: ItemFormProps): React.JSX.Element {
           <Field label="Date" name="date" error={errors.date}>
             <input {...control("date")} type="date" />
           </Field>
-          <Field label="From" name="from" error={errors.from} note={zoneNote("from")}>
+          <Field label="From" name="from" error={errors.from} note={zoneNote("from")} reserve>
             <input {...placeProps("from", "airport", "JFK or New York")} autoCapitalize="characters" />
           </Field>
-          <Field label="To" name="to" error={errors.to} note={zoneNote("to")}>
+          <Field label="To" name="to" error={errors.to} note={zoneNote("to")} reserve>
             <input {...placeProps("to", "airport", "HND or Tokyo")} autoCapitalize="characters" />
           </Field>
-          <div className={styles.pair}>
-            <Field label={timeLabel("Departs", "from")} name="departs" error={errors.departs}>
+          <div className={`${styles.pair} ${styles.timed}`}>
+            <Field label={timeLabel("Departs", "from", "to")} name="departs" error={errors.departs}>
               <input {...control("departs")} type="time" />
             </Field>
-            <Field label={timeLabel("Arrives", "to")} name="arrives" error={errors.arrives} note={overnight}>
+            <Field label={timeLabel("Arrives", "to", "from")} name="arrives" error={errors.arrives} note={overnight}>
               <input {...control("arrives")} type="time" />
             </Field>
           </div>
@@ -238,7 +249,7 @@ export function ItemForm(props: ItemFormProps): React.JSX.Element {
           <Field label="Name" name="name" error={errors.name}>
             <input {...control("name")} placeholder="Hotel Resol Ueno" autoComplete="off" autoCapitalize="words" />
           </Field>
-          <Field label="City or address" name="place" error={errors.place} note={zoneNote("place")}>
+          <Field label="City or address" name="place" error={errors.place} note={zoneNote("place")} reserve>
             <input {...placeProps("place", "place", "Tokyo")} />
           </Field>
           <div className={styles.pair}>
@@ -267,7 +278,7 @@ export function ItemForm(props: ItemFormProps): React.JSX.Element {
           <Field label="What" name="title" error={errors.title}>
             <input {...control("title")} placeholder="Tim Ho Wan" autoComplete="off" autoCapitalize="words" />
           </Field>
-          <Field label="City or address" name="place" error={errors.place} note={zoneNote("place")}>
+          <Field label="City or address" name="place" error={errors.place} note={zoneNote("place")} reserve>
             <input {...placeProps("place", "place", "Hong Kong")} />
           </Field>
           <Field label="Date" name="date" error={errors.date}>
@@ -277,7 +288,7 @@ export function ItemForm(props: ItemFormProps): React.JSX.Element {
             <Field label={timeLabel("Starts", "place")} name="starts" error={errors.starts}>
               <input {...control("starts")} type="time" />
             </Field>
-            <Field label="Ends" name="ends" error={errors.ends} note={overnight}>
+            <Field label="Ends" name="ends" error={errors.ends} note={overnight ?? "Optional. One hour if blank."}>
               <input {...control("ends")} type="time" />
             </Field>
           </div>
@@ -286,10 +297,10 @@ export function ItemForm(props: ItemFormProps): React.JSX.Element {
 
       {type === "transfer" && (
         <>
-          <Field label="From" name="from" error={errors.from} note={zoneNote("from")}>
+          <Field label="From" name="from" error={errors.from} note={zoneNote("from")} reserve>
             <input {...placeProps("from", "place", "Hong Kong")} />
           </Field>
-          <Field label="To" name="to" error={errors.to} note={zoneNote("to")}>
+          <Field label="To" name="to" error={errors.to} note={zoneNote("to")} reserve>
             <input {...placeProps("to", "place", "Shenzhen")} />
           </Field>
           <Field label="How" name="mode">
@@ -306,11 +317,11 @@ export function ItemForm(props: ItemFormProps): React.JSX.Element {
           <Field label="Date" name="date" error={errors.date}>
             <input {...control("date")} type="date" />
           </Field>
-          <div className={styles.pair}>
-            <Field label={timeLabel("Departs", "from")} name="departs" error={errors.departs}>
+          <div className={`${styles.pair} ${styles.timed}`}>
+            <Field label={timeLabel("Departs", "from", "to")} name="departs" error={errors.departs}>
               <input {...control("departs")} type="time" />
             </Field>
-            <Field label={timeLabel("Arrives", "to")} name="arrives" error={errors.arrives} note={overnight}>
+            <Field label={timeLabel("Arrives", "to", "from")} name="arrives" error={errors.arrives} note={overnight}>
               <input {...control("arrives")} type="time" />
             </Field>
           </div>
@@ -320,9 +331,6 @@ export function ItemForm(props: ItemFormProps): React.JSX.Element {
       {detailsOpen ? (
         <section className={styles.details} aria-label="More details">
           <h2 className={styles.detailsTitle}>More details</h2>
-          <Field label="Confirmation code" name="confirmationCode">
-            <input {...control("confirmationCode")} autoComplete="off" autoCapitalize="characters" spellCheck={false} />
-          </Field>
           {type === "flight" && travelers.length > 0 && (
             <fieldset className={styles.group}>
               <legend>Seats</legend>
@@ -333,15 +341,19 @@ export function ItemForm(props: ItemFormProps): React.JSX.Element {
               ))}
             </fieldset>
           )}
-          <Field label="Phone" name="phone">
+          <Field label="Confirmation code" name="confirmationCode" error={errors.confirmationCode}>
+            <input {...control("confirmationCode")} autoComplete="off" autoCapitalize="characters" spellCheck={false} />
+          </Field>
+          <Field label="Phone" name="phone" error={errors.phone}>
             <input {...control("phone")} type="tel" inputMode="tel" autoComplete="off" />
           </Field>
           <Field label="Price" name="price" error={errors.price}>
             <input {...control("price")} inputMode="decimal" placeholder="$240" autoComplete="off" />
           </Field>
-          <Field label="Notes" name="notes">
+          <Field label="Notes" name="notes" error={errors.notes}>
             <textarea id={`${id}-notes`} name="notes" defaultValue={live.notes ?? ""} rows={3} maxLength={4000} />
           </Field>
+          {(type === "flight" || type === "stay") && (
           <div className={styles.pair}>
             <Field label="Free cancellation until" name="deadlineDate" error={errors.deadlineDate}>
               <input {...control("deadlineDate")} type="date" />
@@ -350,6 +362,7 @@ export function ItemForm(props: ItemFormProps): React.JSX.Element {
               <input {...control("deadlineTime")} type="time" defaultValue={live.deadlineTime ?? "23:59"} />
             </Field>
           </div>
+          )}
           {sharingChoices && (
             <fieldset className={styles.group}>
               <legend>Who can see this</legend>

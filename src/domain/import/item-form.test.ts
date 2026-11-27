@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { buildFixtureTrip, byFlight, byTitle, fixtureItem, TRAVELERS, USERS } from "@/fixtures/december-trip";
 import { inputToProposal } from "./quick-add";
-import { arrivalAfter } from "./arrival";
+import { arrivalAfter, dayNote, sameDayClockRoll } from "./arrival";
 import { airlineFor } from "./airlines";
-import { FORM_ERROR, MESSAGES, parseClock, parseItemForm, type FormEntries } from "./item-form";
+import { FORM_ERROR, MESSAGES, parseClock, parseItemForm, parseTripId, type FormEntries } from "./item-form";
 
 const trip = buildFixtureTrip();
 const places = { homeZone: "America/New_York" };
@@ -230,9 +230,9 @@ describe("quick add form errors", () => {
   });
 
   it("drops people who are not on the trip", () => {
-    const r = parseItemForm([...nh159, ["visibility", "specific"], ["person", "someone-else"]], [USERS.kenny.id, USERS.jacob.id]);
+    const r = parseItemForm([...nh159, ["visibility", "specific"], ["person", "someone-else"]], { memberIds: [USERS.kenny.id, USERS.jacob.id] });
     expect(r.ok).toBe(false);
-    const ok = parseItemForm([...nh159, ["visibility", "specific"], ["person", USERS.jacob.id], ["person", "someone-else"]], [USERS.kenny.id, USERS.jacob.id]);
+    const ok = parseItemForm([...nh159, ["visibility", "specific"], ["person", USERS.jacob.id], ["person", "someone-else"]], { memberIds: [USERS.kenny.id, USERS.jacob.id] });
     expect(ok.ok && ok.sharing.visibleToUserIds).toEqual([USERS.jacob.id]);
   });
 
@@ -283,12 +283,122 @@ describe("times and airlines", () => {
   });
 
   it("finds the arrival date across the date line and flags the next day", () => {
-    expect(arrivalAfter("2026-12-01T00:55", "America/New_York", "05:25", "Asia/Tokyo")).toEqual({ local: "2026-12-02T05:25", nextDay: true });
-    expect(arrivalAfter("2026-12-15T17:00", "Asia/Tokyo", "21:55", "America/New_York")).toEqual({ local: "2026-12-15T21:55", nextDay: false });
+    expect(arrivalAfter("2026-12-01T00:55", "America/New_York", "05:25", "Asia/Tokyo")).toEqual({ local: "2026-12-02T05:25", dayOffset: 1 });
+    expect(arrivalAfter("2026-12-15T17:00", "Asia/Tokyo", "21:55", "America/New_York")).toEqual({ local: "2026-12-15T21:55", dayOffset: 0 });
   });
 
   it("derives the airline from the flight number when it knows the carrier", () => {
     expect(airlineFor("CX 509")).toBe("Cathay Pacific");
     expect(airlineFor("ZZ 1")).toBeNull();
+  });
+});
+
+describe("arrival on the previous local date", () => {
+  it("accepts Tokyo to Honolulu, which lands the day before", () => {
+    expect(arrivalAfter("2026-12-02T00:30", "Asia/Tokyo", "12:50", "Pacific/Honolulu")).toEqual({ local: "2026-12-01T12:50", dayOffset: -1 });
+    expect(dayNote(-1, "Lands")).toBe("Lands the day before");
+    expect(dayNote(1, "Lands")).toBe("Lands the next day");
+    expect(dayNote(0, "Lands")).toBeNull();
+  });
+
+  it("enters NRT to HNL as a flight", () => {
+    const r = parseItemForm([
+      ["type", "flight"],
+      ["flightNumber", "JL 782"],
+      ["date", "2026-12-02"],
+      ["from", "NRT"],
+      ["to", "HNL"],
+      ["departs", "00:30"],
+      ["arrives", "12:50"],
+    ]);
+    if (!r.ok) throw new Error(JSON.stringify(r.errors));
+    expect(r.input).toMatchObject({ arriveLocal: "2026-12-01T12:50" });
+    const p = inputToProposal(r.input, trip.travelers, places);
+    expect(p.end.at > p.start.at).toBe(true);
+  });
+
+  it("rolls a clock that is earlier than the start to the next date without a zone", () => {
+    expect(sameDayClockRoll("2026-12-03", "22:00", "01:00")).toEqual({ local: "2026-12-04T01:00", dayOffset: 1 });
+    expect(sameDayClockRoll("2026-12-03", "19:00", "20:30")).toEqual({ local: "2026-12-03T20:30", dayOffset: 0 });
+  });
+});
+
+describe("places we cannot place", () => {
+  const transfer = (from: string, departs: string, arrives: string): FormEntries => [
+    ["type", "transfer"],
+    ["from", from],
+    ["to", "Shenzhen"],
+    ["date", "2026-12-06"],
+    ["departs", departs],
+    ["arrives", arrives],
+  ];
+
+  it("does not derive an arrival date in a made up zone when the origin is unknown", () => {
+    const r = parseItemForm(transfer("Xyzzyville", "09:00", "11:00"));
+    if (!r.ok) throw new Error(JSON.stringify(r.errors));
+    expect(r.input).toMatchObject({ endLocal: "2026-12-06T11:00" });
+    const p = inputToProposal(r.input, trip.travelers, places);
+    expect(p.status).toBe("needs_review");
+    expect(p.problems.join(" ")).toContain("Xyzzyville");
+    expect(new Date(p.end.at).getTime() - new Date(p.start.at).getTime()).toBe(2 * 3600000);
+    expect([p.start.zone, p.end.zone]).toEqual(["Asia/Shanghai", "Asia/Shanghai"]);
+  });
+
+  it("asks for a check of the times instead of rolling the date when the origin is unknown", () => {
+    expect(failure(transfer("Xyzzyville", "23:00", "01:00")).errors.arrives).toBe(MESSAGES.arrivalBeforeDeparture);
+  });
+
+  it("uses the zones the caller resolved, so the form agrees with the saved item", () => {
+    const zoneOf = (q: { city?: string }) => (q.city === "Hong Kong" ? "Asia/Hong_Kong" : "Asia/Shanghai");
+    const r = parseItemForm(transfer("Hong Kong", "23:30", "00:45"), { zoneOf });
+    expect(r.ok && r.input).toMatchObject({ endLocal: "2026-12-07T00:45" });
+  });
+});
+
+describe("plan end", () => {
+  const plan = (ends: string): FormEntries => [
+    ["type", "plan"],
+    ["title", "Tim Ho Wan"],
+    ["place", "Hong Kong"],
+    ["date", "2026-12-05"],
+    ["starts", "7:30pm"],
+    ["ends", ends],
+  ];
+
+  it("is optional and defaults to one hour marked estimated", () => {
+    const r = parseItemForm(plan(""));
+    if (!r.ok) throw new Error(JSON.stringify(r.errors));
+    expect("endLocal" in r.input && r.input.endLocal).toBeFalsy();
+    const p = inputToProposal(r.input, trip.travelers, places);
+    expect(p.endIsEstimated).toBe(true);
+    expect(new Date(p.end.at).getTime() - new Date(p.start.at).getTime()).toBe(3600000);
+    expect(p.end.zone).toBe("Asia/Hong_Kong");
+  });
+
+  it("is not estimated when given", () => {
+    const r = parseItemForm(plan("9pm"));
+    if (!r.ok) throw new Error(JSON.stringify(r.errors));
+    expect(inputToProposal(r.input, trip.travelers, places).endIsEstimated).toBe(false);
+  });
+
+  it("still rejects an end that is not a time", () => {
+    expect(failure(plan("late")).errors.ends).toBe(MESSAGES.time);
+  });
+});
+
+describe("limits and ids", () => {
+  it("says a too long value is too long, on its own field", () => {
+    expect(failure([...nh159.filter(([k]) => k !== "confirmationCode"), ["confirmationCode", "X".repeat(61)]]).errors.confirmationCode).toBe(MESSAGES.tooLong);
+    expect(failure([["type", "stay"], ["name", "N".repeat(201)], ["place", "Tokyo"], ["checkInDate", "2026-12-02"], ["checkOutDate", "2026-12-05"]]).errors.name).toBe(MESSAGES.tooLong);
+  });
+
+  it("treats a malformed trip id as no trip", () => {
+    expect(parseTripId("nope")).toBeNull();
+    expect(parseTripId(undefined)).toBeNull();
+    expect(parseTripId("00000000-0000-4000-8300-000000000001")).toBe("00000000-0000-4000-8300-000000000001");
+  });
+
+  it("uses one message for a place we cannot find", () => {
+    expect(MESSAGES.place).toBe("We can't find that place. Try an airport code like HND.");
   });
 });

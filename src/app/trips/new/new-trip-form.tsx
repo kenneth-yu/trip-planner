@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import styles from "../../ui/item-form/item-form.module.css";
 import { createTripAction, type NewTripState } from "./actions";
@@ -21,6 +22,9 @@ export function NewTripForm() {
         <button type="submit" disabled={pending}>
           Create trip
         </button>
+        <Link href="/" className={styles.back}>
+          Back to trips
+        </Link>
       </div>
     </form>
   );
