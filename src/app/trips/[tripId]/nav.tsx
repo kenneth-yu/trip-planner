@@ -8,7 +8,7 @@ export function TripNav({ tripId, canEdit, canManageSharing }: { tripId: string;
   const path = usePathname();
   const base = `/trips/${tripId}`;
   const links = [
-    { href: base, label: "Day by day" },
+    { href: base, label: "Trip" },
     ...(canEdit ? [{ href: `${base}/add`, label: "Add" }] : []),
     { href: `${base}/deadlines`, label: "Deadlines" },
     ...(canEdit ? [{ href: `${base}/inbox`, label: "Review inbox" }] : []),

@@ -6,7 +6,9 @@ import { loadTripPage } from "@/server/web";
 import { listInvites, listMembers, listUnlinkedTravelers } from "@/server/services/sharing-service";
 import { DateTime } from "@/domain/time/luxon";
 import { roleName } from "../../../invite/role-words";
+import { listCoTravelers } from "@/server/services/member-service";
 import { InviteForm, RemoveControl, RoleControl } from "./forms";
+import { PastPeople } from "./past-people";
 import { revokeInviteAction } from "./actions";
 
 export const metadata: Metadata = { title: "Share", robots: { index: false, follow: false } };
@@ -20,13 +22,14 @@ export default async function SharePage({ params }: PageProps<"/trips/[tripId]/s
     listInvites(ctx, tripId, requester),
     listUnlinkedTravelers(ctx, tripId, requester),
   ]);
+  const pastPeople = await listCoTravelers(ctx, tripId, requester);
   const day = (d: Date) => DateTime.fromJSDate(d, { zone: view.homeZone }).toFormat("LLL d");
   const ordered = [...members].sort((a, b) => Number(b.role === "owner") - Number(a.role === "owner"));
   return (
     <div className={pageStyles.narrow}>
       <section>
         <h2 className={pageStyles.sectionTitle}>Invite someone</h2>
-        <InviteForm tripId={tripId} travelers={travelers} pendingIds={invites.map((i) => i.id)} memberIds={members.map((m) => m.userId)} />
+        <InviteForm tripId={tripId} travelers={travelers} pendingIds={invites.map((i) => i.id)} memberIds={members.map((m) => m.userId)} people={<PastPeople people={pastPeople} />} />
       </section>
       <section className={pageStyles.section}>
         <h2 className={pageStyles.sectionTitle}>People on this trip</h2>
