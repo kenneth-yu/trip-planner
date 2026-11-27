@@ -126,6 +126,15 @@ describe("the visitor page", () => {
     expect(html).not.toContain("<script>alert");
   });
 
+  it("never says your time before the visitor's zone is known, and says it once it is", async () => {
+    const token = await linkToken();
+    expect(await render(token)).not.toContain("your time");
+    world.cookies = { tp_zone: "Europe/London" };
+    expect(await render(token)).toContain("your time");
+    world.cookies = { tp_zone: "Mars/Olympus" };
+    expect(await render(token)).not.toContain("your time");
+  });
+
   it("the whole-trip view shows the same projection, with no check bubbles and no links into the trip", async () => {
     const token = await linkToken();
     const html = await render(token, { view: "grid" });

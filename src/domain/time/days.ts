@@ -70,7 +70,8 @@ function placeLine(item: VisibleItem): string | null {
   return [name, city].filter(Boolean).join(", ") || null;
 }
 
-function entriesFor(item: VisibleItem, homeZone: Zone, homeLabel?: string): { day: string; entry: DayEntry }[] {
+function entriesFor(item: VisibleItem, tripHomeZone: Zone, homeLabel?: string, withoutHome = false): { day: string; entry: DayEntry }[] {
+  const homeZone = withoutHome ? null : tripHomeZone;
   const out: { day: string; entry: DayEntry }[] = [];
   const startDay = localDateKey(item.start);
   const endDay = localDateKey(item.end);
@@ -136,9 +137,9 @@ export function filterByTravelers(items: VisibleItem[], travelerIds?: string[]):
   return items.filter((i) => i.travelerIds.some((t) => travelerIds.includes(t)));
 }
 
-export function buildDays(view: TripView, opts: { travelerIds?: string[]; homeLabel?: string } = {}): Day[] {
+export function buildDays(view: TripView, opts: { travelerIds?: string[]; homeLabel?: string; homeReferences?: boolean } = {}): Day[] {
   const items = filterByTravelers(view.items, opts.travelerIds);
-  const placed = [...items.flatMap((i) => entriesFor(i, view.homeZone, opts.homeLabel)), ...view.busy.map(busyEntry)];
+  const placed = [...items.flatMap((i) => entriesFor(i, view.homeZone, opts.homeLabel, opts.homeReferences === false)), ...view.busy.map(busyEntry)];
   if (!placed.length) return [];
 
   const keys = placed.map((p) => p.day).sort();

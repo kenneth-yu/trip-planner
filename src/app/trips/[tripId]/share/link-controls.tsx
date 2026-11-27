@@ -101,7 +101,7 @@ export function LinkControls({ tripId, enabled, showsDeadlines }: { tripId: stri
           <input type="checkbox" role="switch" checked={enabled} aria-checked={enabled} onChange={(e) => e.currentTarget.form?.requestSubmit()} />
           <span>
             Anyone with the link can see this trip <span className={pageStyles.muted}>({enabled ? "on" : "off"})</span>
-            <span className={`${pageStyles.muted} ${styles.hint}`}>They see times and places, never codes, seats or prices, and never anything you hid.</span>
+            <span className={`${pageStyles.muted} ${styles.hint}`}>They see times and places, never codes, seats or prices, and never anything you hid. Turning this off stops the link. Turning it on again makes a new one.</span>
           </span>
         </label>
       </form>
@@ -112,7 +112,10 @@ export function LinkControls({ tripId, enabled, showsDeadlines }: { tripId: stri
       )}
       {enabled && (
         <>
-          {url ? <RevealedLink url={url} /> : <p className={pageStyles.muted}>The link was shown when you made it. Make a new link to get one you can send.</p>}
+          {url ? <RevealedLink url={url} /> : <>
+              <p>You saw this link when you made it. To send it to someone else, forward the message you sent it in.</p>
+              <p className={pageStyles.muted}>A new link stops the current one working.</p>
+            </>}
           <SwitchRow name="showsDeadlines" label="Show deadlines on the link" checked={showsDeadlines} tripId={tripId} action={setDeadlines} />
           <p role="status" className={pageStyles.muted}>
             {deadlinesState.saved ? "Saved" : ""}
@@ -126,8 +129,10 @@ export function LinkControls({ tripId, enabled, showsDeadlines }: { tripId: stri
             <form action={rotate} className={styles.inline}>
               <input type="hidden" name="tripId" value={tripId} />
               <span>Make a new link? The current one stops working right away.</span>
-              <button disabled={rotating}>Make new link</button>
-              <button type="button" className="quiet" autoFocus onClick={() => setConfirmingAt(null)}>
+              <button disabled={rotating} className={`quiet ${styles.danger}`}>
+                Make new link
+              </button>
+              <button type="button" autoFocus onClick={() => setConfirmingAt(null)}>
                 Keep
               </button>
             </form>

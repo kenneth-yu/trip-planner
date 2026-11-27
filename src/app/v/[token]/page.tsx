@@ -31,7 +31,7 @@ export default async function VisitorPage({ params, searchParams }: PageProps<"/
   if (!loaded) notFound();
   const { ctx, view, zoneKnown } = loaded;
   const nowMs = ctx.now().getTime();
-  const days = buildDays(view, { homeLabel: YOUR_TIME });
+  const days = buildDays(view, { homeLabel: YOUR_TIME, homeReferences: zoneKnown });
   const rawGrid = buildTripGrid(view, nowMs);
   const grid = rawGrid ? { ...rawGrid, travel: rawGrid.travel.map((cell) => cell.filter((e) => e.kind !== "missing")) } : null;
   const selected = grid ? pickDay(grid.days, query.day ?? null) : null;

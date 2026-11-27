@@ -69,6 +69,8 @@ describe("the link section of the share page", () => {
     expect(page).toContain("Show deadlines on the link");
     expect(page).toContain("Make a new link");
     expect(page).not.toContain(tokenOf(revealed.url));
+    expect(page).toContain("You saw this link when you made it. To send it to someone else, forward the message you sent it in.");
+    expect(page).toContain("A new link stops the current one working.");
   });
 
   it("makes a new link that replaces the old one at once", async () => {
