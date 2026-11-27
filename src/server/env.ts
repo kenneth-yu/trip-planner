@@ -21,7 +21,7 @@ const LOCAL_APP_URL = "http://localhost:3000";
 const present = z.string().min(1);
 const secret = present.min(32);
 
-function deploymentOf(source: Record<string, string | undefined>): Deployment {
+export function deploymentOf(source: Record<string, string | undefined>): Deployment {
   if (source.VERCEL_ENV === "production") return "production";
   if (source.VERCEL_ENV === "preview") return "preview";
   if (source.NODE_ENV === "production" && !source.VERCEL_ENV) return "production";
