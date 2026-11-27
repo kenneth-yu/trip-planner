@@ -4,12 +4,12 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { ServiceContext } from "../services/context";
 import type { AssistantIdentity } from "../services/assistant-service";
 import { getTripView, listTrips, requireAggregate } from "../services/trip-service";
-import { disagreementFindings, importCalendarEvents, importProposals, listInbox } from "../services/inbox-service";
+import { importCalendarEvents, importProposals, listInbox } from "../services/inbox-service";
+import { visibleFindings } from "../services/check-service";
 import { describeInbox, describeTrip } from "./describe";
 import { ItemInput, inputToProposal, InputProblem, placeQueries } from "@/domain/import/quick-add";
 import { placeContextFor } from "../services/place-service";
 import { buildDeadlineLines } from "@/domain/deadlines/deadlines";
-import { runChecks } from "@/domain/checks/checks";
 import { AccessDenied, projectTrip } from "@/domain/visibility/project";
 import type { ProposedItem } from "@/domain/import/proposal";
 import type { Requester } from "@/domain/types";
@@ -79,8 +79,7 @@ export function createMcpServer(ctx: ServiceContext, who: AssistantIdentity): Mc
       guarded(async () => {
         allowedTrip(trip_id);
         const view = await getTripView(ctx, trip_id, requester);
-        const extra = await disagreementFindings(ctx, trip_id, requester);
-        const findings = runChecks(view, { extra });
+        const findings = await visibleFindings(ctx, view, requester);
         const deadlines = buildDeadlineLines(view, ctx.now().getTime());
         return text(describeTrip(view, deadlines, findings));
       }),

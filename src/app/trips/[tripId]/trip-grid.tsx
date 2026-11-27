@@ -4,7 +4,7 @@ import type { TripGrid } from "@/domain/timeline/trip-grid";
 const CITY = [styles.city1, styles.city2, styles.city3, styles.city4, styles.city5];
 const PER_CELL = 3;
 
-export function TripGridView({ grid, dayHref, selectedKey }: { grid: TripGrid; dayHref: (dayKey: string) => string; selectedKey: string | null }) {
+export function TripGridView({ grid, dayHref, selectedKey, checkHref }: { grid: TripGrid; dayHref: (dayKey: string) => string; selectedKey: string | null; checkHref: (key: string) => string | null }) {
   const col = (i: number) => i + 2;
   const hasUnsure = grid.unsure.length > 0;
   const hasTravel = grid.travel.some((cell) => cell.length > 0);
@@ -55,7 +55,7 @@ export function TripGridView({ grid, dayHref, selectedKey }: { grid: TripGrid; d
         {hasTravel && grid.travel.map((entries, i) => (
           <div key={`travel-${grid.days[i].key}`} className={styles.cell} style={{ gridColumn: col(i), gridRow: rows.travel }}>
             {entries.map((t) => (
-              <a key={t.key} href={dayHref(grid.days[i].key)} className={`${styles.entry} ${t.kind === "missing" ? styles.missing : ""}`}>
+              <a key={t.key} href={checkHref(t.key) ?? dayHref(grid.days[i].key)} className={`${styles.entry} ${t.kind === "missing" ? styles.missing : ""}`}>
                 {t.title}
                 {t.time && <small>{t.time}</small>}
               </a>
@@ -83,7 +83,7 @@ export function TripGridView({ grid, dayHref, selectedKey }: { grid: TripGrid; d
         {hasUnsure && <span className={`${styles.rowLabel} ${styles.bandUnsure}`} style={{ gridRow: rows.unsure }}>Not sure yet</span>}
         {grid.unsure.map((u) => (
           <div key={u.key} className={styles.unsure} style={{ gridColumn: `${col(u.from)} / ${col(u.to)}`, gridRow: rows.unsure }}>
-            <a className={styles.unsureBlock} href={dayHref(grid.days[u.from].key)}>
+            <a className={styles.unsureBlock} href={checkHref(u.key) ?? dayHref(grid.days[u.from].key)}>
               Is this a second booking? {u.title}
             </a>
           </div>
