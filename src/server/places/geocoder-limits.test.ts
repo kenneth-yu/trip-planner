@@ -16,7 +16,27 @@ describe("address lookup spacing", () => {
     await Promise.all(Array.from({ length: 6 }, (_, i) => geo.lookup(`${i} Soy Street`)));
     expect(starts).toHaveLength(6);
     const gaps = starts.slice(1).map((s, i) => s - starts[i]);
-    for (const gap of gaps) expect(gap).toBeGreaterThanOrEqual(55);
+    for (const gap of gaps) expect(gap).toBeGreaterThanOrEqual(60);
+  });
+
+  it("keeps the interval from the real start of a late lookup", async () => {
+    const starts: number[] = [];
+    let calls = 0;
+    const fakeFetch: typeof fetch = async () => {
+      starts.push(Date.now());
+      calls += 1;
+      if (calls === 1) {
+        const until = Date.now() + 30;
+        while (Date.now() < until);
+      }
+      return new Response(JSON.stringify([]), { status: 200 });
+    };
+    const geo = nominatimGeocoder({ userAgent: "trip-planner", minIntervalMs: 20, fetchImpl: fakeFetch });
+    const first = geo.lookup("1 Soy Street");
+    const second = geo.lookup("2 Soy Street");
+    const third = geo.lookup("3 Soy Street");
+    await Promise.all([first, second, third]);
+    expect(starts[2] - starts[1]).toBeGreaterThanOrEqual(20);
   });
 });
 

@@ -14,13 +14,19 @@ const NominatimResult = z.array(z.object({ lat: z.string(), lon: z.string(), dis
 export function nominatimGeocoder(opts: { userAgent: string; minIntervalMs?: number; fetchImpl?: typeof fetch; baseUrl?: string }): Geocoder {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const minInterval = opts.minIntervalMs ?? 1100;
-  let nextAllowed = 0;
+  let lastStart = Number.NEGATIVE_INFINITY;
+  let queue: Promise<void> = Promise.resolve();
+  const takeTurn = async () => {
+    for (let wait = lastStart + minInterval - Date.now(); wait > 0; wait = lastStart + minInterval - Date.now()) {
+      await new Promise((resolve) => setTimeout(resolve, wait));
+    }
+    lastStart = Date.now();
+  };
   return {
     async lookup(query) {
-      const slot = Math.max(Date.now(), nextAllowed);
-      nextAllowed = slot + minInterval;
-      const wait = slot - Date.now();
-      if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+      const turn = queue.then(takeTurn);
+      queue = turn;
+      await turn;
       const url = new URL(opts.baseUrl ?? "https://nominatim.openstreetmap.org/search");
       url.searchParams.set("q", query);
       url.searchParams.set("format", "jsonv2");
