@@ -34,8 +34,9 @@ jobs:
           --health-retries 10
     env:
       E2E_PRODUCTION_BUILD: "1"
-      E2E_DATABASE_URL: postgres://postgres:ci-only-postgres@localhost:${{ job.services.postgres.ports[5432] }}/trip_e2e
     steps:
+      - name: Point at this job's Postgres port
+        run: echo "E2E_DATABASE_URL=postgres://postgres:ci-only-postgres@localhost:${{ job.services.postgres.ports[5432] }}/trip_e2e" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false

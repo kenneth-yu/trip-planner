@@ -176,9 +176,9 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-    env:
-      TEST_DATABASE_URL: postgres://postgres:ci-only-postgres@localhost:${{ job.services.postgres.ports[5432] }}/trip_test
     steps:
+      - name: Point at this job's Postgres port
+        run: echo "TEST_DATABASE_URL=postgres://postgres:ci-only-postgres@localhost:${{ job.services.postgres.ports[5432] }}/trip_test" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -211,12 +211,13 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      DATABASE_URL: postgres://postgres:ci-only-postgres@localhost:${{ job.services.postgres.ports[5432] }}/trip_prod_guard
       APP_URL: https://ci.example.test
       TRUST_PROXY: "1"
       SESSION_SECRET: ci-only-secret-ci-only-secret-0000000
       AUTH_SECRET: ci-only-auth-secret-ci-only-auth-0000000
     steps:
+      - name: Point at this job's Postgres port
+        run: echo "DATABASE_URL=postgres://postgres:ci-only-postgres@localhost:${{ job.services.postgres.ports[5432] }}/trip_prod_guard" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
