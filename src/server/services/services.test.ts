@@ -5,9 +5,11 @@ import { AccessDenied } from "@/domain/visibility/project";
 import { runChecks } from "@/domain/checks/checks";
 import type { CalendarEvent } from "@/domain/import/calendar-event";
 import { toLocal } from "@/domain/time/format";
+import { InvalidTransition } from "@/domain/state/machine";
+import { eq } from "drizzle-orm";
 import * as t from "../db/schema";
 import { jacob, kenny, testContext } from "../testing";
-import { getTripView, quickAddItem, removeItem, updateItem } from "./trip-service";
+import { getTripView, NotFound, quickAddItem, removeItem, updateItem } from "./trip-service";
 import { approveAllClean, approveEntry, disagreementFindings, discardEntry, importCalendarEvents, listInbox, mergeEntry, NeedsDecision } from "./inbox-service";
 
 const calendars = {
@@ -125,14 +127,93 @@ describe("review inbox (phase 2 acceptance on a real database)", () => {
   });
 });
 
-describe("deciding an entry twice", () => {
-  it("only the first decision wins", async () => {
+describe("inbox entry transitions come from the state table", () => {
+  type Decide = (ctx: Awaited<ReturnType<typeof testContext>>["ctx"], entryId: string) => Promise<unknown>;
+  const decisions: Record<"add" | "merge" | "discard", Decide> = {
+    add: (ctx, id) => approveEntry(ctx, TRIP_ID, id, kenny),
+    merge: (ctx, id) => mergeEntry(ctx, TRIP_ID, id, kenny),
+    discard: (ctx, id) => discardEntry(ctx, TRIP_ID, id, kenny),
+  };
+
+  async function entryDecided(final: "approved" | "merged" | "discarded") {
+    const env = await testContext({ withItems: false });
+    const { ctx } = env;
+    await importCalendarEvents(ctx, TRIP_ID, kenny, [events[2]], { source: "ics", label: "file" });
+    const [first] = await listInbox(ctx, TRIP_ID, kenny);
+    if (final === "discarded") {
+      await discardEntry(ctx, TRIP_ID, first.id, kenny);
+      return { ...env, entryId: first.id };
+    }
+    await approveEntry(ctx, TRIP_ID, first.id, kenny);
+    if (final === "approved") return { ...env, entryId: first.id };
+    await importCalendarEvents(ctx, TRIP_ID, kenny, [events[2]], { source: "ics", label: "again" });
+    const [again] = await listInbox(ctx, TRIP_ID, kenny);
+    await mergeEntry(ctx, TRIP_ID, again.id, kenny);
+    return { ...env, entryId: again.id };
+  }
+
+  it.each(["approved", "merged", "discarded"] as const)("a %s entry rejects add, merge and discard, and nothing is written", async (final) => {
+    const { ctx, db, entryId } = await entryDecided(final);
+    const itemsBefore = (await getTripView(ctx, TRIP_ID, kenny)).items;
+    const activityBefore = await db.select().from(t.activity);
+    const [stored] = await db.select().from(t.importedItems).where(eq(t.importedItems.id, entryId));
+    expect(stored.state).toBe(final);
+    for (const decide of Object.values(decisions)) {
+      await expect(decide(ctx, entryId)).rejects.toThrow(InvalidTransition);
+    }
+    expect((await getTripView(ctx, TRIP_ID, kenny)).items).toEqual(itemsBefore);
+    expect(await db.select().from(t.activity)).toEqual(activityBefore);
+    expect(await db.select().from(t.importedItems).where(eq(t.importedItems.id, entryId))).toEqual([stored]);
+  });
+
+  it("the rejection names the state and the event", async () => {
+    const { ctx, entryId } = await entryDecided("approved");
+    await expect(approveEntry(ctx, TRIP_ID, entryId, jacob)).rejects.toThrow("inbox-entry: no transition from Approved on add.");
+    await expect(discardEntry(ctx, TRIP_ID, entryId, kenny)).rejects.toThrow("inbox-entry: no transition from Approved on discard.");
+  });
+
+  it("deciding at the same moment lets one decision win and rejects the other", async () => {
     const { ctx } = await testContext({ withItems: false });
     await importCalendarEvents(ctx, TRIP_ID, kenny, [events[2]], { source: "ics", label: "file" });
     const [entry] = await listInbox(ctx, TRIP_ID, kenny);
-    await approveEntry(ctx, TRIP_ID, entry.id, kenny);
-    await expect(approveEntry(ctx, TRIP_ID, entry.id, jacob)).rejects.toThrow(/already have been handled/);
-    expect((await getTripView(ctx, TRIP_ID, kenny)).items).toHaveLength(1);
+    const results = await Promise.allSettled([approveEntry(ctx, TRIP_ID, entry.id, kenny), discardEntry(ctx, TRIP_ID, entry.id, kenny)]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const lost = results.find((r) => r.status === "rejected");
+    expect(lost?.status === "rejected" && lost.reason).toBeInstanceOf(InvalidTransition);
+  });
+
+  it("an entry that does not exist, or belongs to another trip, is not found rather than a transition error", async () => {
+    const { ctx } = await testContext({ withItems: false });
+    await expect(approveEntry(ctx, TRIP_ID, "00000000-0000-4000-8000-000000000000", kenny)).rejects.toThrow(NotFound);
+    await expect(discardEntry(ctx, TRIP_ID, "00000000-0000-4000-8000-000000000000", kenny)).rejects.toThrow(NotFound);
+  });
+
+  it("a pending entry that needs a choice stays pending after a refused add", async () => {
+    const { ctx, db } = await testContext();
+    await importCalendarEvents(ctx, TRIP_ID, kenny, [events[4]], { source: "google_calendar", label: "Gmail", travelerIds: [TRAVELERS.kenny] });
+    const [entry] = await listInbox(ctx, TRIP_ID, kenny);
+    await expect(mergeEntry(ctx, TRIP_ID, entry.id, kenny)).rejects.toThrow(NeedsDecision);
+    const [stored] = await db.select().from(t.importedItems).where(eq(t.importedItems.id, entry.id));
+    expect(stored.state).toBe("pending");
+    expect(stored.decidedBy).toBeNull();
+  });
+
+  it("approve all skips an entry someone else decided while it ran and counts only what it added", async () => {
+    const { ctx } = await testContext({ withItems: false });
+    await importCalendarEvents(ctx, TRIP_ID, kenny, [events[2], events[6], events[8]], { source: "ics", label: "file" });
+    const clean = (await listInbox(ctx, TRIP_ID, kenny)).filter((e) => e.clean);
+    expect(clean).toHaveLength(3);
+    let raced = false;
+    const racing = {
+      ...ctx,
+      onTripChanged: async () => {
+        if (raced) return;
+        raced = true;
+        await discardEntry(ctx, TRIP_ID, clean[1].id, jacob);
+      },
+    };
+    await expect(approveAllClean(racing, TRIP_ID, kenny)).resolves.toBe(2);
+    expect(await listInbox(ctx, TRIP_ID, kenny)).toEqual([]);
   });
 });
 

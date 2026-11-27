@@ -12,6 +12,7 @@ import {
   extractStayTimes,
 } from "./patterns";
 import type { ProposedItem } from "./proposal";
+import { InputProblem } from "./problem";
 
 export interface CalendarEventTime {
   dateTime?: string;
@@ -53,9 +54,50 @@ function isTimed(ev: CalendarEvent): ev is TimedEvent {
   return typeof ev.start.dateTime === "string" && typeof ev.end.dateTime === "string";
 }
 
-function instant(t: { dateTime: string }, zone: Zone): ZonedTime {
-  const dt = DateTime.fromISO(t.dateTime, { setZone: true });
-  return { at: dt.toUTC().toISO(), zone };
+const HAS_OFFSET = /(?:Z|[+-]\d{2}(?::?\d{2})?)$/i;
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const EARLIEST_YEAR = 1970;
+const LATEST_YEAR = 2100;
+
+function unreadable(which: string): InputProblem {
+  return new InputProblem(`The ${which} of this event is not a date we can read.`);
+}
+
+function checkedYear(dt: DateTime, which: string): DateTime {
+  if (dt.year < EARLIEST_YEAR || dt.year > LATEST_YEAR) throw unreadable(which);
+  return dt;
+}
+
+function readDateTime(text: string, which: string, floatingZone: Zone): DateTime {
+  try {
+    const dt = HAS_OFFSET.test(text) ? DateTime.fromISO(text, { setZone: true }) : DateTime.fromISO(text, { zone: floatingZone });
+    return checkedYear(dt, which);
+  } catch (e) {
+    if (e instanceof InputProblem) throw e;
+    throw unreadable(which);
+  }
+}
+
+function readDate(text: string, which: string): DateTime {
+  if (!DATE_ONLY.test(text)) throw unreadable(which);
+  try {
+    return checkedYear(DateTime.fromISO(text, { zone: "utc" }), which);
+  } catch (e) {
+    if (e instanceof InputProblem) throw e;
+    throw unreadable(which);
+  }
+}
+
+function instant(t: { dateTime: string }, which: string, zone: Zone): ZonedTime {
+  return { at: readDateTime(t.dateTime, which, zone).toUTC().toISO(), zone };
+}
+
+function validZoneOr(zone: string | undefined, fallback: Zone): Zone {
+  return zone !== undefined && isValidZone(zone) ? zone : fallback;
+}
+
+function endsBeforeStart(start: ZonedTime, end: ZonedTime, problems: string[]) {
+  if (Date.parse(end.at) < Date.parse(start.at)) problems.push("This ends before it starts. Check both times.");
 }
 
 function privateFor(text: string, travelerIds: string[]): ItemPrivate[] {
@@ -75,13 +117,14 @@ function mapFlight(ev: TimedEvent, flightNumber: string, ctx: MapContext): Mappe
   const desc = ev.description ?? "";
   const { from, to } = extractRoute(summary, ev.location ?? "", desc);
   const problems: string[] = [];
-  const fallback = ev.start.timeZone ?? ctx.homeZone;
+  const fallback = validZoneOr(ev.start.timeZone, ctx.homeZone);
   const fromZone = from ? airportZone(from) : null;
   const toZone = to ? airportZone(to) : null;
   if (!fromZone) problems.push("Which airport does this flight leave from?");
   if (!toZone) problems.push("Which airport does this flight land at?");
-  const start = instant(ev.start, fromZone ?? fallback);
-  const end = instant(ev.end, toZone ?? fallback);
+  const start = instant(ev.start, "start", fromZone ?? fallback);
+  const end = instant(ev.end, "end", toZone ?? fallback);
+  endsBeforeStart(start, end, problems);
   const notAfter = DateTime.fromISO(start.at).setZone(start.zone);
   const { deadlines, unparsed } = extractDeadlines(desc, start.zone, notAfter);
   return {
@@ -110,15 +153,18 @@ function mapAllDay(ev: AllDayEvent, ctx: MapContext): MappedEvent {
   const desc = ev.description ?? "";
   const { title, city: titleCity } = splitCity(summary);
   const problems: string[] = [];
-  const placed = placeZone({ city: titleCity ?? undefined, address: ev.location || undefined }, ev.start.date, ctx);
+  const startDay = readDate(ev.start.date, "start");
+  const endDay = readDate(ev.end.date, "end");
+  const placed = placeZone({ city: titleCity ?? undefined, address: ev.location || undefined }, startDay.toISODate(), ctx);
   if (placed.problem) problems.push(placed.problem);
   const zone = placed.zone;
   const city = placed.city ?? null;
-  const nights = DateTime.fromISO(ev.end.date).diff(DateTime.fromISO(ev.start.date), "days").days;
+  const nights = endDay.diff(startDay, "days").days;
   const isStay = nights >= 1;
   const times = extractStayTimes(desc);
   const start = fromLocal(`${ev.start.date}T${times.checkIn ?? DEFAULT_CHECK_IN}`, zone);
   const end = fromLocal(`${ev.end.date}T${times.checkOut ?? DEFAULT_CHECK_OUT}`, zone);
+  endsBeforeStart(start, end, problems);
   const { deadlines, unparsed } = extractDeadlines(desc, zone, DateTime.fromISO(start.at).setZone(zone));
   const kind = /airbnb|vrbo|apartment/i.test(summary) ? "rental" : /hotel|inn|hostel|resort|ryokan/i.test(summary) ? "hotel" : "other";
   return {
@@ -147,7 +193,8 @@ function mapTimed(ev: TimedEvent, ctx: MapContext): MappedEvent {
   const desc = ev.description ?? "";
   const problems: string[] = [];
   const calendarZone = ev.start.timeZone && isValidZone(ev.start.timeZone) ? ev.start.timeZone : null;
-  const localDate = DateTime.fromISO(ev.start.dateTime, { setZone: true }).toISODate();
+  const localDate = readDateTime(ev.start.dateTime, "start", "utc").toISODate();
+  if (ev.start.timeZone && !calendarZone) problems.push("The calendar gave a time zone we do not recognise.");
   let zone: Zone;
   let city: string | undefined;
   if (ev.location) {
@@ -166,8 +213,9 @@ function mapTimed(ev: TimedEvent, ctx: MapContext): MappedEvent {
     zone = ctx.zoneOnDate?.(localDate) ?? ctx.homeZone;
     problems.push("Where is this? No place or time zone came with it.");
   }
-  const start = instant(ev.start, zone);
-  const end = instant(ev.end, zone);
+  const start = instant(ev.start, "start", zone);
+  const end = instant(ev.end, "end", zone);
+  endsBeforeStart(start, end, problems);
   const { deadlines, unparsed } = extractDeadlines(desc, zone, DateTime.fromISO(start.at).setZone(zone));
   const name = ev.location?.split(",")[0]?.trim();
   return {
@@ -192,7 +240,7 @@ function mapTimed(ev: TimedEvent, ctx: MapContext): MappedEvent {
 
 export function mapCalendarEvent(ev: CalendarEvent, ctx: MapContext): MappedEvent {
   if (isAllDay(ev)) return mapAllDay(ev, ctx);
-  if (!isTimed(ev)) throw new Error("Event has no usable start or end");
+  if (!isTimed(ev)) throw new InputProblem("This event has no usable start and end.");
   const flightNumber = extractFlightNumber(ev.summary ?? "") ?? extractFlightNumber(ev.description ?? "");
   const looksLikeFlight = flightNumber && (/flight|→|->|\bto\b/i.test(ev.summary ?? "") || /airport|\([A-Z]{3}\)|\b[A-Z]{3}\b/.test(ev.location ?? ""));
   if (flightNumber && looksLikeFlight) return mapFlight(ev, flightNumber, ctx);
