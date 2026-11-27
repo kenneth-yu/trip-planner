@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { concreteRoute, concreteRoutes, routeOfPage, routesTouched } from "../../tools/ci/changed-routes-lib.mjs";
+import { concreteRoute, concreteRoutes, routeOfPage, routesTouched, selectPages } from "../../tools/ci/changed-routes-lib.mjs";
 
 const TRIP = "00000000-0000-4000-8300-000000000001";
 const pages = [
@@ -38,8 +38,24 @@ describe("routes of changed pages", () => {
     expect(routesTouched(["src/app/globals.css"], pages)).toHaveLength(pages.length);
   });
 
-  it("maps nothing for files outside the pages, such as api routes, services and tests of other folders", () => {
-    expect(routesTouched(["src/app/api/mcp/route.ts", "src/server/a.ts", "e2e/a.spec.ts", "docs/UX.md"], pages)).toEqual([]);
+  it("maps nothing for api routes and for documentation, e2e and pipeline files", () => {
+    expect(selectPages(["src/app/api/mcp/route.ts", "docs/UX.md", "e2e/a.spec.ts", ".pipeline/status.md", "README.md"], pages)).toEqual({ pages: [], reason: null });
+  });
+
+  it.each(["src/domain/a.ts", "src/server/services/a.ts", "src/proxy.ts", "src/components/x.tsx", "public/icon.svg", "next.config.ts", "package.json", "src/styles/x.css", "tools/x.mjs", ".github/workflows/ci.yml"])("widens to every page when %s changes", (file) => {
+    const selection = selectPages([file], pages);
+    expect(selection.pages).toEqual(pages);
+    expect(selection.reason).toContain("outside src/app");
+  });
+
+  it("widens to every page when a touched page has a parameter it cannot fill, instead of dropping it", () => {
+    const selection = selectPages(["src/app/invite/problem/[kind]/page.tsx"], pages);
+    expect(selection.pages).toEqual(pages);
+    expect(selection.reason).toContain("cannot fill in");
+  });
+
+  it("narrows to the touched pages only when every changed file is inside src/app", () => {
+    expect(selectPages(["src/app/trips/[tripId]/inbox/entry-form.tsx", "docs/UX.md"], pages)).toEqual({ pages: ["src/app/trips/[tripId]/inbox/page.tsx"], reason: null });
   });
 
   it("lists only routes that can be opened, sorted and without duplicates", () => {
@@ -57,6 +73,7 @@ describe("the command line step", () => {
   it("names the touched routes of the real app", () => {
     expect(run("src/app/sign-in/form.tsx\n", [], { CHANGED_TOTAL: "1" })).toBe("/sign-in");
     expect(run("docs/UX.md\n", [], { CHANGED_TOTAL: "1" })).toBe("");
+    expect(run("src/proxy.ts\n", [], { CHANGED_TOTAL: "1" }).split(",").length).toBeGreaterThan(5);
   });
 
   it("falls back to every route when the file list is missing, empty or capped", () => {

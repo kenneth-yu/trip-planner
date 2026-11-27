@@ -12,7 +12,7 @@ async function expectNoSeriousViolations(page: Page): Promise<void> {
 
 test("an editor sees the name as text and the four travelers, with no delete link", async ({ pageSignedInAs }) => {
   const jacob = await pageSignedInAs("jacob", "/");
-  await expect(jacob.getByRole("link", { name: "Settings", exact: true })).toHaveCount(2);
+  await expect(jacob.getByRole("link", { name: /^Settings for / })).toHaveCount(2);
   await jacob.goto(`/trips/${PACKED_TRIP}/settings`);
   await expect(jacob.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
   await expect(jacob.locator("input[name=name]")).toHaveCount(0);

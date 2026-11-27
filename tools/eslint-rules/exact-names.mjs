@@ -2,8 +2,14 @@ const isString = (node) => Boolean(node) && ((node.type === "Literal" && typeof 
 
 const isObject = (node) => Boolean(node) && node.type === "ObjectExpression";
 
-const propertyNamed = (objectNode, name) =>
-  isObject(objectNode) ? objectNode.properties.find((property) => property.type === "Property" && !property.computed && property.key.type === "Identifier" && property.key.name === name) : undefined;
+const keyName = (property) => {
+  if (property.type !== "Property" || property.computed) return undefined;
+  if (property.key.type === "Identifier") return property.key.name;
+  if (property.key.type === "Literal" && typeof property.key.value === "string") return property.key.value;
+  return undefined;
+};
+
+const propertyNamed = (objectNode, name) => (isObject(objectNode) ? objectNode.properties.find((property) => keyName(property) === name) : undefined);
 
 const hasSpread = (objectNode) => isObject(objectNode) && objectNode.properties.some((property) => property.type === "SpreadElement");
 
@@ -24,26 +30,34 @@ export const exactNames = {
     schema: [],
   },
   create(context) {
-    const source = context.sourceCode;
     const withExact = (options) => (fixer) => {
       if (!isObject(options) || propertyNamed(options, "exact")) return null;
       const last = options.properties[options.properties.length - 1];
       return fixer.insertTextAfter(last, ", exact: true");
     };
+    const unprovable = (options) => Boolean(options) && (!isObject(options) || hasSpread(options));
     return {
       CallExpression(node) {
         const callee = node.callee;
         if (callee.type !== "MemberExpression" || callee.computed || callee.property.type !== "Identifier") return;
         if (callee.property.name === "getByRole") {
           const options = node.arguments[1];
+          if (unprovable(options)) {
+            context.report({ node, messageId: "exact" });
+            return;
+          }
           const name = propertyNamed(options, "name");
-          if (name && isString(name.value) && !hasSpread(options) && !hasExactTrue(options)) context.report({ node, messageId: "exact", fix: withExact(options) });
+          if (name && isString(name.value) && !hasExactTrue(options)) context.report({ node, messageId: "exact", fix: withExact(options) });
         }
         if (callee.property.name === "getByLabel") {
           const [label, options] = node.arguments;
-          if (!isString(label) || hasSpread(options) || hasExactTrue(options)) return;
-          const fix = options ? withExact(options) : (fixer) => fixer.insertTextAfter(label, ", { exact: true }");
-          context.report({ node, messageId: "exact", fix: source ? fix : null });
+          if (!isString(label)) return;
+          if (unprovable(options)) {
+            context.report({ node, messageId: "exact" });
+            return;
+          }
+          if (hasExactTrue(options)) return;
+          context.report({ node, messageId: "exact", fix: options ? withExact(options) : (fixer) => fixer.insertTextAfter(label, ", { exact: true }") });
         }
       },
     };

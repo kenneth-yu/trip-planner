@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { concreteRoutes, routesTouched } from "./changed-routes-lib.mjs";
+import { concreteRoute, concreteRoutes, routeOfPage, selectPages } from "./changed-routes-lib.mjs";
 
 const pages = readdirSync("src/app", { recursive: true, encoding: "utf8" })
   .filter((entry) => entry.endsWith("page.tsx") && (entry === "page.tsx" || entry.endsWith("/page.tsx")))
@@ -15,5 +15,8 @@ const changed = all
 const total = Number.parseInt(process.env.CHANGED_TOTAL ?? "", 10);
 const trusted = all || (changed.length > 0 && Number.isInteger(total) && total < 3000);
 
-const selected = all || !trusted ? pages : routesTouched(changed, pages);
-process.stdout.write(`${concreteRoutes(selected).join(",")}\n`);
+const selection = all || !trusted ? { pages, reason: null } : selectPages(changed, pages);
+if (selection.reason) process.stderr.write(`Every route is checked: ${selection.reason}.\n`);
+const skipped = selection.pages.filter((page) => concreteRoute(routeOfPage(page)) === null).map(routeOfPage);
+if (skipped.length > 0) process.stderr.write(`Routes the checker cannot open, so axe does not cover them: ${skipped.join(", ")}\n`);
+process.stdout.write(`${concreteRoutes(selection.pages).join(",")}\n`);

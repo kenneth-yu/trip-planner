@@ -42,3 +42,15 @@ export function concreteRoutes(pages) {
     .filter((route) => route !== null)
     .sort();
 }
+
+const IGNORED = [/^docs\//, /^e2e\//, /^\.pipeline\//, /\.md$/];
+
+export function selectPages(changedFiles, pages) {
+  const relevant = changedFiles.filter((file) => !IGNORED.some((pattern) => pattern.test(file)));
+  const outside = relevant.find((file) => !file.startsWith("src/app/"));
+  if (outside) return { pages, reason: `${outside} is outside src/app, so any page may be affected` };
+  const touched = routesTouched(relevant, pages);
+  const unfillable = touched.find((page) => concreteRoute(routeOfPage(page)) === null);
+  if (unfillable) return { pages, reason: `${unfillable} has a parameter the checker cannot fill in` };
+  return { pages: touched, reason: null };
+}
