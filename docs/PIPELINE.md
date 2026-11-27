@@ -59,7 +59,7 @@ stateDiagram-v2
 
 - An engineer keeps the pull request a draft only while still building. CI does not run on a draft (gitleaks does), so work in progress pushes cost nothing.
 - The engineer marks it ready for review at the moment it asks for reviews, so CI runs alongside the reviews and the reviewers have results before they finish. Reviewers never review without CI.
-- Each review-fix push reruns CI, and the concurrency group cancels the superseded run.
+- Each review-fix push reruns CI, and the concurrency group cancels the superseded run. Do not re-run a workflow run created while the pull request was a draft: it keeps the draft state and stays skipped. Push a commit or mark the pull request ready instead.
 - Pull requests that change only Markdown files or `.pipeline/` skip the heavy jobs: a small `changes` job decides, and the jobs it skips report "skipped", which counts as passing for required checks (a workflow level path filter would leave them pending forever). Performance (`measure`) runs on pushes to main, nightly, and on pull requests only when they change `src/app`, `src/server`, `src/components`, `perf/`, `next.config.*`, the package files or the perf workflow and its config, or carry the `perf` label.
 - CI on a pull request is five jobs: `static` (lint, typecheck, statecharts, audit, migrations), `test`, `postgres`, `prod-build` (one production build used for the end to end tests and the production guard checks) and `gitleaks`.
 

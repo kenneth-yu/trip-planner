@@ -26,6 +26,10 @@ jobs:
     outputs:
       run: ${{ steps.decide.outputs.run }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          persist-credentials: false
       - name: Decide whether this pull request needs the performance run
         id: decide
         env:
@@ -34,18 +38,18 @@ jobs:
           EVENT: ${{ github.event_name }}
           DRAFT: ${{ github.event.pull_request.draft }}
           SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
-          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
           PR: ${{ github.event.pull_request.number }}
         run: |
           if [ "$EVENT" != "pull_request" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; echo "Push or schedule: measuring."; exit 0; fi
           if [ "$DRAFT" = "true" ] || [ "$SAME_REPO" != "true" ]; then echo "run=false" >> "$GITHUB_OUTPUT"; echo "Draft or fork pull request: skipping."; exit 0; fi
-          case ",$LABELS," in *,perf,*) echo "run=true" >> "$GITHUB_OUTPUT"; echo "The perf label is set: measuring."; exit 0 ;; esac
-          files="$(gh api "repos/${GH_REPO}/pulls/${PR}/files" --paginate --jq '.[].filename')"
-          if echo "$files" | grep -Eq '^(src/app/|src/server/|src/components/|perf/|next\.config\.|package\.json$|package-lock\.json$|lighthouserc\.json$|vitest\.perf\.config\.mts$|scripts/bundle-budget\.ts$|\.github/workflows/perf\.yml$)'; then
-            echo "run=true" >> "$GITHUB_OUTPUT"; echo "A file that affects performance changed: measuring."
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"; echo "No file that affects performance changed and no perf label: skipping."
-          fi
+          if [ ! -f tools/ci/changed-paths.mjs ]; then echo "run=true" >> "$GITHUB_OUTPUT"; echo "No decision script on the base branch: measuring."; exit 0; fi
+          files="$(gh api "repos/${GH_REPO}/pulls/${PR}/files" --paginate --jq '.[] | .filename, (.previous_filename // empty)')" || files=""
+          total="$(gh api "repos/${GH_REPO}/pulls/${PR}" --jq .changed_files)" || total=""
+          run="$(printf '%s\n' "$files" | CHANGED_TOTAL="$total" node tools/ci/changed-paths.mjs perf)" || run=true
+          [ "$run" = "false" ] || run=true
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "Measuring: $run"
 
   measure:
     name: measure
