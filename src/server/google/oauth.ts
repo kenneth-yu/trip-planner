@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import { z } from "zod";
+import { GoogleAuthorizationError } from "./calendar-api";
 import { appSecret, safeEqual } from "../auth/tokens";
 
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -68,7 +69,11 @@ const IdTokenClaims = z.object({ email: z.string().optional() });
 
 async function tokenRequest(body: Record<string, string>, fetchImpl: typeof fetch): Promise<TokenResponse> {
   const res = await fetchImpl(TOKEN_URL, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(body) });
-  if (!res.ok) throw new Error(`Google sign in failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) {
+    const text = await res.text();
+    const message = `Google sign in failed: ${res.status} ${text}`;
+    throw res.status === 400 && text.includes("invalid_grant") ? new GoogleAuthorizationError(res.status, message) : new Error(message);
+  }
   return TokenResponseSchema.parse(await res.json());
 }
 
