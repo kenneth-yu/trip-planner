@@ -6,6 +6,10 @@ import styles from "./phone.module.css";
 import { DAY_PANEL_ID } from "./day-panel";
 import type { StripDay } from "@/domain/timeline/trip-grid";
 
+const places = new Map<string, number>();
+
+const here = () => `${window.location.pathname}${window.location.search}`;
+
 const CITY = [styles.city1, styles.city2, styles.city3, styles.city4, styles.city5];
 
 export function DayStrip({ days, selectedKey }: { days: StripDay[]; selectedKey: string | null }) {
@@ -16,7 +20,20 @@ export function DayStrip({ days, selectedKey }: { days: StripDay[]; selectedKey:
     const el = strip.current;
     return el && getComputedStyle(el).position === "sticky" ? el.offsetHeight : 0;
   };
+  const lastUrl = useRef<string | null>(null);
   useEffect(() => {
+    lastUrl.current = here();
+    const leaving = () => {
+      if (lastUrl.current) places.set(lastUrl.current, window.scrollY);
+    };
+    window.addEventListener("popstate", leaving);
+    return () => window.removeEventListener("popstate", leaving);
+  }, []);
+  useEffect(() => {
+    const url = here();
+    const restore = !tapped.current && lastUrl.current !== url ? places.get(url) : undefined;
+    lastUrl.current = url;
+    if (restore !== undefined) window.scrollTo({ top: restore, behavior: "auto" });
     const el = strip.current;
     if (el && chosen.current) el.scrollLeft = chosen.current.offsetLeft - (el.clientWidth - chosen.current.offsetWidth) / 2;
     const panel = document.getElementById(DAY_PANEL_ID);
@@ -56,6 +73,7 @@ export function DayStrip({ days, selectedKey }: { days: StripDay[]; selectedKey:
             href={`?day=${d.key}`}
             scroll={false}
             onClick={(e) => {
+              places.set(here(), window.scrollY);
               tapped.current = !isChosen && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
             }}
             className={`${styles.chip} ${isChosen ? styles.chosen : ""} ${d.cityIndex !== null ? CITY[d.cityIndex % CITY.length] : ""}`}
