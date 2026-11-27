@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { getDb } from "@/server/db/client";
 import { clientIp } from "@/server/security/client-ip";
+import { trustProxy } from "@/server/security/trust-proxy";
 import { securityHeaders } from "@/server/security/headers";
 import { consumeRateLimit, ruleForRequest, type RateRule } from "@/server/security/rate-limit";
 import { REQUEST_PATH_HEADER } from "@/server/security/request-path";
@@ -10,7 +11,7 @@ type Verdict = { allowed: boolean; retryAfterS: number } | "unavailable";
 
 async function checkRateLimit(rule: RateRule, request: NextRequest): Promise<Verdict> {
   try {
-    const ip = clientIp(request.headers, process.env.TRUST_PROXY === "1");
+    const ip = clientIp(request.headers, trustProxy(process.env));
     return await consumeRateLimit(await getDb(), rule, ip, new Date());
   } catch {
     console.error(`rate limit unavailable for rule ${rule.name}`);
