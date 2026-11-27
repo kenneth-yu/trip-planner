@@ -7,10 +7,11 @@ export const RESULTS_DIR = path.join(".next", "perf");
 
 export interface Measurement {
   name: string;
-  medianMs: number;
+  medianMs: number | null;
   budgetMs: number;
   samples: number;
   referenceMs: number;
+  status?: "slower than the cap";
 }
 
 export function median(values: number[]): number {
@@ -31,9 +32,15 @@ const MAX_BATCH = 50;
 
 export class TooSlow extends Error {
   constructor(name: string, taken: number, capMs: number) {
-    super(`${name} took the whole ${capMs} ms cap and gave only ${taken} samples. That is far beyond its budget, so it is a regression and not a noisy runner.`);
+    super(`${name} was slower than the ${capMs} ms cap: only ${taken} samples fit. That is far beyond its budget.`);
     this.name = "TooSlow";
   }
+}
+
+export interface Target {
+  name: string;
+  file: string;
+  budgetMs: number;
 }
 
 export interface Measured {
@@ -41,11 +48,16 @@ export interface Measured {
   samples: number;
 }
 
+function tooSlow(opts: { name: string; target?: Target }, taken: number, capMs: number): TooSlow {
+  if (opts.target) record(opts.target.file, { name: opts.target.name, medianMs: null, budgetMs: opts.target.budgetMs, samples: taken, referenceMs: reference ?? 0, status: "slower than the cap" });
+  return new TooSlow(opts.name, taken, capMs);
+}
+
 function elapsed(since: number): number {
   return performance.now() - since;
 }
 
-export function measureSync(fn: () => unknown, opts: { name: string; samples?: number; capMs?: number }): Measured {
+export function measureSync(fn: () => unknown, opts: { name: string; target?: Target; samples?: number; capMs?: number }): Measured {
   const samples = opts.samples ?? SAMPLES;
   const capMs = opts.capMs ?? CAP_MS;
   const started = performance.now();
@@ -62,11 +74,11 @@ export function measureSync(fn: () => unknown, opts: { name: string; samples?: n
     for (let i = 0; i < batch; i++) fn();
     perCall.push(elapsed(t) / batch);
   }
-  if (perCall.length < MIN_SAMPLES) throw new TooSlow(opts.name, perCall.length, capMs);
+  if (perCall.length < MIN_SAMPLES) throw tooSlow(opts, perCall.length, capMs);
   return { medianMs: median(perCall), samples: perCall.length };
 }
 
-export async function measureAsync(fn: () => Promise<unknown>, opts: { name: string; samples?: number; capMs?: number }): Promise<Measured> {
+export async function measureAsync(fn: () => Promise<unknown>, opts: { name: string; target?: Target; samples?: number; capMs?: number }): Promise<Measured> {
   const samples = opts.samples ?? SAMPLES;
   const capMs = opts.capMs ?? CAP_MS;
   const started = performance.now();
@@ -77,7 +89,7 @@ export async function measureAsync(fn: () => Promise<unknown>, opts: { name: str
     await fn();
     perCall.push(elapsed(t));
   }
-  if (perCall.length < MIN_SAMPLES) throw new TooSlow(opts.name, perCall.length, capMs);
+  if (perCall.length < MIN_SAMPLES) throw tooSlow(opts, perCall.length, capMs);
   return { medianMs: median(perCall), samples: perCall.length };
 }
 
@@ -87,14 +99,17 @@ export function referenceMs(): number {
 }
 
 const recorded: Measurement[] = [];
-
 let reference: number | undefined;
+
+function record(file: string, measurement: Measurement): void {
+  recorded.push(measurement);
+  mkdirSync(RESULTS_DIR, { recursive: true });
+  writeFileSync(path.join(RESULTS_DIR, `${file}.json`), `${JSON.stringify(recorded, null, 2)}\n`);
+}
 
 export function check(file: string, name: string, measured: Measured, budgetMs: number): void {
   const { medianMs, samples } = measured;
   reference ??= referenceMs();
-  recorded.push({ name, medianMs, budgetMs, samples, referenceMs: reference });
-  mkdirSync(RESULTS_DIR, { recursive: true });
-  writeFileSync(path.join(RESULTS_DIR, `${file}.json`), `${JSON.stringify(recorded, null, 2)}\n`);
+  record(file, { name, medianMs, budgetMs, samples, referenceMs: reference });
   expect(medianMs, `${name}: median ${medianMs.toFixed(3)} ms is over the ${budgetMs} ms budget in perf/budgets.json`).toBeLessThanOrEqual(budgetMs);
 }

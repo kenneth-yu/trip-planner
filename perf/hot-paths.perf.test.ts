@@ -29,7 +29,8 @@ describe.each(trips)("hot paths on the $label trip", ({ label, agg }) => {
   const run = (name: string, fn: () => unknown) => {
     it(`${name} stays inside its budget`, () => {
       const key = `${name}/${label}`;
-      check("hot-paths", key, measureSync(fn, { name: key }), budgetFor(key));
+      const budgetMs = budgetFor(key);
+      check("hot-paths", key, measureSync(fn, { name: key, target: { name: key, file: "hot-paths", budgetMs } }), budgetMs);
     });
   };
 

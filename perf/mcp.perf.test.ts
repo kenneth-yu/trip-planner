@@ -9,7 +9,6 @@ import { createMcpServer } from "@/server/mcp/server";
 import { budgets } from "./budgets";
 import { check, measureAsync } from "./harness";
 
-
 function budgetFor(name: string): number {
   const entry = budgets.mcp[name];
   if (!entry) throw new Error(`Add "${name}" to mcp in perf/budgets.json with a measured budget.`);
@@ -30,7 +29,8 @@ describe("MCP get_trip", () => {
     const client = new Client({ name: "perf", version: "1.0.0" });
     await client.connect(clientSide);
     const call = () => client.callTool({ name: "get_trip", arguments: { trip_id: TRIP_ID } });
-    check("mcp", "get_trip/in-memory", await measureAsync(call, { name: "get_trip/in-memory" }), budgetFor("get_trip/in-memory"));
+    const budgetMs = budgetFor("get_trip/in-memory");
+    check("mcp", "get_trip/in-memory", await measureAsync(call, { name: "get_trip/in-memory", target: { name: "get_trip/in-memory", file: "mcp", budgetMs } }), budgetMs);
   });
 
   it("answers over HTTP from the built app inside its budget", async () => {
@@ -45,6 +45,7 @@ describe("MCP get_trip", () => {
       const reply = Reply.parse(JSON.parse(Sse.parse(await res.text())));
       expect(reply.result.content[0]?.text).toContain("NH159");
     };
-    check("mcp", "get_trip/http", await measureAsync(call, { name: "get_trip/http" }), budgetFor("get_trip/http"));
+    const budgetMs = budgetFor("get_trip/http");
+    check("mcp", "get_trip/http", await measureAsync(call, { name: "get_trip/http", target: { name: "get_trip/http", file: "mcp", budgetMs } }), budgetMs);
   });
 });
