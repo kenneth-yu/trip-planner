@@ -24,8 +24,14 @@ const secret = present.min(32);
 export function deploymentOf(source: Record<string, string | undefined>): Deployment {
   if (source.VERCEL_ENV === "production") return "production";
   if (source.VERCEL_ENV === "preview") return "preview";
-  if (source.NODE_ENV === "production" && !source.VERCEL_ENV) return "production";
+  if (source.NODE_ENV === "production") return "production";
   return "local";
+}
+
+export function appUrlRequired(source: Record<string, string | undefined>): boolean {
+  const deployment = deploymentOf(source);
+  if (deployment === "production") return true;
+  return deployment === "preview" && Boolean(source.EMAIL_API_KEY && source.EMAIL_FROM);
 }
 
 function problems(source: Record<string, string | undefined>, deployment: Deployment): string[] {
@@ -40,8 +46,8 @@ function problems(source: Record<string, string | undefined>, deployment: Deploy
     need("TOKEN_ENCRYPTION_KEY", present, "is not set. Generate one with: openssl rand -base64 32");
     need("DATA_ENCRYPTION_KEY", present, "is not set. Generate one with: openssl rand -base64 32");
   }
-  if (deployment === "production") {
-    need("APP_URL", z.url({ protocol: /^https$/ }), "must be set to the https address of the site");
+  if (appUrlRequired(source)) {
+    need("APP_URL", z.url({ protocol: /^https$/ }), "must be set to the https address of the site on a production deployment, or on a preview that sends email links");
   }
   if (source.VERCEL_ENV) {
     need("DATABASE_URL", present, "is not set. A Vercel deployment never runs on the embedded database");

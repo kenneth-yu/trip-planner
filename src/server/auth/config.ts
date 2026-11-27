@@ -7,7 +7,7 @@ import type { Db } from "../db/client";
 import { createAdapter, generateSessionToken, SESSION_MAX_AGE_SECONDS, SESSION_UPDATE_AGE_SECONDS } from "./adapter";
 import { SIGN_IN_LINK_MINUTES, signInLinkUrl, type EmailSender } from "./email";
 import { isEmailVerified, resolveOAuthSignIn } from "./link";
-import { deploymentOf } from "../env";
+import { appUrlRequired, deploymentOf } from "../env";
 import { enabledProviders, type Env } from "./providers";
 
 export const SIGN_IN_PATH = "/sign-in";
@@ -44,9 +44,9 @@ function providersFor(env: Env, sender: EmailSender | null, appOrigin: string): 
 
 export function buildAuthConfig(options: { db: Db; env: Env; sender: EmailSender | null; now?: () => Date }): AuthConfig {
   const { db, env, sender } = options;
-  const deployment = deploymentOf(env);
-  const linksNeedOrigin = deployment === "production" || (deployment !== "local" && sender !== null);
-  if (linksNeedOrigin && !env.APP_URL) throw new Error("APP_URL must be set in production. Set it to the public address of this site.");
+  if ((appUrlRequired(env) || (sender !== null && deploymentOf(env) !== "local")) && !env.APP_URL) {
+    throw new Error("APP_URL must be set to the https address of the site on a production deployment, or on a preview that sends email links.");
+  }
   const appOrigin = new URL(env.APP_URL ?? "http://localhost:3000").origin;
   const adapter = createAdapter(db, options.now);
   return {
