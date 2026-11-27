@@ -15,7 +15,7 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/**"],
-      exclude: ["src/**/*.test.ts", "src/**/*.d.ts", "src/fixtures/**", "src/testing/**", "src/server/testing.ts", "src/server/db/test-setup.ts", "src/server/db/test-global-setup.ts", "src/server/db/test-db.ts"],
+      exclude: ["src/**/*.test.ts", "src/**/*.d.ts", "src/fixtures/**", "src/testing/**", "src/server/testing.ts", "src/server/db/test-setup.ts", "src/server/db/test-global-setup.ts", "src/server/db/test-db.ts", "src/server/db/test-closers.ts"],
       reporter: ["text", "text-summary", "json-summary"],
       reportsDirectory: "coverage",
       thresholds: { statements: 74, branches: 60, functions: 70, lines: 77 },
