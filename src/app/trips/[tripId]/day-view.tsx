@@ -1,5 +1,6 @@
 import Link from "next/link";
 import styles from "./days.module.css";
+import itemStyles from "./items/[itemId]/item.module.css";
 import formStyles from "@/app/ui/item-form/item-form.module.css";
 import { AddedMarker } from "@/app/ui/item-form/added-marker";
 
@@ -69,9 +70,11 @@ function Details({ item, canSeeSensitive, names }: { item: VisibleItem; canSeeSe
   if (item.status === "needs_review") rows.push(["Status", "Needs review"]);
   for (const flag of item.flags) rows.push(["Check", flag]);
   if (item.notes) rows.push(["Notes", item.notes]);
-  if (!rows.length) return null;
   return (
     <div className={styles.detail}>
+      <p className={itemStyles.openDetails}>
+        <Link href={`/trips/${item.tripId}/items/${item.id}`}>Open details</Link>
+      </p>
       <dl>
         {rows.map(([k, v], i) => (
           <div key={i} style={{ display: "contents" }}>
