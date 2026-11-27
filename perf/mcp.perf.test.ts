@@ -9,8 +9,6 @@ import { createMcpServer } from "@/server/mcp/server";
 import { budgets } from "./budgets";
 import { check, measureAsync } from "./harness";
 
-const SAMPLES = 31;
-const WARMUP = 5;
 
 function budgetFor(name: string): number {
   const entry = budgets.mcp[name];
@@ -32,8 +30,7 @@ describe("MCP get_trip", () => {
     const client = new Client({ name: "perf", version: "1.0.0" });
     await client.connect(clientSide);
     const call = () => client.callTool({ name: "get_trip", arguments: { trip_id: TRIP_ID } });
-    const ms = await measureAsync(call, { samples: SAMPLES, warmup: WARMUP });
-    check("mcp", "get_trip/in-memory", ms, budgetFor("get_trip/in-memory"), SAMPLES);
+    check("mcp", "get_trip/in-memory", await measureAsync(call, { name: "get_trip/in-memory" }), budgetFor("get_trip/in-memory"));
   });
 
   it("answers over HTTP from the built app inside its budget", async () => {
@@ -48,7 +45,6 @@ describe("MCP get_trip", () => {
       const reply = Reply.parse(JSON.parse(Sse.parse(await res.text())));
       expect(reply.result.content[0]?.text).toContain("NH159");
     };
-    const ms = await measureAsync(call, { samples: SAMPLES, warmup: WARMUP });
-    check("mcp", "get_trip/http", ms, budgetFor("get_trip/http"), SAMPLES);
+    check("mcp", "get_trip/http", await measureAsync(call, { name: "get_trip/http" }), budgetFor("get_trip/http"));
   });
 });

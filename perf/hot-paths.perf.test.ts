@@ -12,9 +12,6 @@ import { check, measureSync } from "./harness";
 
 const owner: Requester = { kind: "member", userId: USERS.kenny.id, homeZone: USERS.kenny.homeZone };
 const NOW = Date.parse(fixture.today);
-const SAMPLES = 31;
-const WARMUP = 20;
-const BATCH = 20;
 
 const trips: { label: string; agg: TripAggregate }[] = [
   { label: "december", agg: buildFixtureTrip() },
@@ -32,7 +29,7 @@ describe.each(trips)("hot paths on the $label trip", ({ label, agg }) => {
   const run = (name: string, fn: () => unknown) => {
     it(`${name} stays inside its budget`, () => {
       const key = `${name}/${label}`;
-      check("hot-paths", key, measureSync(fn, { samples: SAMPLES, batch: BATCH, warmup: WARMUP }), budgetFor(key), SAMPLES);
+      check("hot-paths", key, measureSync(fn, { name: key }), budgetFor(key));
     });
   };
 
