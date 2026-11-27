@@ -10,14 +10,15 @@ The first real user is a two person trip: New York, Tokyo, Hong Kong, Shenzhen a
 0. `docs/ENGINEERING.md` how code is written and changed here. The rules in it are enforced by `npm run check`.
 1. `docs/PRODUCT.md` what we are building, the screens, what is out of scope
 2. `docs/DESIGN.md` how it must look and read. Read this before writing any UI.
-3. `docs/TIME_RULES.md` how times, time zones and day boundaries work. The hardest part of the app.
-4. `docs/DATA_MODEL.md` entities and fields
-5. `docs/SHARING.md` accounts, roles, invites, share links, hidden items
-6. `docs/IMPORT.md` getting trips in: quick add, Google Calendar, .ics, pasted emails
-7. `docs/CHECKS.md` automatic problem detection and closing deadlines
-8. `docs/PHASES.md` build order and what "done" means for each phase
-9. `docs/ARCHITECTURE.md` how the code is organized, with diagrams and state charts
-10. `docs/FEATURES.md` every user and assistant path, with the tests that prove it
+3. `docs/UX.md` what each screen shows, when information appears and disappears, and how it is ordered. Read this with DESIGN.md before any UI work.
+4. `docs/TIME_RULES.md` how times, time zones and day boundaries work. The hardest part of the app.
+5. `docs/DATA_MODEL.md` entities and fields
+6. `docs/SHARING.md` accounts, roles, invites, share links, hidden items
+7. `docs/IMPORT.md` getting trips in: quick add, Google Calendar, .ics, pasted emails
+8. `docs/CHECKS.md` automatic problem detection and closing deadlines
+9. `docs/PHASES.md` build order and what "done" means for each phase
+10. `docs/ARCHITECTURE.md` how the code is organized, with diagrams and state charts
+11. `docs/FEATURES.md` every user and assistant path, with the tests that prove it
 
 ## Rules that are never broken
 
