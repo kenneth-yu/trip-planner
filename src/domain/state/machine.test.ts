@@ -47,7 +47,7 @@ describe("every machine in src/domain/state", async () => {
   const machines = await loadMachines();
 
   it("finds the documented machines", () => {
-    expect(machines.map((m) => m.name).sort()).toEqual(["assistant-token", "calendar-mirror", "inbox-entry", "invite", "item-visibility", "view-link"]);
+    expect(machines.map((m) => m.name).sort()).toEqual(["assistant-token", "calendar-mirror", "inbox-entry", "invite", "item-visibility", "session", "view-link"]);
   });
 
   it.each(machines.map((m) => [m.name, m] as const))("%s: every state is reachable from the initial state", (_name, m) => {
