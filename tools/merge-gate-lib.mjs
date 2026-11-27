@@ -71,14 +71,17 @@ export function parseVerdict(body) {
   if (word === reviewer.words.positive) outcome = "positive";
   else if (word === reviewer.words.conditional) outcome = "conditional";
   else if (word === reviewer.words.negative) outcome = "negative";
-  return { reviewer: reviewer.key, label: reviewer.label, outcome, text: text.replace(/[^\x20-\x7e]/g, "").slice(0, 80) };
+  const reviewed = text.match(/\bat\s+([0-9a-f]{7,40})\b/);
+  return { reviewer: reviewer.key, label: reviewer.label, outcome, reviewedSha: reviewed ? reviewed[1] : null, text: text.replace(/[^\x20-\x7e]/g, "").slice(0, 80) };
 }
 
-export function isReply(body) {
+const NAMES = { qa: /^qa\b/i, security: /^security\b/i, product: /^product\b/i, ux: /^ux\b/i };
+
+export function isReplyTo(reviewer, body) {
   if (parseVerdict(body)) return false;
   return lines(body).some((line) => {
     const plain = line.replace(/^[-*\d.)\s]+/, "").replace(/\*/g, "");
-    return /^(applied|declined)\b/i.test(plain) || /:\s*(applied|declined)\b/i.test(plain);
+    return NAMES[reviewer].test(plain) && /\b(applied|declined)\b/i.test(plain);
   });
 }
 
@@ -98,12 +101,13 @@ function reasonsForChecks(checkRuns) {
   return reasons;
 }
 
-function effectiveDates(commits) {
-  let newest = Number.NEGATIVE_INFINITY;
-  return commits.map((commit) => {
-    newest = Math.max(newest, Date.parse(commit.committedAt));
-    return { commit, at: newest };
-  });
+function isVerifiedMerge(commit, verifiedMerges) {
+  return commit.parents.length === 2 && verifiedMerges.has(commit.sha);
+}
+
+export function lastCodeCommit(commits, verifiedMerges) {
+  const code = commits.filter((commit) => !isVerifiedMerge(commit, verifiedMerges));
+  return code.length > 0 ? code[code.length - 1] : null;
 }
 
 function reasonsForVerdicts(input, paths) {
@@ -112,8 +116,7 @@ function reasonsForVerdicts(input, paths) {
     .filter((c) => c.author === input.reviewerLogin && c.authorType !== "Bot")
     .map((c) => ({ ...c, time: Date.parse(c.updatedAt) }))
     .sort((a, b) => a.time - b.time);
-  const code = effectiveDates(input.commits).filter(({ commit }) => !(commit.parents.length === 2 && input.mainAncestors.has(commit.parents[1])));
-  const lastCodeAt = code.reduce((newest, { at }) => Math.max(newest, at), Number.NEGATIVE_INFINITY);
+  const lastCode = lastCodeCommit(input.commits, input.verifiedMerges);
   const reasons = [];
   for (const reviewer of required) {
     const verdicts = trusted.map((comment) => ({ comment, verdict: parseVerdict(comment.body) })).filter((x) => x.verdict && x.verdict.reviewer === reviewer.key);
@@ -127,17 +130,33 @@ function reasonsForVerdicts(input, paths) {
       reasons.push(`The latest ${reviewer.label} verdict is not positive ("${verdict.text || "no verdict line"}").`);
       continue;
     }
-    let standsAt = comment.time;
-    if (verdict.outcome === "conditional") {
-      const reply = trusted.find((c) => c.time > comment.time && isReply(c.body));
-      if (!reply) {
-        reasons.push(`The latest ${reviewer.label} verdict asks for changes ("${verdict.text}") and no Applied/Declined reply follows it.`);
-        continue;
-      }
-      standsAt = reply.time;
+    if (!verdict.reviewedSha) {
+      reasons.push(`The ${reviewer.label} verdict does not name the commit it reviewed. Use "Verdict: <word> at <sha>".`);
+      continue;
     }
-    if (lastCodeAt > standsAt) {
-      reasons.push(`The ${reviewer.label} verdict is older than the head: code was pushed after ${verdict.outcome === "conditional" ? "the Applied/Declined reply" : "it"}.`);
+    const index = input.commits.findIndex((c) => c.sha.startsWith(verdict.reviewedSha));
+    if (index < 0) {
+      reasons.push(`The ${reviewer.label} verdict names a commit that is not in this pull request.`);
+      continue;
+    }
+    if (verdict.outcome === "positive") {
+      const after = input.commits.slice(index + 1);
+      if (!after.every((c) => isVerifiedMerge(c, input.verifiedMerges))) {
+        reasons.push(`The ${reviewer.label} verdict is older than the head: it reviewed ${verdict.reviewedSha.slice(0, 7)} and code was pushed after it.`);
+      }
+      continue;
+    }
+    const reply = trusted.find((c) => c.time > comment.time && isReplyTo(reviewer.key, c.body));
+    if (!reply) {
+      reasons.push(`The latest ${reviewer.label} verdict asks for changes ("${verdict.text}") and no reply naming ${reviewer.label} with Applied or Declined follows it.`);
+      continue;
+    }
+    if (lastCode && !input.commits.slice(0, index + 1).includes(lastCode)) {
+      if (typeof input.lastCodePushedAt !== "number" || !Number.isFinite(input.lastCodePushedAt)) {
+        reasons.push(`Could not tell when the latest code was pushed, so the ${reviewer.label} reply cannot be checked.`);
+      } else if (reply.time <= input.lastCodePushedAt) {
+        reasons.push(`The ${reviewer.label} verdict is older than the head: code was pushed after the Applied/Declined reply.`);
+      }
     }
   }
   return reasons;

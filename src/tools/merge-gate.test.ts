@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluate, isIntegrationPath, isReply, parseVerdict, REQUIRED_CHECKS } from "../../tools/merge-gate-lib.mjs";
+import { evaluate, isIntegrationPath, isReplyTo, lastCodeCommit, parseVerdict, REQUIRED_CHECKS } from "../../tools/merge-gate-lib.mjs";
 
 const T = (minute: number) => `2026-11-27T10:${String(minute).padStart(2, "0")}:00Z`;
 const ME = "kenneth-yu";
@@ -22,16 +22,22 @@ interface Comment {
 interface Commit {
   sha: string;
   parents: string[];
-  committedAt: string;
 }
 
 const greenRuns: Run[] = REQUIRED_CHECKS.map((name, index) => ({ id: 100 + index, name, status: "completed", conclusion: "success", appSlug: "github-actions" }));
 
 const say = (minute: number, body: string, author = ME, authorType = "User"): Comment => ({ author, authorType, body, updatedAt: T(minute) });
 
-const reviews: Comment[] = [say(10, "## QA review\n\nVerdict: approve\n"), say(11, "## Security review\n\nVerdict: clear\n"), say(12, "## Product review\n\nVerdict: approve\n")];
+const sha = (letter: string) => letter.repeat(40);
+const at = (letter: string) => ` at ${sha(letter)}`;
 
-const commit = (sha: string, minute: number, parents: string[] = ["p"]): Commit => ({ sha, parents, committedAt: T(minute) });
+const reviews: Comment[] = [
+  say(10, `## QA review\n\nVerdict: approve${at("a")}\n`),
+  say(11, `## Security review\n\nVerdict: clear${at("a")}\n`),
+  say(12, `## Product review\n\nVerdict: approve${at("a")}\n`),
+];
+
+const commit = (letter: string, parents: string[] = ["p"]): Commit => ({ sha: sha(letter), parents });
 
 function pull(overrides: Record<string, unknown> = {}) {
   const files = [{ filename: "src/server/foo.ts" }];
@@ -40,10 +46,11 @@ function pull(overrides: Record<string, unknown> = {}) {
     files,
     changedFiles: files.length,
     comments: reviews,
-    commits: [commit("a", 5)],
+    commits: [commit("a")],
     checkRuns: greenRuns,
     behindBy: 0,
-    mainAncestors: new Set<string>(),
+    verifiedMerges: new Set<string>(),
+    lastCodePushedAt: Date.parse(T(5)),
     ...overrides,
   };
 }
@@ -80,18 +87,36 @@ describe("verdict parsing", () => {
     expect(parseVerdict("Applied: everything")).toBeNull();
   });
 
+  it("reads the reviewed commit from the verdict line", () => {
+    expect(parseVerdict(`## QA review\n\nVerdict: approve at ${"0123456789abcdef".repeat(2)}01234567`)?.reviewedSha).toBe("0123456789abcdef".repeat(2) + "01234567");
+    expect(parseVerdict("## QA review\n\n**Verdict: approve at 0123abc** and more")?.reviewedSha).toBe("0123abc");
+    expect(parseVerdict("## QA review\n\nVerdict: approve")?.reviewedSha).toBeNull();
+    expect(parseVerdict("## QA review\n\nVerdict: approve at abc")?.reviewedSha).toBeNull();
+    expect(parseVerdict("## QA review\n\nVerdict: approve at ZZZZZZZZ")?.reviewedSha).toBeNull();
+  });
+
   it("strips control characters from the verdict text", () => {
     expect(parseVerdict("## QA review\n\nVerdict: send back \u001b[31mred")?.text).toBe("send back [31mred");
   });
 });
 
 describe("replies", () => {
-  it.each(["Applied: 1, 2", "1. Seed guard (medium): Applied.", "- Declined: out of scope", "**Applied** all of them"])("accepts %j", (body) => {
-    expect(isReply(body)).toBe(true);
+  it.each([
+    ["qa", "QA: Applied 1 and 2, Declined 3."],
+    ["security", "- Security: Applied 1."],
+    ["product", "**Product**: declined, out of scope"],
+    ["ux", "UX: Applied all"],
+  ])("accepts a reply that names %s", (reviewer, body) => {
+    expect(isReplyTo(reviewer, body)).toBe(true);
   });
 
-  it.each(["Nothing was applied.", "I declined to comment", "## QA review\n\nVerdict: approve\nApplied"])("rejects %j", (body) => {
-    expect(isReply(body)).toBe(false);
+  it("does not let a reply to one reviewer answer another", () => {
+    expect(isReplyTo("qa", "Security: Applied the fixes.")).toBe(false);
+    expect(isReplyTo("security", "QA: Applied 1.")).toBe(false);
+  });
+
+  it.each(["Applied: all", "Nothing was applied.", "QA: nothing to do", "## QA review\n\nVerdict: approve\nQA: Applied"])("rejects %j", (body) => {
+    expect(isReplyTo("qa", body)).toBe(false);
   });
 });
 
@@ -155,13 +180,9 @@ describe("merge gate", () => {
       expect(evaluate(pull({ comments })).reasons).toEqual(["No QA review verdict on the pull request."]);
     });
 
-    it("uses the edit time, so a send back edited into an approval is dated at the edit", () => {
-      const edited = [{ ...reviews[0], updatedAt: T(40) }, ...reviews.slice(1)];
-      const commits = [commit("a", 5), commit("b", 30)];
-      expect(evaluate(pull({ commits, comments: edited })).reasons).toEqual([
-        "The Security verdict is older than the head: code was pushed after it.",
-        "The Product verdict is older than the head: code was pushed after it.",
-      ]);
+    it("orders verdicts by edit time, so a send back edited in after an approval is the latest", () => {
+      const edited = [...reviews, { ...say(5, "## QA review\n\nVerdict: send back"), updatedAt: T(40) }];
+      expect(evaluate(pull({ comments: edited })).reasons[0]).toMatch(/latest QA verdict is not positive/);
     });
   });
 
@@ -229,70 +250,89 @@ describe("merge gate", () => {
       const files = [{ filename: "src/app/trips/page.tsx" }];
       expect(evaluate(pull({ files, changedFiles: 1 })).reasons).toEqual(["No UX lead review verdict on the pull request."]);
       expect(evaluate(pull({ files: [{ filename: "src/styles/x.css" }], changedFiles: 1 })).reasons).toEqual(["No UX lead review verdict on the pull request."]);
-      expect(evaluate(pull({ files, changedFiles: 1, comments: [...reviews, say(13, "## UX review (lead)\n\nVerdict: approve")] })).ok).toBe(true);
+      expect(evaluate(pull({ files, changedFiles: 1, comments: [...reviews, say(13, `## UX review (lead)\n\nVerdict: approve${at("a")}`)] })).ok).toBe(true);
     });
 
-    it("refuses a positive verdict older than the head", () => {
-      const { reasons } = evaluate(pull({ commits: [commit("a", 5), commit("b", 30)] }));
+    it("needs the verdict to name the commit it reviewed", () => {
+      const comments = [say(10, "## QA review\n\nVerdict: approve"), ...reviews.slice(1)];
+      expect(evaluate(pull({ comments })).reasons).toEqual(['The QA verdict does not name the commit it reviewed. Use "Verdict: <word> at <sha>".']);
+    });
+
+    it("refuses a verdict that names a commit that is not in the pull request", () => {
+      const comments = [say(10, `## QA review\n\nVerdict: approve${at("9")}`), ...reviews.slice(1)];
+      expect(evaluate(pull({ comments })).reasons).toEqual(["The QA verdict names a commit that is not in this pull request."]);
+    });
+
+    it("refuses a verdict on an earlier commit when code was pushed after it, whatever the dates say", () => {
+      const commits = [commit("b"), commit("a")];
+      const stale = reviews.map((c) => ({ ...c, body: c.body.replace(at("a"), at("b")), updatedAt: T(50) }));
+      const { reasons } = evaluate(pull({ commits, comments: stale }));
       expect(reasons).toHaveLength(3);
-      expect(reasons[0]).toMatch(/QA verdict is older than the head/);
+      expect(reasons[0]).toMatch(/QA verdict is older than the head: it reviewed bbbbbbb and code was pushed after it/);
     });
 
-    it("excuses a later merge of main decided by its parents, never by its headline", () => {
-      const merge = { sha: "m", parents: ["a", "main-tip"], committedAt: T(30) };
-      expect(evaluate(pull({ commits: [commit("a", 5), merge], mainAncestors: new Set(["main-tip"]) })).ok).toBe(true);
-      expect(evaluate(pull({ commits: [commit("a", 5), merge], mainAncestors: new Set() })).ok).toBe(false);
-      const sneaky = { sha: "s", parents: ["a"], committedAt: T(30) };
-      expect(evaluate(pull({ commits: [commit("a", 5), sneaky], mainAncestors: new Set(["a"]) })).ok).toBe(false);
-      const sideBranch = { sha: "m2", parents: ["a", "unreviewed-branch"], committedAt: T(30) };
-      expect(evaluate(pull({ commits: [commit("a", 5), sideBranch], mainAncestors: new Set(["main-tip"]) })).ok).toBe(false);
+    it("accepts a verdict on an earlier commit when only verified merges of main follow", () => {
+      const merge = { sha: sha("m"), parents: [sha("a"), "main-tip"] };
+      const comments = reviews;
+      expect(evaluate(pull({ commits: [commit("a"), merge], comments, verifiedMerges: new Set([sha("m")]) })).ok).toBe(true);
     });
 
-    it("sees a commit whose committer date was set back, because dates only move forward in commit order", () => {
-      const backdated = [commit("a", 5), commit("b", 30), commit("c", 2)];
-      expect(evaluate(pull({ commits: backdated })).ok).toBe(false);
+    it("does not excuse a merge that is not verified, such as one that changes more than merging its parents", () => {
+      const evil = { sha: sha("e"), parents: [sha("a"), "main-tip"] };
+      expect(evaluate(pull({ commits: [commit("a"), evil], verifiedMerges: new Set() })).ok).toBe(false);
+      const fakeParents = { sha: sha("f"), parents: [sha("a")] };
+      expect(evaluate(pull({ commits: [commit("a"), fakeParents], verifiedMerges: new Set([sha("f")]) })).ok).toBe(false);
+    });
+
+    it("finds the last code commit by skipping verified merges", () => {
+      const merge = { sha: sha("m"), parents: [sha("a"), "main-tip"] };
+      expect(lastCodeCommit([commit("a"), merge], new Set([sha("m")]))?.sha).toBe(sha("a"));
+      expect(lastCodeCommit([commit("a"), merge], new Set())?.sha).toBe(sha("m"));
+      expect(lastCodeCommit([merge], new Set([sha("m")]))).toBeNull();
     });
   });
 
   describe("approve with changes", () => {
-    const withChanges = [say(10, "## QA review\n\nVerdict: approve with changes"), say(11, "## Security review\n\nVerdict: clear with fixes"), reviews[2]];
+    const withChanges = [say(10, `## QA review\n\nVerdict: approve with changes${at("a")}`), say(11, `## Security review\n\nVerdict: clear with fixes${at("a")}`), reviews[2]];
 
-    it("needs an Applied or Declined reply from the same account", () => {
+    it("needs a reply that names the reviewer it answers", () => {
       expect(evaluate(pull({ comments: withChanges })).reasons).toEqual([
-        'The latest QA verdict asks for changes ("approve with changes") and no Applied/Declined reply follows it.',
-        'The latest Security verdict asks for changes ("clear with fixes") and no Applied/Declined reply follows it.',
+        'The latest QA verdict asks for changes ("approve with changes at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") and no reply naming QA with Applied or Declined follows it.'.replace("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", sha("a")),
+        'The latest Security verdict asks for changes ("clear with fixes at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") and no reply naming Security with Applied or Declined follows it.'.replace("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", sha("a")),
       ]);
-      const strangers = [...withChanges, say(13, "Applied: all", "someone-else"), say(14, "Nothing was applied.")];
-      expect(evaluate(pull({ comments: strangers })).ok).toBe(false);
+      const wrongName = [...withChanges, say(13, "Security: Applied the fixes.")];
+      expect(evaluate(pull({ comments: wrongName })).reasons).toHaveLength(1);
+      const strangers = [...withChanges, say(13, "QA: Applied all", "someone-else"), say(14, "Nothing was applied.")];
+      expect(evaluate(pull({ comments: strangers })).reasons).toHaveLength(2);
     });
 
-    it("passes when the engineer applies the fixes and then replies, with no new round from the reviewers who asked for changes", () => {
-      const product = say(21, "## Product review\n\nVerdict: approve");
-      const comments = [withChanges[0], withChanges[1], say(23, "QA: Applied 1 and 2, Declined 3.\nSecurity: Applied 1."), product];
-      const commits = [commit("a", 5), commit("fix", 20)];
-      expect(evaluate(pull({ comments, commits })).ok).toBe(true);
+    it("passes when the engineer applies the fixes and replies after the code was pushed", () => {
+      const product = say(21, `## Product review\n\nVerdict: approve${at("b")}`);
+      const comments = [withChanges[0], withChanges[1], product, say(23, "QA: Applied 1 and 2, Declined 3.\nSecurity: Applied 1.")];
+      const commits = [commit("a"), commit("b")];
+      expect(evaluate(pull({ comments, commits, lastCodePushedAt: Date.parse(T(20)) })).ok).toBe(true);
     });
 
-    it("still needs a fresh positive verdict from a reviewer whose approval predates the fixes", () => {
-      const comments = [...withChanges, say(23, "Applied: all")];
-      const commits = [commit("a", 5), commit("fix", 20)];
-      expect(evaluate(pull({ comments, commits })).reasons).toEqual(["The Product verdict is older than the head: code was pushed after it."]);
-    });
-
-    it("fails when code is pushed after the reply", () => {
-      const comments = [...withChanges, say(23, "Applied: all")];
-      const commits = [commit("a", 5), commit("fix", 20), commit("late", 25)];
-      expect(evaluate(pull({ comments, commits })).reasons).toEqual([
+    it("fails when code is pushed after the reply, by GitHub's clock", () => {
+      const product = say(21, `## Product review\n\nVerdict: approve${at("c")}`);
+      const comments = [withChanges[0], withChanges[1], product, say(23, "QA: Applied all\nSecurity: Applied all")];
+      const commits = [commit("a"), commit("b"), commit("c")];
+      expect(evaluate(pull({ comments, commits, lastCodePushedAt: Date.parse(T(25)) })).reasons).toEqual([
         "The QA verdict is older than the head: code was pushed after the Applied/Declined reply.",
         "The Security verdict is older than the head: code was pushed after the Applied/Declined reply.",
-        "The Product verdict is older than the head: code was pushed after it.",
       ]);
     });
 
-    it("passes after pushes when a re-review from the diff comes after the head", () => {
-      const comments = [...withChanges, say(23, "Applied: all"), say(31, "## QA review\n\nVerdict: approve\n\nFrom the diff."), say(31, "## Security review\n\nVerdict: clear"), say(31, "## Product review\n\nVerdict: approve")];
-      const commits = [commit("a", 5), commit("fix", 20), commit("late", 25)];
-      expect(evaluate(pull({ comments, commits })).ok).toBe(true);
+    it("fails closed when the time of the latest code push is unknown", () => {
+      const product = say(21, `## Product review\n\nVerdict: approve${at("b")}`);
+      const comments = [withChanges[0], withChanges[1], product, say(23, "QA: Applied all\nSecurity: Applied all")];
+      const commits = [commit("a"), commit("b")];
+      expect(evaluate(pull({ comments, commits, lastCodePushedAt: null })).reasons[0]).toMatch(/Could not tell when the latest code was pushed/);
+    });
+
+    it("needs no time check when the verdict reviewed the latest code", () => {
+      const comments = [...withChanges, say(23, "QA: Applied all\nSecurity: Applied all")];
+      expect(evaluate(pull({ comments, lastCodePushedAt: null })).ok).toBe(true);
     });
   });
 });
