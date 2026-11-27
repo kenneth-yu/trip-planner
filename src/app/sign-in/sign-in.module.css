@@ -60,6 +60,12 @@
   gap: 12px;
 }
 
+.tripName {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
 .settings {
   display: inline-flex;
   align-items: center;
