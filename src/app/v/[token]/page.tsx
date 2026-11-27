@@ -17,7 +17,11 @@ import { TripGridView } from "../../trips/[tripId]/trip-grid";
 import { UpNext } from "../../trips/[tripId]/up-next";
 import { ZONE_COOKIE, ZoneHint } from "./zone-hint";
 
-export const metadata: Metadata = { title: "Trip", robots: { index: false, follow: false } };
+export async function generateMetadata({ params }: PageProps<"/v/[token]">): Promise<Metadata> {
+  const { token } = await params;
+  const loaded = await loadLinkPage(token, null);
+  return { title: loaded?.view.trip.name ?? "Link not working", robots: { index: false, follow: false } };
+}
 
 const Query = z.object({ view: z.enum(["grid"]).optional().catch(undefined), day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().catch(undefined) });
 const YOUR_TIME = "your time";

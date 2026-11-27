@@ -33,6 +33,29 @@ describe("visitor status line", () => {
     expect(visitorStatus(view(), at("2026-12-03T12:00:00Z"), true)).toBe("In Tokyo. It is 9:00pm there.");
   });
 
+  it("says where they are on a layover between flights, with the clock there", () => {
+    expect(visitorStatus(view(), at("2026-12-05T07:00:00Z"), true)).toBe("In Hong Kong. It is 3:00pm there.");
+  });
+
+  it("follows the clock change when a stay's city goes through daylight saving", () => {
+    const agg = buildFixtureTrip();
+    agg.items = [
+      {
+        ...fixtureItem(buildFixtureTrip(), (i) => i.type === "stay"),
+        id: "item-london",
+        title: "Stay in London",
+        start: fromLocal("2027-03-26T15:00", "Europe/London"),
+        end: fromLocal("2027-03-30T11:00", "Europe/London"),
+        location: { name: "Stay in London", city: "London" },
+        private: [],
+        deadlines: [],
+      },
+    ];
+    const london = projectTrip(agg, link("America/New_York"));
+    expect(visitorStatus(london, at("2027-03-28T00:30:00Z"), true)).toBe("In London. It is 12:30am there.");
+    expect(visitorStatus(london, at("2027-03-28T01:30:00Z"), true)).toBe("In London. It is 2:30am there.");
+  });
+
   it("says when they were back after the last item", () => {
     expect(visitorStatus(view(), at("2026-12-20T12:00:00Z"), true)).toBe("They were back on Dec 15.");
   });

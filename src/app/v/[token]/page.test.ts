@@ -126,6 +126,15 @@ describe("the visitor page", () => {
     expect(html).not.toContain("<script>alert");
   });
 
+  it("shows a visitor no check hint on a flagged item", async () => {
+    const ctx = present(world.ctx);
+    const token = await linkToken();
+    await ctx.db.update(t.items).set({ flags: ["Check where this is"] }).where(eq(t.items.tripId, TRIP_ID));
+    const html = await render(token);
+    expect(html).not.toContain("Check where this is");
+    expect(html).not.toContain("flagged");
+  });
+
   it("never says your time before the visitor's zone is known, and says it once it is", async () => {
     const token = await linkToken();
     expect(await render(token)).not.toContain("your time");

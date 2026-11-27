@@ -20,6 +20,10 @@ function subscribeNothing() {
 const noReveal: LinkRevealState = { url: null, error: null };
 const noSwitch: SwitchState = { saved: false, error: null };
 
+export async function revealLink(prev: LinkRevealState, form: FormData): Promise<LinkRevealState> {
+  return form.get("intent") === "rotate" ? rotateLinkAction(prev, form) : enableLinkAction(prev, form);
+}
+
 function SwitchRow({ name, label, checked, hint, tripId, action }: { name: string; label: string; checked: boolean; hint?: string; tripId: string; action: (form: FormData) => void }) {
   return (
     <form action={action}>
@@ -59,6 +63,7 @@ function RevealedLink({ url }: { url: string }) {
   }
   return (
     <div>
+      <p className={pageStyles.muted}>You will not see this link again. Make a new link if you lose it.</p>
       <input className={styles.link} readOnly value={url} aria-label="Link for family and friends" onFocus={(e) => e.currentTarget.select()} />
       <div className={pageStyles.row}>
         <button type="button" onClick={copy}>
@@ -78,25 +83,24 @@ function RevealedLink({ url }: { url: string }) {
           {problem}
         </p>
       )}
-      <p className={pageStyles.muted}>You will not see this link again. Make a new link if you lose it.</p>
     </div>
   );
 }
 
 export function LinkControls({ tripId, enabled, showsDeadlines }: { tripId: string; enabled: boolean; showsDeadlines: boolean }) {
-  const [enabledState, enable] = useActionState(enableLinkAction, noReveal);
-  const [rotatedState, rotate, rotating] = useActionState(rotateLinkAction, noReveal);
-  const [, disable] = useActionState(disableLinkAction, noSwitch);
+  const [reveal, revealAction, revealing] = useActionState(revealLink, noReveal);
+  const [disabled, disable] = useActionState(disableLinkAction, noSwitch);
   const [deadlinesState, setDeadlines] = useActionState(setLinkDeadlinesAction, noSwitch);
   const [confirmingAt, setConfirmingAt] = useState<LinkRevealState | null>(null);
-  const confirming = confirmingAt === rotatedState;
-  const url = rotatedState.url ?? enabledState.url;
-  const error = enabledState.error ?? rotatedState.error;
+  const confirming = confirmingAt === reveal;
+  const url = reveal.url;
+  const error = reveal.error ?? disabled.error;
 
   return (
     <div>
-      <form action={enabled ? disable : enable}>
+      <form action={enabled ? disable : revealAction}>
         <input type="hidden" name="tripId" value={tripId} />
+        <input type="hidden" name="intent" value="enable" />
         <label className={styles.option}>
           <input type="checkbox" role="switch" checked={enabled} aria-checked={enabled} onChange={(e) => e.currentTarget.form?.requestSubmit()} />
           <span>
@@ -126,10 +130,11 @@ export function LinkControls({ tripId, enabled, showsDeadlines }: { tripId: stri
             </p>
           )}
           {confirming ? (
-            <form action={rotate} className={styles.inline}>
+            <form action={revealAction} className={styles.inline}>
               <input type="hidden" name="tripId" value={tripId} />
+              <input type="hidden" name="intent" value="rotate" />
               <span>Make a new link? The current one stops working right away.</span>
-              <button disabled={rotating} className={`quiet ${styles.danger}`}>
+              <button disabled={revealing} className={`quiet ${styles.danger}`}>
                 Make new link
               </button>
               <button type="button" autoFocus onClick={() => setConfirmingAt(null)}>
@@ -137,7 +142,7 @@ export function LinkControls({ tripId, enabled, showsDeadlines }: { tripId: stri
               </button>
             </form>
           ) : (
-            <button type="button" className="quiet" onClick={() => setConfirmingAt(rotatedState)}>
+            <button type="button" className="quiet" onClick={() => setConfirmingAt(reveal)}>
               Make a new link
             </button>
           )}
