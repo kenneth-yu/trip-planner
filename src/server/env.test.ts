@@ -145,8 +145,12 @@ describe("server environment", () => {
     }
   });
 
-  it("does not require a database url when self hosted outside Vercel", () => {
-    expect(parseServerEnv({ ...selfHosted, DATABASE_URL: undefined }).databaseUrl).toBeUndefined();
+  it("requires a database url when self hosted outside Vercel in production", () => {
+    expect(failure({ ...selfHosted, DATABASE_URL: undefined }).message).toContain("DATABASE_URL");
+  });
+
+  it("lets the local review server run a production build on the embedded database", () => {
+    expect(parseServerEnv({ ...selfHosted, DATABASE_URL: undefined, REVIEW_SERVER: "1" }).databaseUrl).toBeUndefined();
   });
 
   it("asks for nothing in development and tests", () => {
