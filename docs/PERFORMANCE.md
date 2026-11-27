@@ -77,7 +77,7 @@ About 133 kB of every route is the React and Next.js runtime; the add form adds 
 
 `lighthouserc.json` (mobile) and `perf/lighthouserc.desktop.json` (desktop preset), five runs each on the December trip page, deadlines and inbox, signed in as the demo traveller: `perf/prepare-db.ts` writes a session row for the demo user into the throwaway database and the cookie is sent as a request header. The server is the built app started by `perf/serve.ts` on 127.0.0.1 in production mode with the production environment checks on (a placeholder https `APP_URL`, throwaway keys, `TRUST_PROXY=0`); the dev sign in route is not used, because production mode forbids it. `perf/summary.ts` fails the job if any run was redirected away from the page it asked for (a dropped cookie would otherwise measure the sign in page).
 
-Measured on the first CI run (Lighthouse 12.6.1, three runs per page). Per page medians, then the budget:
+Measured on the first CI run with Lighthouse 12.6.1 (`@lhci/cli` 0.15.1, three runs per page). The job now runs `@lhci/cli` 0.16.1, which bundles Lighthouse 13.6.0, to match the Chrome 157 on the runner (the older Lighthouse intermittently failed with `NO_NAVSTART`); if the medians move under the new version, the budgets are re-baselined with the 2 times the median rule. Per page medians on 12.6.1, then the budget:
 
 | Assertion | Mobile CI medians | Mobile budget | Desktop CI medians | Desktop budget |
 |---|---|---|---|---|
@@ -88,7 +88,7 @@ Measured on the first CI run (Lighthouse 12.6.1, three runs per page). Per page 
 
 Layout shift is 0 everywhere, so 0.1 is the Core Web Vitals "good" threshold, not a margin over a measurement; any real shift is visible against 0. Runs were raised from 3 to 5 and every assertion uses the median, so one noisy run on a shared runner does not fail the job. After the next CI run, re-check these medians and tighten if the margins stay large.
 
-Installability is not a Lighthouse assertion: Lighthouse 12.6.1, the version `@lhci/cli` 0.15.1 runs, has no `installable-manifest` audit, so an assertion on it can never pass. Instead `perf/manifest.perf.test.ts` fetches `/manifest.webmanifest` from the built app, requires a name, short name, start URL, a standalone, fullscreen or minimal-ui display and at least one icon, and requires every icon it names to be served with the right content type. Icon sizes (192 and 512 PNG) belong to WP-15, which should extend that test.
+Installability is not a Lighthouse assertion: Lighthouse 12.6.1 (the version measured above) has no `installable-manifest` audit, so an assertion on it can never pass. Instead `perf/manifest.perf.test.ts` fetches `/manifest.webmanifest` from the built app, requires a name, short name, start URL, a standalone, fullscreen or minimal-ui display and at least one icon, and requires every icon it names to be served with the right content type. Icon sizes (192 and 512 PNG) belong to WP-15, which should extend that test.
 
 ## Proving a budget can fail
 

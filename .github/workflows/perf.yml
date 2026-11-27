@@ -61,11 +61,11 @@ jobs:
       - name: Lighthouse mobile
         id: lh_mobile
         continue-on-error: true
-        run: npx --yes @lhci/cli@0.15.1 autorun --config=lighthouserc.json "--collect.settings.extraHeaders=$LH_HEADERS"
+        run: npx --yes @lhci/cli@0.16.1 autorun --config=lighthouserc.json "--collect.settings.extraHeaders=$LH_HEADERS"
       - name: Lighthouse desktop
         id: lh_desktop
         continue-on-error: true
-        run: npx --yes @lhci/cli@0.15.1 autorun --config=perf/lighthouserc.desktop.json "--collect.settings.extraHeaders=$LH_HEADERS"
+        run: npx --yes @lhci/cli@0.16.1 autorun --config=perf/lighthouserc.desktop.json "--collect.settings.extraHeaders=$LH_HEADERS"
       - name: Write the summary
         id: summary
         if: ${{ !cancelled() }}
