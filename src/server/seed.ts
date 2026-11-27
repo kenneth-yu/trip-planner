@@ -50,6 +50,13 @@ async function assertOnlyDemoData(db: Db, demoTripIds: Set<string>, env: Record<
   if (existing.some((row) => !demoTripIds.has(row.id))) {
     throw new SeedRefused("This database holds a trip that is not demo data, so it is not seeded. Point DATABASE_URL at the preview database.");
   }
+  if (isRemoteDatabase(env.DATABASE_URL)) {
+    const demoUserIds = new Set<string>(Object.values(USERS).map((user) => user.id));
+    const users = await db.select({ id: t.users.id }).from(t.users);
+    if (users.some((row) => !demoUserIds.has(row.id))) {
+      throw new SeedRefused("This database holds an account that is not demo data, so it is not seeded. Point DATABASE_URL at the preview database.");
+    }
+  }
 }
 
 export async function seedEverything(

@@ -34,6 +34,22 @@ describe("seeding demo data", () => {
     expect(() => assertSeedAllowed({ DATABASE_URL: "postgres://u:p@localhost:5432/trips" })).not.toThrow();
   });
 
+  it("refuses a remote database that holds a real account but no trips, even with the preview flag", async () => {
+    const db = await createPgliteDb();
+    await db.insert(t.users).values({ id: "11111111-1111-4111-8111-111111111111", name: "Real Person", email: "real.person@mail.test" });
+    const env = { DATABASE_URL: "postgres://u:p@ep-cool.neon.tech/trips" };
+    await expect(seedEverything(db, env, true)).rejects.toThrow(SeedRefused);
+    expect(await db.select().from(t.trips)).toEqual([]);
+    expect(await db.select().from(t.users)).toHaveLength(1);
+  });
+
+  it("seeds a remote preview database that holds only demo users", async () => {
+    const db = await createPgliteDb();
+    const env = { DATABASE_URL: "postgres://u:p@ep-cool.neon.tech/trips" };
+    await seedEverything(db, env, true);
+    await expect(seedEverything(db, env, true)).resolves.toMatchObject({ created: [] });
+  });
+
   it("seeds an empty database on a preview deployment", async () => {
     const db = await createPgliteDb();
     const { created } = await seedEverything(db, { VERCEL_ENV: "preview" });
