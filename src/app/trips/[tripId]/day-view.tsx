@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import styles from "./days.module.css";
 import formStyles from "@/app/ui/item-form/item-form.module.css";
@@ -50,6 +51,15 @@ function Flight({ card, itemId, item }: { card: FlightCard; itemId: string; item
   );
 }
 
+function Row({ href, linked, className, children }: { href: string; linked: boolean; className: string; children: ReactNode }) {
+  if (!linked) return <div className={className}>{children}</div>;
+  return (
+    <Link className={className} href={href}>
+      {children}
+    </Link>
+  );
+}
+
 function Entry({ entry, view, colors }: { entry: DayEntry; view: TripView; colors: Map<string, string> }) {
   if (entry.kind === "arrival") {
     return <li className={styles.arrival}>{entry.time}  {entry.text}</li>;
@@ -69,12 +79,13 @@ function Entry({ entry, view, colors }: { entry: DayEntry; view: TripView; color
   }
   const item = view.items.find((i) => i.id === entry.itemId);
   const href = `/trips/${view.trip.id}/items/${entry.itemId}`;
+  const linked = view.permissions.role !== "link";
   if (entry.kind === "flight") {
     return (
       <li className={styles.entry}>
-        <Link className={styles.flightRow} href={href}>
+        <Row className={styles.flightRow} href={href} linked={linked}>
           <Flight card={entry.card} itemId={entry.itemId} item={item} />
-        </Link>
+        </Row>
       </li>
     );
   }
@@ -84,7 +95,7 @@ function Entry({ entry, view, colors }: { entry: DayEntry; view: TripView; color
   const place = entry.place;
   return (
     <li className={styles.entry}>
-      <Link className={isStay ? `${styles.row} ${styles.stay} ${(city && colors.get(city)) || ""}` : styles.row} href={href}>
+      <Row className={isStay ? `${styles.row} ${styles.stay} ${(city && colors.get(city)) || ""}` : styles.row} href={href} linked={linked}>
           <span className={styles.time}>
             {entry.time}
             {entry.home && <span className={styles.home}>{entry.home}</span>}
@@ -96,7 +107,7 @@ function Entry({ entry, view, colors }: { entry: DayEntry; view: TripView; color
             {place && entry.kind === "event" && <span className={styles.sub}>{place}</span>}
             {item && item.flags.length > 0 && <span className={styles.flagged}>Check where this is</span>}
           </span>
-      </Link>
+      </Row>
     </li>
   );
 }

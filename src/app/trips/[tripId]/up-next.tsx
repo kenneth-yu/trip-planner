@@ -1,9 +1,19 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import styles from "./phone.module.css";
 import type { UpNextEntry } from "@/domain/timeline/trip-grid";
 import type { Attention } from "@/server/attention";
 
-export function UpNext({ entries, attention, tripId }: { entries: UpNextEntry[]; attention: Attention; tripId: string }) {
+function Wrapper({ linked, href, children }: { linked: boolean; href: string; children: ReactNode }) {
+  if (!linked) return <div className={styles.next}>{children}</div>;
+  return (
+    <Link className={styles.next} href={href}>
+      {children}
+    </Link>
+  );
+}
+
+export function UpNext({ entries, attention, tripId, linked = true }: { entries: UpNextEntry[]; attention: Attention; tripId: string; linked?: boolean }) {
   const soon = attention.deadlines.filter((d) => !d.passed && d.warning);
   const checks = attention.findings.length;
   return (
@@ -24,7 +34,7 @@ export function UpNext({ entries, attention, tripId }: { entries: UpNextEntry[];
         <>
           <h2>Up next</h2>
           {entries.map((e) => (
-            <Link key={e.key} className={styles.next} href={`/trips/${tripId}/items/${e.itemId}`}>
+            <Wrapper key={e.key} linked={linked} href={`/trips/${tripId}/items/${e.itemId}`}>
               <b>{e.time}</b>
               <span>
                 {e.title}
@@ -33,7 +43,7 @@ export function UpNext({ entries, attention, tripId }: { entries: UpNextEntry[];
                   {e.place ? `, ${e.place}` : ""} · {e.inHowLong}
                 </small>
               </span>
-            </Link>
+            </Wrapper>
           ))}
         </>
       )}

@@ -6,6 +6,8 @@ import { getTripView, NotFound } from "./services/trip-service";
 import { AccessDenied } from "@/domain/visibility/project";
 import { safeNextPath, signInPath } from "@/domain/auth/next-path";
 import { REQUEST_PATH_HEADER } from "./security/request-path";
+import { loadViewLinkTrip } from "./services/view-link-service";
+import { FALLBACK_ZONE } from "@/domain/time/zone-hint";
 import type { Requester } from "@/domain/types";
 
 export const NOT_ON_ACCOUNT_PATH = "/not-on-your-account";
@@ -33,4 +35,10 @@ export async function loadTripPage(tripId: string, next = `/trips/${tripId}`) {
     if (e instanceof NotFound || e instanceof AccessDenied) redirect(NOT_ON_ACCOUNT_PATH);
     throw e;
   }
+}
+
+export async function loadLinkPage(token: string, zoneHint: string | null) {
+  const ctx = await requestContext();
+  const view = await loadViewLinkTrip(ctx, token, zoneHint ?? FALLBACK_ZONE);
+  return view ? { ctx, view, zoneKnown: zoneHint !== null } : null;
 }

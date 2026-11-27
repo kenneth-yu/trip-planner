@@ -37,11 +37,14 @@ Inviting is owner only in v1.
 4. Opening a link never changes the role of someone already on the trip.
 
 ## The view link
-* One switch: "Anyone with the link can view".
-* Opens straight to the Now screen. No account needed.
-* "Reset link" makes a new link and breaks the old one immediately.
+* One switch: "Anyone with the link can see this trip", on the Share page, owner only.
+* Opens straight to the Now screen. No account needed. A visitor never reaches the inbox, checks or member names beyond first names, whichever switches are on.
+* Only a hash of the link is stored, so the link is shown once, when the owner turns the switch on or makes a new link. Turning the switch off and on again makes a new link; the old one stays dead.
+* "Make a new link" replaces the old link atomically; the old one stops working on the next request.
+* A turned off, replaced, unknown or malformed link all show the same page: "This link no longer works. Ask whoever sent it for a new one."
 * Its own "Show deadlines" switch, off by default.
-* Visitors see the trip in their device's time zone as the home reference.
+* Visitors see the trip in their device's time zone as the home reference, shown as "your time". The zone comes from a short lived cookie set by the page, parsed as an IANA zone, never stored; without it the page leaves "your time" out.
+* "Viewers see deadlines" is a separate switch for invited viewers; neither switch changes the other.
 
 ## Hidden items
 Each item has a visibility:
