@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { TRIP_ID, USERS } from "@/fixtures/december-trip";
 import { present } from "@/testing/present";
@@ -12,15 +12,20 @@ import { createInvite } from "./sharing-service";
 import { createTrip } from "./trip-service";
 import type { Requester } from "@/domain/types";
 
+beforeAll(() => {
+  process.env.SESSION_SECRET = "test-secret-test-secret-test-secret-0123";
+});
+
 const NY = "America/New_York";
 const link: Requester = { kind: "link", homeZone: NY };
 const asMember = (userId: string): Requester => ({ kind: "member", userId, homeZone: NY });
 const kennyUser = { id: USERS.kenny.id, name: USERS.kenny.name };
 
 let counter = 0;
-async function person(db: Awaited<ReturnType<typeof testContext>>["db"], name: string, email = `p${++counter}@example.test`) {
+async function person(db: Awaited<ReturnType<typeof testContext>>["db"], name: string, email?: string) {
+  counter += 1;
   const id = `00000000-0000-4000-8100-${String(100 + counter).padStart(12, "0")}`;
-  await db.insert(t.users).values({ id, name, email });
+  await db.insert(t.users).values({ id, name, email: email ?? `p${counter}@example.test` });
   return id;
 }
 
@@ -157,7 +162,7 @@ describe("picking a person to invite", () => {
     const picked = await createInvite(ctx, tripId, kenny, { role: "viewer" });
     const plain = await createInvite(ctx, tripId, kenny, { role: "viewer" });
     const rows = await db.select().from(t.invites).where(eq(t.invites.tripId, tripId));
-    const strip = ({ id, tokenHash, createdAt, expiresAt, ...rest }: (typeof rows)[number]) => rest;
+    const strip = (r: (typeof rows)[number]) => ({ tripId: r.tripId, role: r.role, travelerId: r.travelerId, createdBy: r.createdBy, acceptedAt: r.acceptedAt, revokedAt: r.revokedAt, expiresAt: r.expiresAt.getTime() });
     const a = strip(present(rows.find((r) => r.id === picked.inviteId)));
     const b = strip(present(rows.find((r) => r.id === plain.inviteId)));
     expect(a).toEqual(b);

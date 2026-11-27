@@ -5,7 +5,7 @@ import type { CreatedInviteState } from "./actions";
 import { InviteForm } from "./forms";
 
 const hooks = vi.hoisted(() => {
-  const state: { current: CreatedInviteState } = { current: { inviteId: null, travelerId: null, url: null, role: null, error: null } };
+  const state: { current: CreatedInviteState } = { current: { inviteId: null, travelerId: null, url: null, role: null, forName: null, error: null } };
   return state;
 });
 
@@ -40,7 +40,7 @@ describe("the invite form", () => {
   });
 
   it("shows only the result once a link exists, in order, with Create another link", () => {
-    hooks.current = { inviteId, travelerId: jacobId, url: "https://trips.test/invite/tpi_x", role: "viewer", error: null };
+    hooks.current = { inviteId, travelerId: jacobId, url: "https://trips.test/invite/tpi_x", role: "viewer", forName: null, error: null };
     const html = render([inviteId]);
     expect(html).not.toContain("<fieldset");
     expect(html).not.toContain("Create invite link");
@@ -60,7 +60,7 @@ describe("the invite form", () => {
   });
 
   it("leaves out the traveler line for someone new", () => {
-    hooks.current = { inviteId, travelerId: null, url: "https://trips.test/invite/tpi_x", role: "editor", error: null };
+    hooks.current = { inviteId, travelerId: null, url: "https://trips.test/invite/tpi_x", role: "editor", forName: null, error: null };
     expect(render([inviteId])).not.toContain("This link is for");
   });
 

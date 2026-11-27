@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useActionState, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import pageStyles from "../../../ui/page.module.css";
 import styles from "./share.module.css";
 import { roleInWords } from "../../../invite/role-words";
@@ -10,18 +10,20 @@ function subscribeNothing() {
   return () => undefined;
 }
 
-const none: CreatedInviteState = { inviteId: null, travelerId: null, url: null, role: null, error: null };
+const none: CreatedInviteState = { inviteId: null, travelerId: null, url: null, role: null, forName: null, error: null };
 
 export function InviteForm({
   tripId,
   travelers,
   pendingIds,
   memberIds,
+  people,
 }: {
   tripId: string;
   travelers: { id: string; name: string }[];
   pendingIds: string[];
   memberIds: string[];
+  people?: ReactNode;
 }) {
   const [state, action, pending] = useActionState(createInviteAction, none);
   const [hidden, setHidden] = useState<CreatedInviteState | null>(null);
@@ -34,6 +36,10 @@ export function InviteForm({
   const canShare = useSyncExternalStore(subscribeNothing, () => typeof navigator.share === "function", () => false);
   const [copyProblem, setCopyProblem] = useState<string | null>(null);
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+  const sentence = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (shown) sentence.current?.focus();
+  }, [shown]);
 
   async function copy(url: string) {
     setCopyProblem(null);
@@ -59,6 +65,11 @@ export function InviteForm({
     const who = travelers.find((x) => x.id === state.travelerId)?.name.split(" ")[0];
     return (
       <div>
+        {state.forName && (
+          <p ref={sentence} tabIndex={-1}>
+            Send this link to {state.forName}.
+          </p>
+        )}
         {who && <p>This link is for {who}.</p>}
         <input className={styles.link} readOnly value={link} aria-label="Invite link" onFocus={(e) => e.currentTarget.select()} />
         <div className={pageStyles.row}>
@@ -117,6 +128,7 @@ export function InviteForm({
           </label>
         </fieldset>
       )}
+      {people}
       <button disabled={pending}>{pending ? "Creating link" : "Create invite link"}</button>
       {state.error && (
         <p role="alert" className={pageStyles.warning}>
