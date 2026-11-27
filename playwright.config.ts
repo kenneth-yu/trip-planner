@@ -4,6 +4,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 const port = Number(process.env.E2E_PORT ?? 3190);
 const baseURL = `http://localhost:${port}`;
+const production = process.env.E2E_PRODUCTION_BUILD === "1";
 const dbDir = path.join(import.meta.dirname, ".pipeline", "scratch", "e2e", "db");
 
 export default defineConfig({
@@ -18,14 +19,17 @@ export default defineConfig({
   use: { baseURL, trace: "retain-on-failure" },
   projects: [{ name: "phone", use: { ...devices["Desktop Chrome"], viewport: { width: 390, height: 844 } } }],
   webServer: {
-    command: `rm -rf "$PGLITE_DIR" && npx tsx scripts/seed.ts && npx next dev --port ${port}`,
+    command: production
+      ? `npx tsx scripts/migrate.ts && npx tsx scripts/seed.ts --preview-database && npx next start --port ${port}`
+      : `rm -rf "$PGLITE_DIR" && npx tsx scripts/seed.ts && npx next dev --port ${port}`,
     url: `${baseURL}/sign-in`,
     reuseExistingServer: false,
     timeout: 180_000,
     stdout: "pipe",
     env: {
       PGLITE_DIR: dbDir,
-      DATABASE_URL: "",
+      DATABASE_URL: production ? (process.env.E2E_DATABASE_URL ?? "") : "",
+      ...(production ? { VERCEL_ENV: "preview", TRUST_PROXY: "0" } : {}),
       DEV_SIGN_IN: "1",
       EMAIL_API_KEY: "",
       EMAIL_FROM: "",
