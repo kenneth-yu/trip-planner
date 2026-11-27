@@ -174,6 +174,7 @@ export interface PlaceContext {
 }
 
 export interface PlacedZone {
+  known: boolean;
   zone: Zone;
   city: string | undefined;
   problem: string | null;
@@ -182,10 +183,11 @@ export interface PlacedZone {
 export function placeZone(query: PlaceQuery, isoDate: string, ctx: PlaceContext): PlacedZone {
   const contextZone = ctx.zoneOnDate?.(isoDate) ?? null;
   const r = resolvePlace(query, { contextZone, geocoded: ctx.geocode?.(query) ?? null });
-  if (r.status === "sure") return { zone: r.zone, city: r.city ?? query.city, problem: null };
-  if (r.status === "check") return { zone: r.zone, city: r.city ?? query.city, problem: r.reason };
+  if (r.status === "sure") return { known: true, zone: r.zone, city: r.city ?? query.city, problem: null };
+  if (r.status === "check") return { known: true, zone: r.zone, city: r.city ?? query.city, problem: r.reason };
   const fallback = contextZone ?? ctx.homeZone;
   return {
+    known: false,
     zone: fallback,
     city: query.city,
     problem: `${r.reason} Times use ${contextZone ? "the trip's local time that day" : "your home time"} until then.`,

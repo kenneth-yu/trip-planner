@@ -1,10 +1,11 @@
-import { eq } from "drizzle-orm";
+import { createHash } from "node:crypto";
+import { eq, sql } from "drizzle-orm";
 import * as t from "../db/schema";
 import { deleteItem, loadTripAggregate, saveItem, touchTrip, tripsForUser, type DbOrTx } from "../repo/trip-repo";
 import { insertActivity } from "../repo/activity-repo";
 import type { ServiceContext } from "./context";
 import { AccessDenied, assertCanEditItem, assertCanEditTrip, projectTrip, type TripView } from "@/domain/visibility/project";
-import { inputToProposal, placeQueries } from "@/domain/import/quick-add";
+import { inputToProposal, InputProblem, placeQueries } from "@/domain/import/quick-add";
 import { placeContextFor } from "./place-service";
 import type { ProposedItem } from "@/domain/import/proposal";
 import type { Item, Requester, TripAggregate, Visibility } from "@/domain/types";
@@ -31,9 +32,11 @@ export async function listTrips(ctx: ServiceContext, userId: string) {
 }
 
 export async function createTrip(ctx: ServiceContext, owner: { id: string; name: string }, name: string): Promise<string> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new InputProblem("Enter a trip name.");
   const tripId = ctx.newId();
   await ctx.db.transaction(async (tx) => {
-    await tx.insert(t.trips).values({ id: tripId, name, ownerId: owner.id });
+    await tx.insert(t.trips).values({ id: tripId, name: trimmed, ownerId: owner.id });
     await tx.insert(t.memberships).values({ tripId, userId: owner.id, role: "owner" });
     await tx.insert(t.travelers).values({ id: ctx.newId(), tripId, name: owner.name, userId: owner.id });
   });
@@ -91,22 +94,44 @@ function memberId(requester: Requester): string {
   return requester.userId;
 }
 
-export async function quickAddItem(ctx: ServiceContext, tripId: string, requester: Requester, input: unknown, sharing: ItemSharing = {}): Promise<Item> {
+export function idempotentItemId(userId: string, tripId: string, key: string): string {
+  const hex = createHash("sha256").update(`quick-add:${userId}:${tripId}:${key}`).digest("hex");
+  const variant = ((Number.parseInt(hex.charAt(16), 16) & 0x3) | 0x8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+export interface QuickAddOptions {
+  idempotencyKey?: string;
+}
+
+export async function quickAddItem(
+  ctx: ServiceContext,
+  tripId: string,
+  requester: Requester,
+  input: unknown,
+  sharing: ItemSharing = {},
+  options: QuickAddOptions = {},
+): Promise<Item> {
   const actorId = memberId(requester);
   const before = await requireAggregate(ctx.db, tripId);
   assertCanEditTrip(before, requester);
   const places = await placeContextFor(ctx, projectTrip(before, requester).items, requester.homeZone, placeQueries(input));
-  const item = await ctx.db.transaction(async (tx) => {
+  const fixedId = options.idempotencyKey ? idempotentItemId(actorId, tripId, options.idempotencyKey) : null;
+  const outcome = await ctx.db.transaction(async (tx) => {
+    if (fixedId) await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${fixedId}))`);
     const agg = await requireAggregate(tx, tripId);
     assertCanEditTrip(agg, requester);
-    const created = proposalToItem(ctx, tripId, actorId, inputToProposal(input, agg.travelers, places), sharing);
+    const existing = fixedId ? agg.items.find((i) => i.id === fixedId) : undefined;
+    if (existing) return { item: existing, added: false };
+    const proposed = proposalToItem(ctx, tripId, actorId, inputToProposal(input, agg.travelers, places), sharing);
+    const created = fixedId ? { ...proposed, id: fixedId } : proposed;
     await saveItem(tx, created);
     await touchTrip(tx, tripId);
     await insertActivity(tx, { tripId, actorId, action: "created", itemId: created.id, after: created });
-    return created;
+    return { item: created, added: true };
   });
-  await ctx.onTripChanged(tripId);
-  return item;
+  if (outcome.added) await ctx.onTripChanged(tripId);
+  return outcome.item;
 }
 
 export type ItemPatch = Partial<Pick<Item, "title" | "start" | "end" | "notes" | "location" | "travelerIds" | "visibility" | "visibleToUserIds" | "showAsBusy" | "status" | "flight" | "stay">>;

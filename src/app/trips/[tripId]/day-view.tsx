@@ -1,5 +1,8 @@
 import Link from "next/link";
 import styles from "./days.module.css";
+import formStyles from "@/app/ui/item-form/item-form.module.css";
+import { AddedMarker } from "@/app/ui/item-form/added-marker";
+
 import type { Day, DayEntry } from "@/domain/time/days";
 import type { FlightCard } from "@/domain/time/flight-card";
 import type { TripView, VisibleItem } from "@/domain/visibility/project";
@@ -12,10 +15,19 @@ export function cityColors(view: TripView): Map<string, string> {
   return new Map(stayCities(view).map((city, i) => [city, CITY_CLASSES[i % CITY_CLASSES.length]]));
 }
 
-function Flight({ card }: { card: FlightCard }) {
+function SharedCue({ item }: { item: VisibleItem | undefined }) {
+  if (!item || item.visibility === "everyone") return null;
+  return <span className={formStyles.cue}>{item.visibility === "only_me" ? "Only you" : "Not shared with everyone"}</span>;
+}
+
+function Flight({ card, itemId, item }: { card: FlightCard; itemId: string; item: VisibleItem | undefined }) {
   return (
     <div className={styles.flight}>
-      <div className={styles.flightHead}>{card.header}</div>
+      <div className={styles.flightHead}>
+        {card.header}
+        <AddedMarker itemId={itemId} />
+        <SharedCue item={item} />
+      </div>
       <div className={styles.legs}>
         <div>
           <div className={styles.key}>{card.depart.time}</div>
@@ -96,7 +108,7 @@ function Entry({ entry, view, colors, names }: { entry: DayEntry; view: TripView
       <li className={styles.entry}>
         <details>
           <summary style={{ display: "block", padding: 0 }}>
-            <Flight card={entry.card} />
+            <Flight card={entry.card} itemId={entry.itemId} item={item} />
           </summary>
           {detail}
         </details>
@@ -117,6 +129,8 @@ function Entry({ entry, view, colors, names }: { entry: DayEntry; view: TripView
           </span>
           <span>
             {title}
+            {entry.kind !== "check_out" && <AddedMarker itemId={entry.itemId} />}
+            {entry.kind !== "check_out" && <SharedCue item={item} />}
             {place && entry.kind === "event" && <span className={styles.sub}>{place}</span>}
             {item && item.flags.length > 0 && <span className={styles.flagged}>Check where this is</span>}
           </span>
@@ -133,10 +147,21 @@ export function DayView({ view, days, todayKey, only, anchors = true }: { view: 
   if (!days.length) {
     return (
       <div className={styles.empty}>
-        <p className={styles.emptyTitle}>Nothing here yet</p>
-        <p className={styles.free}>
-          Add your first flight or stay, or <Link href={`/trips/${view.trip.id}/connect`}>connect Claude or ChatGPT</Link> to bring in bookings from your email. You review everything before it is added.
-        </p>
+        {view.permissions.canEdit ? (
+          <>
+            <p className={styles.emptyTitle}>Add your first flight or stay.</p>
+            <p>
+              <Link className={formStyles.primaryLink} href={`/trips/${view.trip.id}/add`}>
+                Add flight or stay
+              </Link>
+            </p>
+            <p className={styles.free}>
+              <Link href={`/trips/${view.trip.id}/connect`}>Connect Claude or ChatGPT</Link>
+            </p>
+          </>
+        ) : (
+          <p className={styles.emptyTitle}>Nothing here yet.</p>
+        )}
       </div>
     );
   }
