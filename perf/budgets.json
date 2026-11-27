@@ -72,6 +72,9 @@
     },
     "/trips/new": {
       "budgetGzipBytes": 150000
+    },
+    "/trips/[tripId]/items/[itemId]": {
+      "budgetGzipBytes": 151000
     }
   }
 }

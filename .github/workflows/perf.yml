@@ -51,14 +51,11 @@ jobs:
           done
           cat .next/perf/server.log
           exit 1
-      - name: Sign in through the dev route
+      - name: Read the demo session cookie
         run: |
-          cookie=$(curl -sS -D - -o /dev/null "http://localhost:3199/api/dev/sign-in?as=kenny&next=/" | tr -d '\r' | sed -n 's/^[Ss]et-[Cc]ookie: \([^;]*\).*/\1/p' | head -n 1)
-          if [ -z "$cookie" ]; then
-            echo "::error::The dev sign in route did not set a session cookie."
-            exit 1
-          fi
+          cookie=$(jq -r .cookie .next/perf/server.json)
           echo "::add-mask::$cookie"
+          echo "LH_COOKIE=$cookie" >> "$GITHUB_ENV"
           echo "LH_HEADERS={\"Cookie\":\"$cookie\"}" >> "$GITHUB_ENV"
       - name: Lighthouse mobile
         id: lh_mobile
@@ -69,27 +66,42 @@ jobs:
         continue-on-error: true
         run: npx --yes @lhci/cli@0.15.1 autorun --config=perf/lighthouserc.desktop.json "--collect.settings.extraHeaders=$LH_HEADERS"
       - name: Write the summary
-        if: always()
+        id: summary
+        if: ${{ !cancelled() }}
+        continue-on-error: true
         run: |
-          npx tsx perf/summary.ts > /dev/null
-          cat .next/perf/summary.md >> "$GITHUB_STEP_SUMMARY"
+          status=0
+          npx tsx perf/summary.ts > /dev/null || status=$?
+          if [ -f .next/perf/summary.md ]; then cat .next/perf/summary.md >> "$GITHUB_STEP_SUMMARY"; fi
+          exit $status
+      - name: Keep the session cookie and assistant token out of the artifact
+        id: strip
+        if: ${{ !cancelled() }}
+        run: |
+          rm -f .next/perf/server.json .next/perf/server.log
+          find .next/perf -name '*.report.html' -delete
+          find .next/perf -name '*.report.json' -exec sh -c 'jq "del(.configSettings.extraHeaders)" "$1" > "$1.tmp" && mv "$1.tmp" "$1"' _ {} \;
+          if [ -n "$LH_COOKIE" ] && grep -rqF "$LH_COOKIE" .next/perf; then
+            echo "::error::The session cookie is still present in the perf results, so they will not be uploaded."
+            exit 1
+          fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
+        if: ${{ !cancelled() && steps.strip.outcome == 'success' }}
         with:
           name: perf
           path: .next/perf/
           if-no-files-found: ignore
           retention-days: 14
       - name: Fail when any budget failed
-        if: steps.hot.outcome == 'failure' || steps.bundle.outcome == 'failure' || steps.lh_mobile.outcome == 'failure' || steps.lh_desktop.outcome == 'failure'
+        if: steps.hot.outcome == 'failure' || steps.bundle.outcome == 'failure' || steps.lh_mobile.outcome == 'failure' || steps.lh_desktop.outcome == 'failure' || steps.summary.outcome == 'failure'
         run: |
-          echo "::error::A performance budget failed. Hot paths: ${{ steps.hot.outcome }}, bundle: ${{ steps.bundle.outcome }}, Lighthouse mobile: ${{ steps.lh_mobile.outcome }}, Lighthouse desktop: ${{ steps.lh_desktop.outcome }}."
+          echo "::error::A performance budget failed. Hot paths: ${{ steps.hot.outcome }}, bundle: ${{ steps.bundle.outcome }}, Lighthouse mobile: ${{ steps.lh_mobile.outcome }}, Lighthouse desktop: ${{ steps.lh_desktop.outcome }}, summary: ${{ steps.summary.outcome }}."
           exit 1
 
   comment:
     name: pull request comment
     needs: measure
-    if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -106,7 +118,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
         run: |
-          id=$(gh api "repos/${GH_REPO}/issues/${PR}/comments" --paginate --jq '.[] | select(.body | startswith("<!-- trip-planner-perf -->")) | .id' | head -n 1)
+          id=$(gh api "repos/${GH_REPO}/issues/${PR}/comments" --paginate --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- trip-planner-perf -->"))) | .id' | head -n 1)
           if [ -n "$id" ]; then
             gh api --method PATCH "repos/${GH_REPO}/issues/comments/${id}" --field body=@perf-results/summary.md
           else

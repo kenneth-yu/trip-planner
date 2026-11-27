@@ -1,23 +1,54 @@
 {
   "ci": {
     "collect": {
-      "numberOfRuns": 3,
+      "numberOfRuns": 5,
       "url": [
-        "http://localhost:3199/trips/00000000-0000-4000-8300-000000000001",
-        "http://localhost:3199/trips/00000000-0000-4000-8300-000000000001/deadlines",
-        "http://localhost:3199/trips/00000000-0000-4000-8300-000000000001/inbox"
+        "http://127.0.0.1:3199/trips/00000000-0000-4000-8300-000000000001",
+        "http://127.0.0.1:3199/trips/00000000-0000-4000-8300-000000000001/deadlines",
+        "http://127.0.0.1:3199/trips/00000000-0000-4000-8300-000000000001/inbox"
       ],
-      "settings": { "formFactor": "mobile", "onlyCategories": ["performance"], "onlyAudits": ["installable-manifest"] }
+      "settings": {
+        "formFactor": "mobile",
+        "onlyCategories": [
+          "performance"
+        ]
+      }
     },
     "assert": {
       "assertions": {
-        "categories:performance": ["error", { "minScore": 0.9, "aggregationMethod": "median-run" }],
-        "largest-contentful-paint": ["error", { "maxNumericValue": 2500, "aggregationMethod": "median" }],
-        "cumulative-layout-shift": ["error", { "maxNumericValue": 0.1, "aggregationMethod": "median" }],
-        "total-blocking-time": ["error", { "maxNumericValue": 200, "aggregationMethod": "median" }],
-        "installable-manifest": ["error", { "minScore": 1 }]
+        "categories:performance": [
+          "error",
+          {
+            "minScore": 0.9,
+            "aggregationMethod": "median-run"
+          }
+        ],
+        "largest-contentful-paint": [
+          "error",
+          {
+            "maxNumericValue": 3000,
+            "aggregationMethod": "median"
+          }
+        ],
+        "cumulative-layout-shift": [
+          "error",
+          {
+            "maxNumericValue": 0.1,
+            "aggregationMethod": "median"
+          }
+        ],
+        "total-blocking-time": [
+          "error",
+          {
+            "maxNumericValue": 300,
+            "aggregationMethod": "median"
+          }
+        ]
       }
     },
-    "upload": { "target": "filesystem", "outputDir": ".next/perf/lighthouse-mobile" }
+    "upload": {
+      "target": "filesystem",
+      "outputDir": ".next/perf/lighthouse-mobile"
+    }
   }
 }

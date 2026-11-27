@@ -6,13 +6,17 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { z } from "zod";
+import { sessionCookieName } from "../src/server/auth/config";
 
 const run = promisify(execFile);
+const Prepared = z.object({ token: z.string().min(1), session: z.string().min(1) });
 const BIN = path.join("node_modules", ".bin");
 
 export interface PerfServer {
   baseUrl: string;
   token: string;
+  sessionCookie: string;
   stop: () => Promise<void>;
 }
 
@@ -46,13 +50,11 @@ export async function startPerfServer(): Promise<PerfServer> {
   if (!existsSync(path.join(".next", "BUILD_ID"))) throw new Error("There is no production build. Run npx next build before the performance suite.");
   const dir = await mkdtemp(path.join(tmpdir(), "trip-planner-perf-"));
   const port = Number(process.env.PERF_PORT) || (await freePort());
-  const baseUrl = `http://localhost:${port}`;
+  const baseUrl = `http://127.0.0.1:${port}`;
   const env = {
     ...process.env,
     PGLITE_DIR: path.join(dir, "db"),
     DATABASE_URL: "",
-    DEV_SIGN_IN: "1",
-    VERCEL_ENV: "preview",
     TRUST_PROXY: "0",
     EMAIL_API_KEY: "",
     EMAIL_FROM: "",
@@ -60,7 +62,7 @@ export async function startPerfServer(): Promise<PerfServer> {
     GOOGLE_CLIENT_SECRET: "",
     ADDRESS_LOOKUP: "",
     ADDRESS_LOOKUP_USER_AGENT: "",
-    APP_URL: baseUrl,
+    APP_URL: "https://perf.example.test",
     NEXT_TELEMETRY_DISABLED: "1",
     SESSION_SECRET: randomBytes(32).toString("hex"),
     AUTH_SECRET: randomBytes(32).toString("hex"),
@@ -68,8 +70,9 @@ export async function startPerfServer(): Promise<PerfServer> {
     DATA_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
   };
   const prepared = await run(path.join(BIN, "tsx"), ["perf/prepare-db.ts"], { env });
-  const token = prepared.stdout.trim();
-  const child = spawn(path.join(BIN, "next"), ["start", "--port", String(port)], { env, stdio: "ignore" });
+  const { token, session } = Prepared.parse(JSON.parse(prepared.stdout.trim()));
+  const sessionCookie = `${sessionCookieName({ NODE_ENV: "production" })}=${session}`;
+  const child = spawn(path.join(BIN, "next"), ["start", "--hostname", "127.0.0.1", "--port", String(port)], { env, stdio: "ignore" });
   const stop = async () => {
     child.kill("SIGTERM");
     await rm(dir, { recursive: true, force: true });
@@ -80,5 +83,5 @@ export async function startPerfServer(): Promise<PerfServer> {
     await stop();
     throw e;
   }
-  return { baseUrl, token, stop };
+  return { baseUrl, token, sessionCookie, stop };
 }

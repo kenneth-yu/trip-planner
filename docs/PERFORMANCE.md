@@ -1,6 +1,6 @@
 # Performance budgets
 
-Regressions in hot paths, bundle size, MCP response time and page vitals fail the `perf` workflow (`.github/workflows/perf.yml`). Every budget below came from a measurement, never from a guess, and each was shown to fail on a deliberately slowed function. A budget is changed only by the architect, with the new measurement and the reason added here.
+Regressions in hot paths, bundle size, MCP response time and page vitals fail the `perf` workflow (`.github/workflows/perf.yml`). Every budget below came from a measurement, never from a guess, and each was shown to fail on a deliberately slowed function. A budget is changed only by the architect, with the new measurement and the reason added here. For an urgent fix while travelling, the architect may let a pull request merge with a failing budget, or raise the budget, without a fresh measurement; the reason and the date are then added here and the budget is re-measured afterwards.
 
 All numbers are measured on the built app (`npx next build`, then `next start`), never `next dev`: in dev a trip page takes 0.5 to 1.6 seconds to render, which says nothing about production.
 
@@ -47,7 +47,7 @@ An assistant waiting on a tool call should not feel it; 100 ms keeps a call well
 
 The gzipped size of every script the browser loads for a route on first visit: the shared main files from the route's `build-manifest.json` plus the scripts in its `page_client-reference-manifest.js` (layouts and page), each counted once. The `nomodule` polyfill file is excluded because current browsers do not fetch it. Stylesheets are not counted. The parser is tested on a recorded manifest in `scripts/bundle-budget.test.ts`.
 
-Budget is the measured size plus 7 percent, rounded up to the next 1000 bytes: enough that a rebuild with different chunking does not trip it, small enough that one new library does. Adding a client import of `city-timezones` raised the trip routes from 137 kB to 385 kB and failed every one of them.
+Sizes are bytes, and the kB in the CI report is 1024 bytes (137.3 kB is 140,6xx B). Budget is the measured size plus 7 percent, rounded up to the next 1000 bytes: enough that a rebuild with different chunking does not trip it, small enough that one new library does. Adding a client import of `city-timezones` raised the trip routes from 137 kB to 385 kB and failed every one of them.
 
 | Route | Measured (gzip) | Budget |
 |---|---|---|
@@ -61,23 +61,27 @@ Budget is the measured size plus 7 percent, rounded up to the next 1000 bytes: e
 | /trips/[tripId]/connect | 140,802 B | 151,000 B |
 | /trips/[tripId]/deadlines | 139,647 B | 150,000 B |
 | /trips/[tripId]/inbox | 140,613 B | 151,000 B |
+| /trips/[tripId]/items/[itemId] | 140,352 B | 151,000 B |
 | /trips/new | 139,957 B | 150,000 B |
 
 About 133 kB of every route is the React and Next.js runtime; the add form adds about 25 kB.
 
 ## Lighthouse
 
-`lighthouserc.json` (mobile) and `perf/lighthouserc.desktop.json` (desktop preset), three runs each on the December trip page, deadlines and inbox, signed in as the demo traveller by sending the session cookie from `/api/dev/sign-in` as a request header. The server is the built app started by `perf/serve.ts` with `VERCEL_ENV=preview` so the dev sign in route is allowed outside development.
+`lighthouserc.json` (mobile) and `perf/lighthouserc.desktop.json` (desktop preset), five runs each on the December trip page, deadlines and inbox, signed in as the demo traveller: `perf/prepare-db.ts` writes a session row for the demo user into the throwaway database and the cookie is sent as a request header. The server is the built app started by `perf/serve.ts` on 127.0.0.1 in production mode with the production environment checks on (a placeholder https `APP_URL`, throwaway keys, `TRUST_PROXY=0`); the dev sign in route is not used, because production mode forbids it. `perf/summary.ts` fails the job if any run was redirected away from the page it asked for (a dropped cookie would otherwise measure the sign in page).
 
-| Assertion | Budget | Reason |
-|---|---|---|
-| Performance score (median run) | at least 0.9 | Lighthouse's own "good" band |
-| Largest contentful paint | at most 2500 ms | Core Web Vitals "good" threshold |
-| Cumulative layout shift | at most 0.1 | Core Web Vitals "good" threshold |
-| Total blocking time | at most 200 ms | Lighthouse's "good" threshold |
-| Installable manifest audit | score 1 | The app is an installable PWA (CLAUDE.md) |
+Measured on the first CI run (Lighthouse 12.6.1, three runs per page). Per page medians, then the budget:
 
-Not measured locally: Lighthouse is not installed here, so these start at the published "good" thresholds, not at a measurement of this app. As a sanity check, the built trip, deadlines and inbox pages answered in 40 to 170 ms from the server with no third party requests. The first runs on CI must be read from the `perf` artifact, and the architect should tighten each threshold to the measured value plus headroom and record it here. The installable manifest audit may fail until WP-15 adds PNG icons, and a Lighthouse version that no longer ships the audit makes the assertion fail loudly instead of passing.
+| Assertion | Mobile CI medians | Mobile budget | Desktop CI medians | Desktop budget |
+|---|---|---|---|---|
+| Performance score (median run) | 97 to 99 (one outlier run scored 84) | at least 0.9 | 100 | at least 0.95 |
+| Largest contentful paint | 1832 to 2343 ms | at most 3000 ms (28 percent over the slowest median, above the slowest single run at 2377 ms) | 577 to 649 ms | at most 1000 ms (54 percent over the slowest run) |
+| Cumulative layout shift | 0 | at most 0.1 | 0 | at most 0.1 |
+| Total blocking time | 68 to 120 ms (one outlier run at 615 ms) | at most 300 ms | 0 to 39 ms | at most 100 ms |
+
+Layout shift is 0 everywhere, so 0.1 is the Core Web Vitals "good" threshold, not a margin over a measurement; any real shift is visible against 0. Runs were raised from 3 to 5 and every assertion uses the median, so one noisy run on a shared runner does not fail the job. After the next CI run, re-check these medians and tighten if the margins stay large.
+
+Installability is not a Lighthouse assertion: Lighthouse 12.6.1, the version `@lhci/cli` 0.15.1 runs, has no `installable-manifest` audit, so an assertion on it can never pass. Instead `perf/manifest.perf.test.ts` fetches `/manifest.webmanifest` from the built app, requires a name, short name, start URL, a standalone, fullscreen or minimal-ui display and at least one icon, and requires every icon it names to be served with the right content type. Icon sizes (192 and 512 PNG) belong to WP-15, which should extend that test.
 
 ## Proving a budget can fail
 

@@ -1,17 +1,43 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
 export const MARKER = "<!-- trip-planner-perf -->";
 const DIR = path.join(".next", "perf");
 
 const Measurements = z.array(z.object({ name: z.string(), medianMs: z.number(), budgetMs: z.number(), samples: z.number() }));
-const Audit = z.object({ numericValue: z.number().optional(), score: z.number().nullable() });
+const Audit = z.object({ numericValue: z.number().optional() });
 const Lhr = z.object({
+  requestedUrl: z.string(),
   finalDisplayedUrl: z.string(),
   categories: z.object({ performance: z.object({ score: z.number().nullable() }) }),
   audits: z.record(z.string(), Audit),
 });
+export type Report = z.infer<typeof Lhr>;
+
+export function isReportFile(name: string): boolean {
+  return /\.report\.json$/.test(name);
+}
+
+export function parseReport(json: string): Report {
+  return Lhr.parse(JSON.parse(json));
+}
+
+export function redirected(r: Report): boolean {
+  return new URL(r.requestedUrl).pathname !== new URL(r.finalDisplayedUrl).pathname;
+}
+
+function pagePath(r: Report): string {
+  return new URL(r.finalDisplayedUrl).pathname.replace(/^\/trips\/[^/]+/, "/trips/:trip");
+}
+
+export function lighthouseRows(reports: Report[]): string[] {
+  return reports.map((r) => {
+    const num = (id: string) => r.audits[id]?.numericValue ?? 0;
+    return `| ${pagePath(r)} | ${Math.round((r.categories.performance.score ?? 0) * 100)} | ${Math.round(num("largest-contentful-paint"))} ms | ${num("cumulative-layout-shift").toFixed(3)} | ${Math.round(num("total-blocking-time"))} ms | ${redirected(r) ? "redirected" : "ok"} |`;
+  });
+}
 
 function readJson(file: string): unknown {
   return JSON.parse(readFileSync(file, "utf8"));
@@ -27,19 +53,17 @@ function timingTable(title: string, files: string[]): string {
   return [`### ${title}`, "", "| Measure | Median | Budget | Result |", "|---|---|---|---|", ...lines, ""].join("\n");
 }
 
-function lighthouseTable(preset: string): string {
+function reportsIn(preset: string): Report[] | null {
   const dir = path.join(DIR, `lighthouse-${preset}`);
-  if (!existsSync(dir)) return `### Lighthouse ${preset}\n\nNot run.\n`;
-  const lines = readdirSync(dir)
-    .filter((f) => /^lhr-.*\.json$/.test(f))
-    .map((f) => Lhr.parse(readJson(path.join(dir, f))))
-    .map((r) => {
-      const a = r.audits;
-      const url = new URL(r.finalDisplayedUrl).pathname.replace(/^\/trips\/[^/]+/, "/trips/:trip");
-      const num = (id: string) => a[id]?.numericValue;
-      return `| ${url} | ${Math.round((r.categories.performance.score ?? 0) * 100)} | ${Math.round(num("largest-contentful-paint") ?? 0)} ms | ${(num("cumulative-layout-shift") ?? 0).toFixed(3)} | ${Math.round(num("total-blocking-time") ?? 0)} ms | ${a["installable-manifest"]?.score === 1 ? "pass" : "fail"} |`;
-    });
-  return [`### Lighthouse ${preset}`, "", "| Page (every run) | Score | LCP | CLS | TBT | Installable |", "|---|---|---|---|---|---|", ...lines, ""].join("\n");
+  if (!existsSync(dir)) return null;
+  return readdirSync(dir)
+    .filter(isReportFile)
+    .map((f) => parseReport(readFileSync(path.join(dir, f), "utf8")));
+}
+
+function lighthouseTable(preset: string, reports: Report[] | null): string {
+  if (!reports?.length) return `### Lighthouse ${preset}\n\nNot run.\n`;
+  return [`### Lighthouse ${preset}`, "", "| Page (every run) | Score | LCP | CLS | TBT | Signed in |", "|---|---|---|---|---|---|", ...lighthouseRows(reports), ""].join("\n");
 }
 
 function bundleSection(): string {
@@ -47,6 +71,17 @@ function bundleSection(): string {
   return `### First load JavaScript\n\n${existsSync(file) ? readFileSync(file, "utf8") : "Not run.\n"}`;
 }
 
-const body = [MARKER, "## Performance", "", timingTable("Hot paths", ["hot-paths"]), timingTable("MCP get_trip", ["mcp"]), bundleSection(), lighthouseTable("mobile"), lighthouseTable("desktop")].join("\n");
-writeFileSync(path.join(DIR, "summary.md"), body);
-process.stdout.write(body);
+function main(): void {
+  const mobile = reportsIn("mobile");
+  const desktop = reportsIn("desktop");
+  const body = [MARKER, "## Performance", "", timingTable("Hot paths", ["hot-paths"]), timingTable("MCP get_trip", ["mcp"]), bundleSection(), lighthouseTable("mobile", mobile), lighthouseTable("desktop", desktop)].join("\n");
+  writeFileSync(path.join(DIR, "summary.md"), body);
+  process.stdout.write(body);
+  const bounced = [...(mobile ?? []), ...(desktop ?? [])].filter(redirected);
+  if (bounced.length) {
+    console.error(`${bounced.length} Lighthouse run(s) were redirected away from the page they asked for, so they did not measure a signed in page. Check that the session cookie is sent.`);
+    process.exit(1);
+  }
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) main();
