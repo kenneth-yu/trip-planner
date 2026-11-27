@@ -1,39 +1,22 @@
-export const REQUIRED_CHECKS = [
-  "lint",
-  "typecheck",
-  "test",
-  "build",
-  "audit",
-  "migrations",
-  "statecharts",
-  "postgres",
-  "prod-guard",
-  "gitleaks",
-  "e2e phone",
-];
+import { readFileSync } from "node:fs";
 
-const INTEGRATION_PATHS = [
-  /^drizzle\//,
-  /^drizzle\.config\./,
-  /(^|\/)schema\.ts$/,
-  /(^|\/)nav\.tsx$/,
-  /(^|\/)layout\.tsx$/,
-  /^src\/proxy\.ts$/,
-  /(^|\/)package(-lock)?\.json$/,
-  /^next\.config\./,
-  /^eslint\.config\./,
-  /^vitest\.config\./,
-  /^playwright\.config\./,
-  /^\.github\//,
-  /^\.claude\//,
-  /^\.gitleaks(ignore|\.toml)$/,
-  /^CLAUDE\.md$/,
-  /^docs\/PIPELINE\.md$/,
-  /^tsconfig\.json$/,
-  /^vercel\.json$/,
-  /^scripts\/build/,
-  /^tools\/merge-gate/,
-];
+export const CONFIG = JSON.parse(readFileSync(new URL("./merge-gate-config.json", import.meta.url), "utf8"));
+
+export const REQUIRED_CHECKS = CONFIG.requiredChecks;
+
+const compile = (patterns) => patterns.map((pattern) => new RegExp(pattern));
+const DOCS_ONLY = compile(CONFIG.docsOnly);
+const OWNER_ONLY = compile(CONFIG.ownerOnly);
+const SEMVER_PATHS = compile(CONFIG.semver.paths);
+const SEMVER_EXCLUDE = compile(CONFIG.semver.exclude);
+const MAPPING = Object.fromEntries(Object.entries(CONFIG.reviewers).map(([key, rule]) => [key, { paths: compile(rule.paths), exclude: compile(rule.exclude) }]));
+
+export class GateDataError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "GateDataError";
+  }
+}
 
 const VOCABULARY = {
   approve: { positive: "approve", conditional: "approve with changes", negative: "send back" },
@@ -45,14 +28,35 @@ const REVIEWERS = [
   { key: "security", label: "Security", heading: /^##\s+Security review(\s+re-review)?(\s*\(.*\))?\s*$/i, words: VOCABULARY.clear },
   { key: "product", label: "Product", heading: /^##\s+Product review(\s+re-review)?(\s*\(.*\))?\s*$/i, words: VOCABULARY.approve },
   { key: "ux", label: "UX lead", heading: /^##\s+UX review\s*\(lead\)(\s+re-review)?(\s*\(.*\))?\s*$/i, words: VOCABULARY.approve },
+  { key: "architect", label: "Architect", heading: /^##\s+Architect review(\s+re-review)?(\s*\(.*\))?\s*$/i, words: VOCABULARY.approve },
 ];
 
 export function isIntegrationPath(path) {
-  return INTEGRATION_PATHS.some((pattern) => pattern.test(path));
+  return MAPPING.architect.paths.some((pattern) => pattern.test(path));
 }
 
-export function touchesUserInterface(paths) {
-  return paths.some((path) => path.startsWith("src/app/") || path.endsWith(".css"));
+export function isDocsOnly(paths) {
+  return paths.length > 0 && paths.every((path) => DOCS_ONLY.some((pattern) => pattern.test(path)));
+}
+
+export function requiredReviewers(paths) {
+  if (isDocsOnly(paths)) return [];
+  return Object.keys(MAPPING).filter((key) => paths.some((path) => MAPPING[key].paths.some((p) => p.test(path)) && !MAPPING[key].exclude.some((p) => p.test(path))));
+}
+
+export function touchesOwnerOnly(paths) {
+  return paths.some((path) => OWNER_ONLY.some((pattern) => pattern.test(path)));
+}
+
+export function changesApp(paths) {
+  return paths.some((path) => SEMVER_PATHS.some((p) => p.test(path)) && !SEMVER_EXCLUDE.some((p) => p.test(path)));
+}
+
+export function semverOf(body) {
+  const declared = (body ?? "").split("\n").map((line) => line.trim()).filter((line) => /^semver:/i.test(line));
+  if (declared.length !== 1) return { level: null, problem: declared.length === 0 ? "has no Semver line" : "has more than one Semver line" };
+  const match = declared[0].match(/^semver:\s*(major|minor|patch)\s*$/i);
+  return match ? { level: match[1].toLowerCase(), problem: null } : { level: null, problem: "has a Semver line that is not major, minor or patch" };
 }
 
 function lines(body) {
@@ -75,7 +79,7 @@ export function parseVerdict(body) {
   return { reviewer: reviewer.key, label: reviewer.label, outcome, reviewedSha: reviewed ? reviewed[1] : null, text: text.replace(/[^\x20-\x7e]/g, "").slice(0, 80) };
 }
 
-const NAMES = { qa: /^qa\b/i, security: /^security\b/i, product: /^product\b/i, ux: /^ux\b/i };
+const NAMES = { qa: /^qa\b/i, security: /^security\b/i, product: /^product\b/i, ux: /^ux\b/i, architect: /^architect\b/i };
 
 export function isReplyTo(reviewer, body) {
   if (parseVerdict(body)) return false;
@@ -96,7 +100,7 @@ function reasonsForChecks(checkRuns) {
   for (const name of REQUIRED_CHECKS) {
     const run = latest.get(name);
     if (!run) reasons.push(`Required check "${name}" has not reported on the head.`);
-    else if (run.status !== "completed" || run.conclusion !== "success") reasons.push(`Required check "${name}" is not green (${run.status === "completed" ? run.conclusion : run.status}).`);
+    else if (run.status !== "completed" || !["success", "skipped"].includes(run.conclusion)) reasons.push(`Required check "${name}" is not green (${run.status === "completed" ? run.conclusion : run.status}).`);
   }
   return reasons;
 }
@@ -111,7 +115,8 @@ export function lastCodeCommit(commits, verifiedMerges) {
 }
 
 function reasonsForVerdicts(input, paths) {
-  const required = REVIEWERS.filter((r) => r.key !== "ux" || touchesUserInterface(paths));
+  const needed = new Set(requiredReviewers(paths));
+  const required = REVIEWERS.filter((r) => needed.has(r.key));
   const trusted = input.comments
     .filter((c) => c.author === input.reviewerLogin && c.authorType !== "Bot")
     .map((c) => ({ ...c, time: Date.parse(c.updatedAt) }))
@@ -165,12 +170,55 @@ function reasonsForVerdicts(input, paths) {
 export function evaluate(input) {
   const paths = input.files.flatMap((f) => [f.filename, f.previousFilename].filter((p) => typeof p === "string"));
   const reasons = [];
+  const labels = input.labels ?? [];
+  const held = CONFIG.holdLabels.filter((label) => labels.includes(label));
+  if (held.length > 0) reasons.push(`The pull request carries the ${held.map((l) => `"${l}"`).join(" and ")} label.`);
+  const ownerOnly = touchesOwnerOnly(paths);
+  if (ownerOnly) reasons.push("The pull request touches .claude/ or CLAUDE.md, which only the owner may merge.");
   reasons.push(...reasonsForChecks(input.checkRuns));
-  if (!Number.isInteger(input.behindBy)) reasons.push("Could not tell whether the branch is behind main.");
-  else if (input.behindBy > 0) reasons.push(`The branch is ${input.behindBy} commit(s) behind main. Merge origin/main into it.`);
-  if (input.files.length !== input.changedFiles) reasons.push(`Only ${input.files.length} of ${input.changedFiles} changed files could be read, so integration paths cannot be ruled out.`);
+  if (input.files.length !== input.changedFiles) reasons.push(`Only ${input.files.length} of ${input.changedFiles} changed files could be read, so the reviewers it needs cannot be worked out.`);
   reasons.push(...reasonsForVerdicts(input, paths));
-  const owned = [...new Set(paths.filter(isIntegrationPath))];
-  if (owned.length > 0) reasons.push(`The pull request touches integration-owned paths: ${owned.join(", ")}. The architect merges it.`);
-  return { ok: reasons.length === 0, reasons };
+  if (changesApp(paths)) {
+    const semver = semverOf(input.body);
+    if (semver.problem) reasons.push(`The pull request body ${semver.problem}. A pull request that changes the app needs exactly one line "Semver: major", "Semver: minor" or "Semver: patch".`);
+  }
+  const behindKnown = Number.isInteger(input.behindBy);
+  if (!behindKnown) reasons.push("Could not tell whether the branch is behind main.");
+  return { ok: reasons.length === 0, reasons, behind: behindKnown && input.behindBy > 0, needsOwner: ownerOnly, held: held.length > 0 };
+}
+
+function need(condition, message) {
+  if (!condition) throw new GateDataError(message);
+}
+
+export function buildInput(raw, reviewerLogin) {
+  const { pr, files, comments, commits, checkRuns, checkRunsTotal, compare } = raw;
+  need(pr && typeof pr === "object", "The pull request could not be read.");
+  need(typeof pr.head?.sha === "string" && /^[0-9a-f]{40}$/.test(pr.head.sha), "The head commit id is missing or malformed.");
+  need(pr.state === "open" && pr.base?.ref === "main", "The pull request is not an open pull request against main.");
+  need(typeof pr.draft === "boolean", "Whether the pull request is a draft is missing.");
+  need(Number.isInteger(pr.changed_files), "The changed file count is missing.");
+  need(Number.isInteger(pr.commits), "The commit count is missing.");
+  need(Array.isArray(pr.labels), "The labels are missing.");
+  need(Array.isArray(files) && files.every((f) => typeof f.filename === "string"), "The changed files could not be listed.");
+  need(files.length === pr.changed_files, `Only ${files.length} of ${pr.changed_files} changed files could be listed.`);
+  need(Array.isArray(commits) && commits.every((c) => typeof c.sha === "string" && Array.isArray(c.parents)), "The commits could not be listed.");
+  need(commits.length === pr.commits, `Only ${commits.length} of ${pr.commits} commits could be listed.`);
+  need(Array.isArray(comments) && comments.every((c) => typeof c.user?.login === "string" && typeof c.updated_at === "string" && typeof c.body === "string"), "The comments could not be read.");
+  need(Array.isArray(checkRuns) && Number.isInteger(checkRunsTotal) && checkRuns.length === checkRunsTotal, "The check runs could not all be read.");
+  need(Number.isInteger(compare?.behind_by), "How far the branch is behind main could not be read.");
+  need(typeof reviewerLogin === "string" && reviewerLogin.length > 0, "The trusted reviewer account is not known.");
+  return {
+    reviewerLogin,
+    labels: pr.labels.map((l) => l.name),
+    body: pr.body ?? "",
+    files: files.map((f) => ({ filename: f.filename, previousFilename: f.previous_filename })),
+    changedFiles: pr.changed_files,
+    comments: comments.map((c) => ({ author: c.user.login, authorType: c.user.type, body: c.body, updatedAt: c.updated_at })),
+    commits: commits.map((c) => ({ sha: c.sha, parents: c.parents.map((p) => p.sha) })),
+    checkRuns: checkRuns.map((r) => ({ id: r.id, name: r.name, status: r.status, conclusion: r.conclusion, appSlug: r.app ? r.app.slug : "" })),
+    behindBy: compare.behind_by,
+    verifiedMerges: raw.verifiedMerges ?? new Set(),
+    lastCodePushedAt: raw.lastCodePushedAt ?? null,
+  };
 }

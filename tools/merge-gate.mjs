@@ -1,12 +1,14 @@
 import { execFileSync } from "node:child_process";
-import { evaluate, lastCodeCommit } from "./merge-gate-lib.mjs";
+import { buildInput, evaluate, GateDataError, lastCodeCommit } from "./merge-gate-lib.mjs";
 
 const REPO = "kenneth-yu/trip-planner";
+const MARKER = "<!-- merge-gate -->";
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
-const number = args.find((arg) => /^\d+$/.test(arg));
-if (!number) {
-  process.stderr.write("Usage: node tools/merge-gate.mjs <pr number> [--dry-run]\n");
+const sweep = args.includes("--sweep");
+const single = args.find((arg) => /^\d+$/.test(arg));
+if (!sweep && !single) {
+  process.stderr.write("Usage: node tools/merge-gate.mjs <pr number> [--dry-run]\n       node tools/merge-gate.mjs --sweep [--dry-run]\n");
   process.exit(2);
 }
 
@@ -14,8 +16,8 @@ function gh(parameters) {
   return execFileSync("gh", parameters, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 120000 });
 }
 
-function api(path) {
-  return JSON.parse(gh(["api", path]));
+function api(path, extra = []) {
+  return JSON.parse(gh(["api", path, ...extra]));
 }
 
 function apiList(path, selector) {
@@ -44,66 +46,95 @@ function firstCheckStart(sha) {
   return starts.length > 0 ? Math.min(...starts) : null;
 }
 
-function refuse(message) {
-  process.stderr.write(`Not merging pull request ${number}:\n${message}\n`);
-  process.exit(1);
+function reviewerLogin() {
+  return process.env.GATE_OWNER || api("user").login;
 }
 
-function gather() {
+function gather(number) {
   const pr = api(`repos/${REPO}/pulls/${number}`);
-  if (pr.state !== "open") refuse(`- The pull request is ${pr.state}, not open.`);
-  if (pr.base.ref !== "main") refuse(`- The pull request targets ${pr.base.ref}, not main.`);
   const head = pr.head.sha;
-  if (!/^[0-9a-f]{40}$/.test(head)) refuse("- The head commit id is not a full commit id.");
-  const reviewerLogin = api("user").login;
-  const files = apiList(`repos/${REPO}/pulls/${number}/files`, ".[]").map((f) => ({ filename: f.filename, previousFilename: f.previous_filename }));
-  const comments = apiList(`repos/${REPO}/issues/${number}/comments`, ".[]").map((c) => ({
-    author: c.user.login,
-    authorType: c.user.type,
-    body: c.body,
-    updatedAt: c.updated_at,
-  }));
-  const commits = apiList(`repos/${REPO}/pulls/${number}/commits`, ".[]").map((c) => ({
-    sha: c.sha,
-    parents: c.parents.map((p) => p.sha),
-  }));
-  const checkRuns = apiList(`repos/${REPO}/commits/${head}/check-runs`, ".check_runs[]").map((r) => ({
-    id: r.id,
-    name: r.name,
-    status: r.status,
-    conclusion: r.conclusion,
-    appSlug: r.app ? r.app.slug : "",
-  }));
-  const behindBy = api(`repos/${REPO}/compare/main...${head}`).behind_by;
+  const files = apiList(`repos/${REPO}/pulls/${number}/files`, ".[]");
+  const comments = apiList(`repos/${REPO}/issues/${number}/comments`, ".[]");
+  const commits = apiList(`repos/${REPO}/pulls/${number}/commits`, ".[]").map((c) => ({ sha: c.sha, parents: c.parents }));
+  const checkRuns = apiList(`repos/${REPO}/commits/${head}/check-runs`, ".check_runs[]");
+  const checkRunsTotal = api(`repos/${REPO}/commits/${head}/check-runs?per_page=1`).total_count;
+  const compare = api(`repos/${REPO}/compare/main...${head}`);
   git(["fetch", "-q", "origin", "main", `pull/${number}/head`]);
   const verifiedMerges = new Set();
   for (const commit of commits.filter((c) => c.parents.length === 2)) {
-    const status = api(`repos/${REPO}/compare/${commit.parents[1]}...main`).status;
-    if ((status === "ahead" || status === "identical") && mergeAddsNothing(commit)) verifiedMerges.add(commit.sha);
+    const status = api(`repos/${REPO}/compare/${commit.parents[1].sha}...main`).status;
+    if ((status === "ahead" || status === "identical") && mergeAddsNothing({ sha: commit.sha, parents: commit.parents.map((p) => p.sha) })) verifiedMerges.add(commit.sha);
   }
-  const lastCode = lastCodeCommit(commits, verifiedMerges);
+  const normalized = commits.map((c) => ({ sha: c.sha, parents: c.parents.map((p) => p.sha) }));
+  const lastCode = lastCodeCommit(normalized, verifiedMerges);
   const lastCodePushedAt = lastCode ? firstCheckStart(lastCode.sha) : null;
-  return { head, input: { reviewerLogin, files, changedFiles: pr.changed_files, comments, commits, checkRuns, behindBy, verifiedMerges, lastCodePushedAt } };
+  return { pr, files, comments, commits, checkRuns, checkRunsTotal, compare, verifiedMerges, lastCodePushedAt };
 }
 
-let gathered;
+function upsertComment(number, lines) {
+  const body = `${MARKER}\n## Merge gate\n\n${lines.join("\n")}\n`;
+  const existing = apiList(`repos/${REPO}/issues/${number}/comments`, ".[] | {id, body}").find((c) => typeof c.body === "string" && c.body.startsWith(MARKER));
+  if (existing && existing.body === body) return;
+  if (existing) gh(["api", "-X", "PATCH", `repos/${REPO}/issues/comments/${existing.id}`, "-f", `body=${body}`]);
+  else gh(["api", "-X", "POST", `repos/${REPO}/issues/${number}/comments`, "-f", `body=${body}`]);
+}
+
+function say(message) {
+  process.stdout.write(`${message}\n`);
+}
+
+function processPullRequest(number) {
+  let raw;
+  let input;
+  try {
+    raw = gather(number);
+    input = buildInput(raw, reviewerLogin());
+  } catch (error) {
+    const reason = error instanceof GateDataError ? error.message : `GitHub data could not be read (${error instanceof Error ? error.message.split("\n")[0].slice(0, 120) : "unknown error"}).`;
+    say(`#${number}: not merging, ${reason}`);
+    if (!dryRun) upsertComment(number, ["Not merging: the gate could not read everything it needs, so it merges nothing.", "", `- ${reason}`]);
+    return "blocked";
+  }
+  const verdict = evaluate(input);
+  const branch = raw.pr.head.ref;
+  if (!verdict.ok) {
+    say(`#${number}: blocked\n${verdict.reasons.map((r) => `  - ${r}`).join("\n")}`);
+    if (!dryRun) {
+      upsertComment(number, ["Not merging yet. What is missing:", "", ...verdict.reasons.map((r) => `- ${r}`)]);
+      if (verdict.needsOwner && !input.labels.includes("needs-owner")) gh(["api", "-X", "POST", `repos/${REPO}/issues/${number}/labels`, "-f", "labels[]=needs-owner"]);
+    }
+    return "blocked";
+  }
+  if (verdict.behind) {
+    say(`#${number}: passes, but the branch is behind main`);
+    if (dryRun) return "updated";
+    gh(["api", "-X", "PUT", `repos/${REPO}/pulls/${number}/update-branch`, "-f", `expected_head_sha=${raw.pr.head.sha}`]);
+    for (const workflow of ["ci.yml", "security.yml"]) gh(["workflow", "run", workflow, "--repo", REPO, "--ref", branch]);
+    upsertComment(number, ["Everything else passes. The branch was behind main, so the gate updated it and started the checks again. It merges once they pass."]);
+    return "updated";
+  }
+  say(`#${number}: passes at ${raw.pr.head.sha}`);
+  if (dryRun) return "merged";
+  gh(["pr", "merge", String(number), "--repo", REPO, "--merge", "--delete-branch", "--match-head-commit", raw.pr.head.sha]);
+  for (const workflow of ["ci.yml", "perf.yml"]) gh(["workflow", "run", workflow, "--repo", REPO, "--ref", "main"]);
+  say(`#${number}: merged`);
+  return "merged";
+}
+
+if (single) {
+  const outcome = processPullRequest(single);
+  process.exit(outcome === "blocked" ? 1 : 0);
+}
+
+let numbers;
 try {
-  gathered = gather();
+  numbers = apiList(`repos/${REPO}/pulls?state=open&per_page=100`, '.[] | select(.draft == false and .head.repo.full_name == "' + REPO + '" and .base.ref == "main") | .number').sort((a, b) => a - b);
 } catch (error) {
-  refuse(`- Could not read the pull request from GitHub (${error instanceof Error ? error.message.split("\n")[0].slice(0, 120) : "unknown error"}).`);
+  process.stderr.write(`The open pull requests could not be listed (${error instanceof Error ? error.message.split("\n")[0].slice(0, 120) : "unknown error"}). Merging nothing.\n`);
+  process.exit(1);
 }
-
-const verdict = evaluate(gathered.input);
-if (!verdict.ok) refuse(verdict.reasons.map((reason) => `- ${reason}`).join("\n"));
-
-if (dryRun) {
-  process.stdout.write(`Pull request ${number} passes the merge gate at ${gathered.head}. Dry run, not merging.\n`);
-  process.exit(0);
+for (const number of numbers) {
+  const outcome = processPullRequest(number);
+  if (outcome === "merged" || outcome === "updated") break;
 }
-
-try {
-  gh(["pr", "merge", number, "--repo", REPO, "--merge", "--delete-branch", "--match-head-commit", gathered.head]);
-} catch (error) {
-  refuse(`- GitHub refused the merge (${error instanceof Error ? error.message.split("\n")[0].slice(0, 120) : "unknown error"}).`);
-}
-process.stdout.write(`Merged pull request ${number} at ${gathered.head}.\n`);
+process.exit(0);

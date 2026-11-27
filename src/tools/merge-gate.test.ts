@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluate, isIntegrationPath, isReplyTo, lastCodeCommit, parseVerdict, REQUIRED_CHECKS } from "../../tools/merge-gate-lib.mjs";
+import { buildInput, changesApp, evaluate, GateDataError, isDocsOnly, isIntegrationPath, isReplyTo, lastCodeCommit, parseVerdict, REQUIRED_CHECKS, requiredReviewers, semverOf, touchesOwnerOnly } from "../../tools/merge-gate-lib.mjs";
 
 const T = (minute: number) => `2026-11-27T10:${String(minute).padStart(2, "0")}:00Z`;
 const ME = "kenneth-yu";
@@ -24,7 +24,7 @@ interface Commit {
   parents: string[];
 }
 
-const greenRuns: Run[] = REQUIRED_CHECKS.map((name, index) => ({ id: 100 + index, name, status: "completed", conclusion: "success", appSlug: "github-actions" }));
+const greenRuns: Run[] = REQUIRED_CHECKS.map((name: string, index: number) => ({ id: 100 + index, name, status: "completed", conclusion: "success", appSlug: "github-actions" }));
 
 const say = (minute: number, body: string, author = ME, authorType = "User"): Comment => ({ author, authorType, body, updatedAt: T(minute) });
 
@@ -39,10 +39,14 @@ const reviews: Comment[] = [
 
 const commit = (letter: string, parents: string[] = ["p"]): Commit => ({ sha: sha(letter), parents });
 
+const noLabels: string[] = [];
+
 function pull(overrides: Record<string, unknown> = {}) {
-  const files = [{ filename: "src/server/foo.ts" }];
+  const files = [{ filename: "src/server/services/foo.ts" }];
   return {
     reviewerLogin: ME,
+    labels: noLabels,
+    body: "Summary\n\nSemver: patch\n",
     files,
     changedFiles: files.length,
     comments: reviews,
@@ -155,7 +159,7 @@ describe("integration owned paths", () => {
 
 describe("merge gate", () => {
   it("passes when checks are green, the branch has main, and every verdict is positive", () => {
-    expect(evaluate(pull())).toEqual({ ok: true, reasons: [] });
+    expect(evaluate(pull())).toMatchObject({ ok: true, reasons: [], behind: false, needsOwner: false, held: false });
   });
 
   describe("who may give a verdict", () => {
@@ -188,12 +192,21 @@ describe("merge gate", () => {
 
   describe("required checks", () => {
     it("names a required check that is red, pending or missing", () => {
-      const runs = greenRuns.filter((r) => r.name !== "lint" && r.name !== "build").map((r) => (r.name === "test" ? { ...r, conclusion: "failure" } : r.name === "audit" ? { ...r, status: "in_progress", conclusion: null } : r));
+      const runs = greenRuns.filter((r) => r.name !== "static" && r.name !== "prod-build").map((r) => (r.name === "test" ? { ...r, conclusion: "failure" } : r.name === "postgres" ? { ...r, status: "in_progress", conclusion: null } : r));
       const text = evaluate(pull({ checkRuns: runs })).reasons.join("\n");
-      expect(text).toMatch(/"lint" has not reported/);
-      expect(text).toMatch(/"build" has not reported/);
+      expect(text).toMatch(/"static" has not reported/);
+      expect(text).toMatch(/"prod-build" has not reported/);
       expect(text).toMatch(/"test" is not green \(failure\)/);
-      expect(text).toMatch(/"audit" is not green \(in_progress\)/);
+      expect(text).toMatch(/"postgres" is not green \(in_progress\)/);
+    });
+
+    it("counts a skipped check as passing and anything else that is not a success as failing", () => {
+      const skipped = greenRuns.map((r) => (r.name === "static" || r.name === "prod-build" ? { ...r, conclusion: "skipped" } : r));
+      expect(evaluate(pull({ checkRuns: skipped })).ok).toBe(true);
+      for (const conclusion of ["cancelled", "timed_out", "neutral", "action_required", "stale"]) {
+        const bad = greenRuns.map((r) => (r.name === "static" ? { ...r, conclusion } : r));
+        expect(evaluate(pull({ checkRuns: bad })).reasons).toEqual([`Required check "static" is not green (${conclusion}).`]);
+      }
     });
 
     it("uses the newest run of a name, whatever its position in the list", () => {
@@ -217,22 +230,107 @@ describe("merge gate", () => {
   });
 
   describe("the branch and the file list", () => {
-    it("refuses a branch behind main", () => {
-      expect(evaluate(pull({ behindBy: 3 })).reasons).toEqual(["The branch is 3 commit(s) behind main. Merge origin/main into it."]);
+    it("reports a branch behind main as a state, not a failure, so the gate can update it", () => {
+      const verdict = evaluate(pull({ behindBy: 3 }));
+      expect(verdict).toMatchObject({ ok: true, behind: true, reasons: [] });
     });
 
     it.each([undefined, null, "0", Number.NaN])("fails closed when behind_by is %j", (behindBy) => {
-      expect(evaluate(pull({ behindBy })).reasons).toEqual(["Could not tell whether the branch is behind main."]);
+      const verdict = evaluate(pull({ behindBy }));
+      expect(verdict.ok).toBe(false);
+      expect(verdict.reasons).toEqual(["Could not tell whether the branch is behind main."]);
     });
 
     it("refuses when the file list is shorter than the pull request says", () => {
-      expect(evaluate(pull({ changedFiles: 120 })).reasons).toEqual(["Only 1 of 120 changed files could be read, so integration paths cannot be ruled out."]);
+      expect(evaluate(pull({ changedFiles: 120 })).reasons).toEqual(["Only 1 of 120 changed files could be read, so the reviewers it needs cannot be worked out."]);
+    });
+  });
+
+  describe("integration paths and the owner", () => {
+    const architect = (minute: number, word = "approve") => say(minute, `## Architect review\n\nVerdict: ${word}${at("a")}`);
+
+    it("needs an architect verdict, including for the old name of a rename", () => {
+      const files = [{ filename: "src/server/services/foo.ts" }, { filename: "docs/old-name.md", previousFilename: "drizzle/meta/_journal.json" }];
+      expect(evaluate(pull({ files, changedFiles: 2 })).reasons).toEqual(["No Architect review verdict on the pull request."]);
+      expect(evaluate(pull({ files, changedFiles: 2, comments: [...reviews, architect(13)] })).ok).toBe(true);
+      expect(evaluate(pull({ files, changedFiles: 2, comments: [...reviews, architect(13, "send back")] })).reasons[0]).toMatch(/latest Architect verdict is not positive/);
     });
 
-    it("refuses any integration owned path, including the old name of a rename", () => {
-      const files = [{ filename: "src/server/foo.ts" }, { filename: "docs/old-name.md", previousFilename: "drizzle/meta/_journal.json" }, { filename: "src/proxy.ts" }];
-      const { reasons } = evaluate(pull({ files, changedFiles: 3 }));
-      expect(reasons).toEqual(["The pull request touches integration-owned paths: drizzle/meta/_journal.json, src/proxy.ts. The architect merges it."]);
+    it("does not need an architect verdict for an ordinary change", () => {
+      expect(requiredReviewers(["src/server/services/foo.ts"])).not.toContain("architect");
+    });
+
+    it("never merges .claude or CLAUDE.md, and flags the pull request for the owner", () => {
+      for (const filename of [".claude/agents/qa-reviewer.md", "CLAUDE.md"]) {
+        const files = [{ filename }];
+        const verdict = evaluate(pull({ files, changedFiles: 1, comments: [...reviews, architect(13)] }));
+        expect(verdict.ok).toBe(false);
+        expect(verdict.needsOwner).toBe(true);
+        expect(verdict.reasons).toContain("The pull request touches .claude/ or CLAUDE.md, which only the owner may merge.");
+      }
+      expect(touchesOwnerOnly(["src/a.ts"])).toBe(false);
+    });
+  });
+
+  describe("labels", () => {
+    it.each(["hold", "do-not-merge"])("stops on the %s label", (label) => {
+      const verdict = evaluate(pull({ labels: [label] }));
+      expect(verdict.ok).toBe(false);
+      expect(verdict.held).toBe(true);
+      expect(verdict.reasons[0]).toContain(label);
+    });
+
+    it("ignores unrelated labels", () => {
+      expect(evaluate(pull({ labels: ["perf", "holding"] })).ok).toBe(true);
+    });
+  });
+
+  describe("semver", () => {
+    it.each([["Semver: major", "major"], ["semver: Minor", "minor"], ["Notes\n\nSemver: patch  \n", "patch"]])("reads %j", (body, level) => {
+      expect(semverOf(body)).toEqual({ level, problem: null });
+    });
+
+    it.each([["", "has no Semver line"], [null, "has no Semver line"], ["Semver: patch\nSemver: minor", "has more than one Semver line"], ["Semver: huge", "has a Semver line that is not major, minor or patch"], ["Semver:", "has a Semver line that is not major, minor or patch"]])("refuses %j", (body, problem) => {
+      expect(semverOf(body)).toEqual({ level: null, problem });
+    });
+
+    it("is required for a pull request that changes the app and not for tooling, docs or tests", () => {
+      expect(changesApp(["src/app/page.tsx"])).toBe(true);
+      expect(changesApp(["public/icon.svg", "package.json"])).toBe(true);
+      expect(changesApp(["src/server/a.test.ts", "e2e/a.spec.ts", "tools/x.mjs", ".github/workflows/ci.yml", "docs/UX.md"])).toBe(false);
+      expect(evaluate(pull({ body: "no version here" })).reasons).toEqual(['The pull request body has no Semver line. A pull request that changes the app needs exactly one line "Semver: major", "Semver: minor" or "Semver: patch".']);
+      expect(evaluate(pull({ body: "Semver: patch\nSemver: minor" })).ok).toBe(false);
+      const tooling = [{ filename: "tools/x.mjs" }];
+      expect(evaluate(pull({ files: tooling, changedFiles: 1, body: "" })).ok).toBe(true);
+    });
+  });
+
+  describe("which reviewers a pull request needs", () => {
+    it.each([
+      [["docs/UX.md", "README.md", ".pipeline/status.md"], []],
+      [["tools/x.mjs"], ["qa"]],
+      [["e2e/a.spec.ts"], ["qa"]],
+      [["src/app/trips/x.module.css"], ["qa", "ux"]],
+      [["src/app/trips/page.tsx"], ["qa", "product", "ux"]],
+      [["src/app/trips/actions.ts"], ["qa", "security", "product"]],
+      [["src/server/services/a.ts"], ["qa", "security", "product"]],
+      [["src/server/auth/adapter.ts"], ["qa", "security"]],
+      [["src/server/security/headers.ts"], ["qa", "security"]],
+      [["src/domain/a.ts"], ["qa", "product"]],
+      [["public/icon.svg"], ["qa", "ux"]],
+      [["src/app/manifest.ts"], ["qa", "product", "ux"]],
+      [["package.json"], ["qa", "security", "architect"]],
+      [[".github/workflows/ci.yml"], ["qa", "architect"]],
+      [["src/server/services/a.test.ts"], ["qa"]],
+      [["docs/STATECHARTS.md"], ["qa"]],
+    ])("%j needs %j", (paths, expected) => {
+      expect([...requiredReviewers(paths)].sort()).toEqual([...expected].sort());
+    });
+
+    it("treats documentation only as docs only", () => {
+      expect(isDocsOnly(["docs/UX.md", "docs/STATECHARTS.md"])).toBe(false);
+      expect(isDocsOnly(["src/server/x.md"])).toBe(false);
+      expect(isDocsOnly([])).toBe(false);
     });
   });
 
@@ -333,6 +431,53 @@ describe("merge gate", () => {
     it("needs no time check when the verdict reviewed the latest code", () => {
       const comments = [...withChanges, say(23, "QA: Applied all\nSecurity: Applied all")];
       expect(evaluate(pull({ comments, lastCodePushedAt: null })).ok).toBe(true);
+    });
+  });
+
+  describe("failing closed on missing data", () => {
+    const base = () => ({
+      pr: { head: { sha: "a".repeat(40), ref: "wp/x" }, state: "open", base: { ref: "main" }, draft: false, changed_files: 1, commits: 1, labels: [{ name: "perf" }], body: "Semver: patch" },
+      files: [{ filename: "src/a.ts" }],
+      comments: [{ user: { login: ME, type: "User" }, updated_at: T(1), body: "hello" }],
+      commits: [{ sha: sha("a"), parents: [{ sha: "p" }] }],
+      checkRuns: [{ id: 1, name: "test", status: "completed", conclusion: "success", app: { slug: "github-actions" } }],
+      checkRunsTotal: 1,
+      compare: { behind_by: 0 },
+    });
+
+    it("accepts complete data", () => {
+      expect(buildInput(base(), ME)).toMatchObject({ labels: ["perf"], behindBy: 0, changedFiles: 1 });
+    });
+
+    it.each([
+      ["no pull request", (r: Record<string, unknown>) => (r.pr = undefined)],
+      ["no head sha", (r: Record<string, unknown>) => (r.pr = { ...base().pr, head: {} })],
+      ["a malformed head sha", (r: Record<string, unknown>) => (r.pr = { ...base().pr, head: { sha: "abc" } })],
+      ["a closed pull request", (r: Record<string, unknown>) => (r.pr = { ...base().pr, state: "closed" })],
+      ["another base", (r: Record<string, unknown>) => (r.pr = { ...base().pr, base: { ref: "dev" } })],
+      ["no draft flag", (r: Record<string, unknown>) => (r.pr = { ...base().pr, draft: undefined })],
+      ["no changed file count", (r: Record<string, unknown>) => (r.pr = { ...base().pr, changed_files: undefined })],
+      ["no labels", (r: Record<string, unknown>) => (r.pr = { ...base().pr, labels: undefined })],
+      ["files that could not be listed", (r: Record<string, unknown>) => (r.files = undefined)],
+      ["a truncated file list", (r: Record<string, unknown>) => (r.pr = { ...base().pr, changed_files: 3000 })],
+      ["a file without a name", (r: Record<string, unknown>) => (r.files = [{}])],
+      ["a truncated commit list", (r: Record<string, unknown>) => (r.pr = { ...base().pr, commits: 400 })],
+      ["comments that could not be read", (r: Record<string, unknown>) => (r.comments = null)],
+      ["a comment without an author", (r: Record<string, unknown>) => (r.comments = [{ updated_at: T(1), body: "x" }])],
+      ["a comment without an edit time", (r: Record<string, unknown>) => (r.comments = [{ user: { login: ME }, body: "x" }])],
+      ["check runs cut short", (r: Record<string, unknown>) => (r.checkRunsTotal = 40)],
+      ["check runs that could not be read", (r: Record<string, unknown>) => (r.checkRuns = undefined)],
+      ["no compare result", (r: Record<string, unknown>) => (r.compare = undefined)],
+      ["a compare result without behind_by", (r: Record<string, unknown>) => (r.compare = {})],
+    ])("refuses %s", (_name, damage) => {
+      const raw: Record<string, unknown> = base();
+      damage(raw);
+      expect(() => buildInput(raw, ME)).toThrow(GateDataError);
+    });
+
+    it("refuses when the trusted account is unknown", () => {
+      expect(() => buildInput(base(), "")).toThrow(GateDataError);
+      expect(() => buildInput(base(), undefined)).toThrow(GateDataError);
     });
   });
 });
