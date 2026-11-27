@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useActionState, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import pageStyles from "../../../ui/page.module.css";
 import styles from "./share.module.css";
 import { roleInWords } from "../../../invite/role-words";
@@ -10,20 +10,24 @@ function subscribeNothing() {
   return () => undefined;
 }
 
-const none: CreatedInviteState = { inviteId: null, travelerId: null, url: null, role: null, error: null };
+const none: CreatedInviteState = { inviteId: null, travelerId: null, url: null, role: null, forName: null, error: null };
 
 export function InviteForm({
   tripId,
   travelers,
   pendingIds,
   memberIds,
+  people,
 }: {
   tripId: string;
   travelers: { id: string; name: string }[];
   pendingIds: string[];
   memberIds: string[];
+  people?: ReactNode;
 }) {
   const [state, action, pending] = useActionState(createInviteAction, none);
+  const [role, setRole] = useState<"editor" | "viewer">("editor");
+  const [traveler, setTraveler] = useState("new");
   const [hidden, setHidden] = useState<CreatedInviteState | null>(null);
   const [membersSeen, setMembersSeen] = useState(memberIds.join());
   if (membersSeen !== memberIds.join()) {
@@ -34,6 +38,10 @@ export function InviteForm({
   const canShare = useSyncExternalStore(subscribeNothing, () => typeof navigator.share === "function", () => false);
   const [copyProblem, setCopyProblem] = useState<string | null>(null);
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+  const sentence = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (shown) sentence.current?.focus();
+  }, [shown]);
 
   async function copy(url: string) {
     setCopyProblem(null);
@@ -59,6 +67,11 @@ export function InviteForm({
     const who = travelers.find((x) => x.id === state.travelerId)?.name.split(" ")[0];
     return (
       <div>
+        {state.forName && (
+          <p ref={sentence} tabIndex={-1}>
+            Send this link to {state.forName}.
+          </p>
+        )}
         {who && <p>This link is for {who}.</p>}
         <input className={styles.link} readOnly value={link} aria-label="Invite link" onFocus={(e) => e.currentTarget.select()} />
         <div className={pageStyles.row}>
@@ -94,11 +107,11 @@ export function InviteForm({
       <fieldset className={styles.group}>
         <legend>Role</legend>
         <label className={styles.option}>
-          <input type="radio" name="role" value="editor" defaultChecked />
+          <input type="radio" name="role" value="editor" checked={role === "editor"} onChange={() => setRole("editor")} />
           <span>Editor: can add and change things.</span>
         </label>
         <label className={styles.option}>
-          <input type="radio" name="role" value="viewer" />
+          <input type="radio" name="role" value="viewer" checked={role === "viewer"} onChange={() => setRole("viewer")} />
           <span>Viewer: can look, cannot change anything.</span>
         </label>
       </fieldset>
@@ -107,16 +120,17 @@ export function InviteForm({
           <legend>This is</legend>
           {travelers.map((x) => (
             <label key={x.id} className={styles.option}>
-              <input type="radio" name="traveler" value={x.id} />
+              <input type="radio" name="traveler" value={x.id} checked={traveler === x.id} onChange={() => setTraveler(x.id)} />
               <span>{x.name}</span>
             </label>
           ))}
           <label className={styles.option}>
-            <input type="radio" name="traveler" value="new" defaultChecked />
+            <input type="radio" name="traveler" value="new" checked={traveler === "new"} onChange={() => setTraveler("new")} />
             <span>Someone new</span>
           </label>
         </fieldset>
       )}
+      {people}
       <button disabled={pending}>{pending ? "Creating link" : "Create invite link"}</button>
       {state.error && (
         <p role="alert" className={pageStyles.warning}>

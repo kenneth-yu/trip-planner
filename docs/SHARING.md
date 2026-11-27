@@ -35,6 +35,7 @@ Inviting is owner only in v1.
 2. Whoever opens the link signs in (an account is created by signing in) and is added to the trip with that role, then lands on the trip.
 3. A link works once and expires after 7 days. It is shown once; the owner sees pending invites without the link, can revoke them, and makes a new link instead of re-sending.
 4. Opening a link never changes the role of someone already on the trip.
+5. The owner can pick a person from "People from your trips" instead of making a plain link. The list holds only people who are members now of a trip the owner is a member of now, minus the owner and minus this trip's members. It shows names only (no emails, trip names, counts or dates), sorted by first name, then full name, then a keyed hash of the id, so order never reflects trip history. A person whose account name is an email address is not listed. Picking a name makes exactly the same single-use link as "Create invite link", not bound to that person, and adds nobody to the trip; "Send this link to Jacob." is only text. The button carries an opaque keyed token, never a user id, and the server re-derives the list on every pick and refuses anything outside it with the same text as a bad id.
 
 ## The view link
 * One switch: "Anyone with the link can view".
