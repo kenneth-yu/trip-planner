@@ -27,10 +27,29 @@ export async function seedFixtureTrip(db: Db, opts: { withItems?: boolean } = {}
   return { tripId: TRIP_ID, viewLinkToken };
 }
 
-export async function seedEverything(db: Db): Promise<{ created: string[]; skipped: string[] }> {
+export class SeedRefused extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SeedRefused";
+  }
+}
+
+async function assertOnlyDemoData(db: Db, demoTripIds: Set<string>, env: Record<string, string | undefined>): Promise<void> {
+  if (env.VERCEL_ENV === "production") {
+    throw new SeedRefused("Demo data is never loaded into a production deployment.");
+  }
+  const existing = await db.select({ id: t.trips.id }).from(t.trips);
+  if (existing.some((row) => !demoTripIds.has(row.id))) {
+    throw new SeedRefused("This database holds a trip that is not demo data, so it is not seeded. Point DATABASE_URL at the preview database.");
+  }
+}
+
+export async function seedEverything(db: Db, env: Record<string, string | undefined> = process.env): Promise<{ created: string[]; skipped: string[] }> {
+  const aggregates = [buildFixtureTrip(), ...DEMO_TRIPS.map(buildDemoTrip)];
+  await assertOnlyDemoData(db, new Set(aggregates.map((agg) => agg.trip.id)), env);
   const created: string[] = [];
   const skipped: string[] = [];
-  for (const agg of [buildFixtureTrip(), ...DEMO_TRIPS.map(buildDemoTrip)]) {
+  for (const agg of aggregates) {
     const [exists] = await db.select({ id: t.trips.id }).from(t.trips).where(eq(t.trips.id, agg.trip.id));
     if (exists) {
       skipped.push(agg.trip.name);
