@@ -267,6 +267,10 @@ jobs:
           code=$(curl -s -o /dev/null -w '%{http_code}' "localhost:3101/api/dev/sign-in?as=kenny")
           echo "dev sign in answered $code"
           [ "$code" = "500" ] || { echo "::error::dev sign in answered $code, expected 500"; exit 1; }
+          home=$(curl -s -o /dev/null -w '%{http_code}' localhost:3101/sign-in)
+          echo "sign in page answered $home"
+          [ "$home" = "500" ] || { echo "::error::the sign in page answered $home, expected 500 because startup refused"; exit 1; }
+          grep -q "instrumentation hook" refuse.log || { echo "::error::startup did not refuse in the instrumentation hook"; exit 1; }
           grep -q "DEV_SIGN_IN" refuse.log || { echo "::error::the refusal did not name DEV_SIGN_IN"; exit 1; }
           for pid in $(ss -ltnp | grep ':3101 ' | sed 's/.*pid=\([0-9]*\).*/\1/'); do kill "$pid"; done
           exit 0
