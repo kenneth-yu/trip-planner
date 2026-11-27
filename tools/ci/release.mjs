@@ -23,6 +23,23 @@ function tags() {
   return run("git", ["tag", "--list", "v*.*.*"]).split("\n");
 }
 
+function refuse(message) {
+  process.stderr.write(`${message}\n`);
+  process.exit(1);
+}
+
+try {
+  run("git", ["fetch", "--quiet", "origin", "main"]);
+} catch (error) {
+  refuse(`main could not be fetched, so ${SHA} cannot be checked and nothing is released (${error instanceof Error ? error.message.split("\n")[0].slice(0, 120) : "unknown error"}).`);
+}
+try {
+  run("git", ["merge-base", "--is-ancestor", SHA, "FETCH_HEAD"]);
+} catch (error) {
+  if (error && typeof error === "object" && "status" in error && error.status === 1) refuse(`${SHA} is not part of main, so it is not released.`);
+  refuse(`${SHA} could not be checked against main, so nothing is released (${error instanceof Error ? error.message.split("\n")[0].slice(0, 120) : "unknown error"}).`);
+}
+
 if (run("git", ["tag", "--points-at", SHA, "--list", "v*.*.*"])) done(`${SHA} is already tagged.`);
 
 const message = run("git", ["log", "-1", "--format=%B", SHA]);
