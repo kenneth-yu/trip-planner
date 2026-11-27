@@ -1,8 +1,13 @@
+import { whereAt } from "../time/days";
 import type { Deadline, Item, ItemPrivate, Requester, Role, TripAggregate, Traveler, ZonedTime } from "../types";
+
+export interface VisibleDeadline extends Omit<Deadline, "confirmedBy"> {
+  confirmed: boolean;
+}
 
 export interface VisibleItem extends Omit<Item, "private" | "deadlines" | "visibleToUserIds" | "createdBy" | "updatedBy"> {
   private: ItemPrivate[];
-  deadlines: Deadline[];
+  deadlines: VisibleDeadline[];
   createdBy: string | null;
   updatedBy: string | null;
   visibleToUserIds: string[];
@@ -94,7 +99,7 @@ function projectItem(item: Item, requester: Requester, perms: Permissions): Visi
     flags: [...item.flags],
     notes: item.notes,
     private: perms.canSeeSensitive ? item.private.map((p) => structuredClone(p)) : [],
-    deadlines: perms.canSeeDeadlines ? item.deadlines.map((d) => structuredClone(d)) : [],
+    deadlines: perms.canSeeDeadlines ? item.deadlines.map(({ confirmedBy, ...d }) => ({ ...structuredClone(d), confirmed: confirmedBy !== null })) : [],
     createdBy: isMember ? item.createdBy : null,
     updatedBy: isMember ? item.updatedBy : null,
     createdAt: item.createdAt,
@@ -102,15 +107,32 @@ function projectItem(item: Item, requester: Requester, perms: Permissions): Visi
   };
 }
 
+function mergeBusy(hidden: Item[], visible: VisibleItem[], homeZone: string): BusyBlock[] {
+  const spans = hidden.map((i) => ({ start: Date.parse(i.start.at), end: Date.parse(i.end.at) })).sort((a, b) => a.start - b.start || a.end - b.end);
+  const merged: { start: number; end: number }[] = [];
+  for (const span of spans) {
+    const last = merged[merged.length - 1];
+    if (last && span.start <= last.end) last.end = Math.max(last.end, span.end);
+    else merged.push({ ...span });
+  }
+  const zoneAt = (ms: number) => whereAt(ms, visible, homeZone).zone;
+  return merged.map((m) => {
+    const start = new Date(m.start).toISOString();
+    const end = new Date(m.end).toISOString();
+    return { key: `busy-${start}-${end}`, start: { at: start, zone: zoneAt(m.start) }, end: { at: end, zone: zoneAt(m.end) } };
+  });
+}
+
 export function projectTrip(agg: TripAggregate, requester: Requester): TripView {
   const permissions = permissionsFor(agg, requester);
   const items: VisibleItem[] = [];
-  const busy: BusyBlock[] = [];
+  const hiddenBusy: Item[] = [];
   const sorted = [...agg.items].sort((a, b) => a.start.at.localeCompare(b.start.at));
   for (const item of sorted) {
     if (canSeeItem(item, requester)) items.push(projectItem(item, requester, permissions));
-    else if (item.showAsBusy) busy.push({ key: `busy-${busy.length}`, start: { ...item.start }, end: { ...item.end } });
+    else if (item.showAsBusy) hiddenBusy.push(item);
   }
+  const busy = requester.kind === "link" ? [] : mergeBusy(hiddenBusy, items, requester.homeZone);
   return {
     trip: {
       id: agg.trip.id,
