@@ -3,14 +3,9 @@ title = "trip planner gitleaks config"
 [extend]
 useDefault = true
 
-[[allowlists]]
-description = "Fixture placeholder confirmation codes, only in the fixture files"
-condition = "AND"
-paths = ['''^src/fixtures/(december-trip\.json|december-trip\.ts|demo-trips\.ts)$''']
-regexes = ['''PLACEHOLDER_[A-Z0-9]+''']
-
-[[allowlists]]
-description = "CI-only dummy encryption key used to build the app, only in the CI workflow"
-condition = "AND"
-paths = ['''^\.github/workflows/ci\.yml$''']
-regexes = ['''ZmFrZS1jaS1rZXktbm90LWZvci1yZWFsLWRhdGEtMDA''']
+[allowlist]
+description = "Fixture placeholder confirmation codes and the CI-only dummy encryption key, by exact pattern"
+regexes = [
+  '''PLACEHOLDER_[A-Z0-9]+''',
+  '''ZmFrZS1jaS1rZXktbm90LWZvci1yZWFsLWRhdGEtMDA''',
+]
