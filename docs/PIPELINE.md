@@ -80,6 +80,6 @@ Then open `http://localhost:8766/?url=http://localhost:3000/trips/<trip id>`. Th
 Each reviewer runs their own copy so nobody touches the main dev database:
 
 ```bash
-PGLITE_DIR=<main>/.pipeline/scratch/WP-NN/db npm run db:seed
-PGLITE_DIR=<main>/.pipeline/scratch/WP-NN/db DEV_SIGN_IN=1 SESSION_SECRET=<32+ chars> TOKEN_ENCRYPTION_KEY=<base64 32 bytes> npx next dev --port 31NN
+PGLITE_DIR=<main>/.pipeline/scratch/WP-NN/db DATA_ENCRYPTION_KEY=<base64 32 bytes> npm run db:seed
+PGLITE_DIR=<main>/.pipeline/scratch/WP-NN/db DEV_SIGN_IN=1 SESSION_SECRET=<32+ chars> TOKEN_ENCRYPTION_KEY=<base64 32 bytes> DATA_ENCRYPTION_KEY=<base64 32 bytes> npx next dev --port 31NN
 ```

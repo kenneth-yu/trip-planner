@@ -37,7 +37,7 @@ This app holds personal data that can hurt people if it leaks: who is travelling
 | An editor edits or deletes an item hidden from them | `assertCanEditItem` | `services.test.ts` |
 | A caller claims a role | `Requester` has no role; roles come from memberships | `project.test.ts` |
 | A leaked assistant link | Hashed, revocable, trip scoped, read or propose only, proposals need human approval | `server.test.ts` |
-| Stolen database | Tokens hashed; Google tokens, booking fields, activity and imports encrypted | `auth.test.ts` |
+| Stolen database | Tokens hashed; Google tokens, booking fields, activity and imports encrypted | `auth.test.ts`, `encryption.test.ts`, `import-secrets.test.ts` |
 | An AI assistant is tricked into proposing bad data | Proposals only reach the inbox; a person approves | `server.test.ts`, `services.test.ts` |
 | Brute forcing tokens or links | 256 bit tokens; rate limits planned | `auth.test.ts` |
 | A Google calendar shared onward exposes codes | Mirror leaves codes out by default | `calendar-mirror.test.ts` |
