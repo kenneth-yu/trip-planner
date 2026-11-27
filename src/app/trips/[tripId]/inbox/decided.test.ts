@@ -7,9 +7,10 @@ import type { Requester } from "@/domain/types";
 import * as t from "@/server/db/schema";
 import { jacob, kenny, testContext } from "@/server/testing";
 import type { ServiceContext } from "@/server/services/context";
-import { approveAllClean, approveEntry, decidedEntry, discardEntry, importCalendarEvents, listInbox, mergeEntry } from "@/server/services/inbox-service";
-import { getTripView } from "@/server/services/trip-service";
-import { AccessDenied } from "@/domain/visibility/project";
+import { approveAllClean, approveEntry, decidedEntry, discardEntry, importCalendarEvents, importProposals, listInbox, mergeEntry } from "@/server/services/inbox-service";
+import { getTripView, quickAddItem, requireAggregate } from "@/server/services/trip-service";
+import { AccessDenied, projectTrip } from "@/domain/visibility/project";
+import { inputToProposal } from "@/domain/import/quick-add";
 import { addAllClean, decideEntry } from "../actions";
 
 const page = vi.hoisted(() => {
@@ -27,6 +28,13 @@ vi.mock("@/server/web", () => ({
 }));
 
 const events: CalendarEvent[] = fixture.calendarEvents;
+
+function addAllForm(ids: string[]) {
+  const f = new FormData();
+  f.set("tripId", TRIP_ID);
+  for (const id of ids) f.append("entryId", id);
+  return f;
+}
 
 function form(entryId: string, action: "add" | "merge" | "discard") {
   const f = new FormData();
@@ -149,9 +157,63 @@ describe("Add all without conflicts", () => {
         await discardEntry(env.ctx, TRIP_ID, clean[1].id, jacob);
       },
     };
-    const f = new FormData();
-    f.set("tripId", TRIP_ID);
-    expect(await addAllClean(f)).toEqual({ text: "Added 2. 1 was already decided by someone else." });
+    expect(await addAllClean(addAllForm(clean.map((e) => e.id)))).toEqual({ text: "Added 2. 1 was already decided by someone else." });
+  });
+});
+
+describe("Add all when the page is stale", () => {
+  it("says everything was decided by someone else when nothing was left, and says so differently after your own tap", async () => {
+    const env = await testContext({ withItems: false });
+    page.ctx = env.ctx;
+    page.requester = kenny;
+    await importCalendarEvents(env.ctx, TRIP_ID, kenny, [events[2], events[6]], { source: "ics", label: "file" });
+    const seen = (await listInbox(env.ctx, TRIP_ID, kenny)).filter((e) => e.clean).map((e) => e.id);
+    expect(seen).toHaveLength(2);
+    const result = await approveAllClean(env.ctx, TRIP_ID, jacob);
+    expect(result.added).toBe(2);
+    expect(await addAllClean(addAllForm(seen))).toEqual({ text: "These were already decided by someone else." });
+    page.requester = jacob;
+    expect(await addAllClean(addAllForm(seen))).toEqual({ text: "These were already decided." });
+  });
+
+  it("never adds an entry that arrived after the page was drawn", async () => {
+    const env = await testContext({ withItems: false });
+    page.ctx = env.ctx;
+    page.requester = kenny;
+    await importCalendarEvents(env.ctx, TRIP_ID, kenny, [events[2]], { source: "ics", label: "file" });
+    const seen = (await listInbox(env.ctx, TRIP_ID, kenny)).map((e) => e.id);
+    await importCalendarEvents(env.ctx, TRIP_ID, kenny, [events[6]], { source: "ics", label: "later" });
+    expect(await addAllClean(addAllForm(seen))).toEqual({ text: "Added 1." });
+    expect(await listInbox(env.ctx, TRIP_ID, kenny)).toHaveLength(1);
+  });
+
+  it("entries that name a traveler removed after the page was drawn are left for the person", async () => {
+    const env = await testContext({ withItems: false });
+    page.ctx = env.ctx;
+    page.requester = kenny;
+    await importCalendarEvents(env.ctx, TRIP_ID, kenny, [events[2], events[6]], { source: "ics", label: "file", travelerIds: [TRAVELERS.kenny, TRAVELERS.jacob] });
+    const seen = (await listInbox(env.ctx, TRIP_ID, kenny)).filter((e) => e.clean).map((e) => e.id);
+    await env.db.delete(t.travelers).where(eq(t.travelers.id, TRAVELERS.jacob));
+    expect(await addAllClean(addAllForm(seen))).toEqual({ text: "2 still need you: see below." });
+  });
+});
+
+describe("a traveler removed while Add all runs", () => {
+  it("is reported rather than hidden", async () => {
+    const env = await testContext({ withItems: false });
+    page.requester = kenny;
+    await importCalendarEvents(env.ctx, TRIP_ID, kenny, [events[2], events[6]], { source: "ics", label: "file", travelerIds: [TRAVELERS.kenny, TRAVELERS.jacob] });
+    const seen = (await listInbox(env.ctx, TRIP_ID, kenny)).filter((e) => e.clean).map((e) => e.id);
+    let removed = false;
+    page.ctx = {
+      ...env.ctx,
+      onTripChanged: async () => {
+        if (removed) return;
+        removed = true;
+        await env.db.delete(t.travelers).where(eq(t.travelers.id, TRAVELERS.jacob));
+      },
+    };
+    expect(await addAllClean(addAllForm(seen))).toEqual({ text: "Added 2. 1 was saved without a removed traveler." });
   });
 });
 
@@ -167,7 +229,7 @@ describe("an entry that names a removed traveler", () => {
     const [entry] = await listInbox(ctx, TRIP_ID, kenny);
     expect(entry.namesRemovedTraveler).toBe(true);
     expect(entry.clean).toBe(false);
-    expect(await approveAllClean(ctx, TRIP_ID, kenny)).toEqual({ added: 0, alreadyDecided: 0, needYou: 0 });
+    expect(await approveAllClean(ctx, TRIP_ID, kenny)).toEqual({ added: 0, alreadyDecided: 0, alreadyByYou: 0, needYou: 0, withoutRemovedTraveler: 0 });
   });
 
   it("Add saves it without the removed traveler and says so", async () => {
@@ -201,5 +263,90 @@ describe("an entry that names a removed traveler", () => {
     const saved = await mergeEntry(env.ctx, TRIP_ID, again.id, kenny);
     expect(saved.withoutRemovedTraveler).toBe(true);
     expect(present((await getTripView(env.ctx, TRIP_ID, kenny)).items[0]).travelerIds).toEqual([TRAVELERS.kenny]);
+  });
+});
+
+describe("private rows that belonged to a removed traveler", () => {
+  async function entryWithPrivateRow() {
+    const env = await testContext({ withItems: false });
+    page.ctx = env.ctx;
+    page.requester = kenny;
+    const base = inputToProposal({ type: "plan", title: "Dinner at Maisen", city: "Tokyo", startLocal: "2026-12-05T19:00", endLocal: "2026-12-05T21:00" }, [], { homeZone: "America/New_York" });
+    const proposal = {
+      ...base,
+      travelerIds: [TRAVELERS.kenny, TRAVELERS.jacob],
+      private: [{ travelerId: TRAVELERS.jacob, seat: "12A", confirmationCode: "ZZ9999", phone: "+1 555 010 0000" }],
+    };
+    await importProposals(env.ctx, TRIP_ID, kenny, [proposal], { source: "assistant", label: "Claude" });
+    await env.db.delete(t.travelers).where(eq(t.travelers.id, TRAVELERS.jacob));
+    const [entry] = await listInbox(env.ctx, TRIP_ID, kenny);
+    return { ...env, entry };
+  }
+
+  it("such an entry is not clean even though only a private row names the removed person", async () => {
+    const { entry } = await entryWithPrivateRow();
+    expect(entry.namesRemovedTraveler).toBe(true);
+    expect(entry.clean).toBe(false);
+  });
+
+  it("Add keeps the code and phone, drops the seat and the owner, and says it left someone off", async () => {
+    const { ctx, entry } = await entryWithPrivateRow();
+    const saved = await approveEntry(ctx, TRIP_ID, entry.id, kenny);
+    expect(saved.withoutRemovedTraveler).toBe(true);
+    const [item] = (await getTripView(ctx, TRIP_ID, kenny)).items;
+    expect(item.travelerIds).toEqual([TRAVELERS.kenny]);
+    expect(item.private).toEqual([expect.objectContaining({ travelerId: null, confirmationCode: "ZZ9999", phone: "+1 555 010 0000" })]);
+    expect(item.private[0].seat).toBeUndefined();
+  });
+
+  it("viewers and view link visitors still see no private rows, and a hidden item stays hidden", async () => {
+    const { ctx, db, entry } = await entryWithPrivateRow();
+    await approveEntry(ctx, TRIP_ID, entry.id, kenny);
+    await quickAddItem(ctx, TRIP_ID, kenny, { type: "plan", title: "Hidden from Jacob", city: "Tokyo", startLocal: "2026-12-06T19:00", endLocal: "2026-12-06T20:00" }, { visibility: "only_me" });
+    await db.update(t.memberships).set({ role: "viewer" }).where(eq(t.memberships.userId, jacob.kind === "member" ? jacob.userId : ""));
+    const viewer = await getTripView(ctx, TRIP_ID, jacob);
+    const agg = await requireAggregate(ctx.db, TRIP_ID);
+    const visitor = projectTrip({ ...agg, shareLink: { enabled: true, showsDeadlines: false } }, { kind: "link", homeZone: "America/New_York" });
+    for (const view of [viewer, visitor]) {
+      const text = JSON.stringify(view);
+      expect(view.items.every((i) => i.private.length === 0)).toBe(true);
+      for (const secret of ["ZZ9999", "+1 555 010 0000", "12A", "Hidden from Jacob"]) expect(text).not.toContain(secret);
+    }
+    await db.update(t.memberships).set({ role: "editor" }).where(eq(t.memberships.userId, jacob.kind === "member" ? jacob.userId : ""));
+    expect(JSON.stringify(await getTripView(ctx, TRIP_ID, jacob))).not.toContain("Hidden from Jacob");
+  });
+
+  it("Merge also drops the seat and keeps the rest", async () => {
+    const { ctx, db, entry } = await entryWithPrivateRow();
+    await db.update(t.importedItems).set({ state: "discarded" }).where(eq(t.importedItems.id, entry.id));
+    await importCalendarEvents(ctx, TRIP_ID, kenny, [{ summary: "Dinner at Maisen", location: "Tokyo, Japan", start: { dateTime: "2026-12-05T19:00:00+09:00" }, end: { dateTime: "2026-12-05T21:00:00+09:00" } }], { source: "ics", label: "x", travelerIds: [TRAVELERS.kenny] });
+    const [existing] = await listInbox(ctx, TRIP_ID, kenny);
+    await approveEntry(ctx, TRIP_ID, existing.id, kenny);
+    const proposal = { ...entry.proposed, travelerIds: [TRAVELERS.kenny, TRAVELERS.jacob] };
+    await importProposals(ctx, TRIP_ID, kenny, [proposal], { source: "assistant", label: "Claude again" });
+    const [again] = await listInbox(ctx, TRIP_ID, kenny);
+    const saved = await mergeEntry(ctx, TRIP_ID, again.id, kenny);
+    expect(saved.withoutRemovedTraveler).toBe(true);
+    const merged = present((await getTripView(ctx, TRIP_ID, kenny)).items.find((i) => i.id === saved.itemId));
+    expect(merged.private.every((p) => p.travelerId === null || p.travelerId === TRAVELERS.kenny)).toBe(true);
+    expect(merged.private.some((p) => p.seat === "12A")).toBe(false);
+    expect(merged.private.some((p) => p.confirmationCode === "ZZ9999")).toBe(true);
+  });
+});
+
+describe("a merge target the reader cannot see", () => {
+  it("does not hint at an item already on the trip", async () => {
+    const env = await testContext({ withItems: false });
+    page.ctx = env.ctx;
+    page.requester = kenny;
+    await quickAddItem(env.ctx, TRIP_ID, jacob, { type: "plan", title: "Surprise dinner", city: "Tokyo", startLocal: "2026-12-05T19:00", endLocal: "2026-12-05T21:00" }, { visibility: "only_me" });
+    await importCalendarEvents(env.ctx, TRIP_ID, jacob, [{ summary: "Surprise dinner", location: "Tokyo, Japan", start: { dateTime: "2026-12-05T19:00:00+09:00" }, end: { dateTime: "2026-12-05T21:00:00+09:00" } }], { source: "ics", label: "x", travelerIds: [TRAVELERS.jacob] });
+    const [entry] = await listInbox(env.ctx, TRIP_ID, jacob);
+    expect(entry.match).not.toBeNull();
+    await mergeEntry(env.ctx, TRIP_ID, entry.id, jacob);
+    const result = await decideEntry(form(entry.id, "add"));
+    const text = result.kind === "done" ? result.outcome.text : "";
+    expect(text).toBe("Jacob merged Surprise dinner, so it was not added twice.");
+    expect(text).not.toContain("already on the trip");
   });
 });

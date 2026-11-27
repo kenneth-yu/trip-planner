@@ -136,7 +136,8 @@ export async function listInbox(ctx: ServiceContext, tripId: string, requester: 
       unparsed: opened.unparsed,
       createdAt: e.createdAt.toISOString(),
     };
-    const namesRemovedTraveler = opened.proposed.travelerIds.some((id) => !travelerIds.has(id));
+    const namesRemovedTraveler =
+      opened.proposed.travelerIds.some((id) => !travelerIds.has(id)) || opened.proposed.private.some((p) => p.travelerId !== null && !travelerIds.has(p.travelerId));
     return { ...entry, namesRemovedTraveler, clean: isClean(entry) && !namesRemovedTraveler };
   });
 }
@@ -275,18 +276,33 @@ export async function discardEntry(ctx: ServiceContext, tripId: string, entryId:
 export interface AddAllResult {
   added: number;
   alreadyDecided: number;
+  alreadyByYou: number;
   needYou: number;
+  withoutRemovedTraveler: number;
 }
 
-export async function approveAllClean(ctx: ServiceContext, tripId: string, requester: Requester): Promise<AddAllResult> {
-  const clean = (await listInbox(ctx, tripId, requester)).filter((e) => e.clean);
-  const result: AddAllResult = { added: 0, alreadyDecided: 0, needYou: 0 };
-  for (const e of clean) {
+export async function approveAllClean(ctx: ServiceContext, tripId: string, requester: Requester, seen?: string[]): Promise<AddAllResult> {
+  const inbox = await listInbox(ctx, tripId, requester);
+  const pending = new Map(inbox.map((e) => [e.id, e]));
+  const ids = seen ?? inbox.filter((e) => e.clean).map((e) => e.id);
+  const result: AddAllResult = { added: 0, alreadyDecided: 0, alreadyByYou: 0, needYou: 0, withoutRemovedTraveler: 0 };
+  const settled = async (id: string) => {
+    const decided = await decidedEntry(ctx, tripId, id, requester);
+    if (decided?.by === "You") result.alreadyByYou += 1;
+    else result.alreadyDecided += 1;
+  };
+  for (const id of ids) {
+    if (!pending.get(id)?.clean) {
+      if (pending.has(id)) result.needYou += 1;
+      else await settled(id);
+      continue;
+    }
     try {
-      await approveEntry(ctx, tripId, e.id, requester);
+      const saved = await approveEntry(ctx, tripId, id, requester);
       result.added += 1;
+      if (saved.withoutRemovedTraveler) result.withoutRemovedTraveler += 1;
     } catch (err) {
-      if (err instanceof InvalidTransition || err instanceof NotFound) result.alreadyDecided += 1;
+      if (err instanceof InvalidTransition || err instanceof EntryGone) await settled(id);
       else if (err instanceof NeedsDecision) result.needYou += 1;
       else throw err;
     }
@@ -298,6 +314,7 @@ export interface DecidedEntry {
   state: "approved" | "merged" | "discarded";
   by: string | null;
   proposed: ProposedItem;
+  intoVisible: boolean;
 }
 
 export async function decidedEntry(ctx: ServiceContext, tripId: string, entryId: string, requester: Requester): Promise<DecidedEntry | null> {
@@ -313,7 +330,9 @@ export async function decidedEntry(ctx: ServiceContext, tripId: string, entryId:
         .where(and(eq(t.memberships.tripId, tripId), eq(t.memberships.userId, row.decidedBy)))
     : [];
   const by = row.decidedBy === requester.userId ? "You" : (member?.name.split(" ")[0] ?? null);
-  return { state: row.state, by, proposed: openImport(row).proposed };
+  const agg = await requireAggregate(ctx.db, tripId);
+  const into = row.resultItemId ? agg.items.find((i) => i.id === row.resultItemId) : undefined;
+  return { state: row.state, by, proposed: openImport(row).proposed, intoVisible: into !== undefined && canSeeItem(into, requester) };
 }
 
 export async function disagreementFindings(ctx: ServiceContext, tripId: string, requester: Requester): Promise<Finding[]> {

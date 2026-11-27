@@ -20,11 +20,11 @@ export default async function InboxPage({ params }: PageProps<"/trips/[tripId]/i
   const { ctx, requester, view } = await loadTripPage(tripId);
   if (!view.permissions.canEdit) return <p className={styles.muted}>Only editors review imports.</p>;
   const entries = await listInbox(ctx, tripId, requester);
-  const clean = entries.filter((e) => e.clean).length;
+  const clean = entries.filter((e) => e.clean).map((e) => e.id);
   return (
     <div className={styles.narrow}>
       <InboxResults>
-        {clean > 0 && <AddAllForm tripId={tripId} clean={clean} />}
+        {clean.length > 0 && <AddAllForm tripId={tripId} entryIds={clean} />}
         {!entries.length && <p className={styles.muted}>Nothing waiting. Items from calendars and assistants show up here first.</p>}
       <ul className={styles.list}>
         {entries.map((e) => {

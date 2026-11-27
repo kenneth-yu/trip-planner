@@ -22,7 +22,7 @@ export function InboxResults({ children }: { children: ReactNode }) {
   const alert = useRef<HTMLParagraphElement>(null);
   const show = useCallback((next: Outcome | null) => {
     setOutcome(next);
-    queueMicrotask(() => (next?.role === "alert" ? alert.current : status.current)?.focus());
+    if (next) queueMicrotask(() => (next.role === "alert" ? alert.current : status.current)?.focus());
   }, []);
   return (
     <Results.Provider value={{ show }}>

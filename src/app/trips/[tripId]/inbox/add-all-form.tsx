@@ -5,7 +5,7 @@ import styles from "../../../ui/page.module.css";
 import { addAllClean } from "../actions";
 import { useResults } from "./result";
 
-export function AddAllForm({ tripId, clean }: { tripId: string; clean: number }) {
+export function AddAllForm({ tripId, entryIds }: { tripId: string; entryIds: string[] }) {
   const { show } = useResults();
   const [pending, start] = useTransition();
   function submit(form: FormData) {
@@ -17,7 +17,10 @@ export function AddAllForm({ tripId, clean }: { tripId: string; clean: number })
   return (
     <form action={submit} className={styles.row} style={{ marginBottom: 16 }}>
       <input type="hidden" name="tripId" value={tripId} />
-      <button disabled={pending}>{pending ? "Adding" : `Add all without conflicts (${clean})`}</button>
+      {entryIds.map((id) => (
+        <input key={id} type="hidden" name="entryId" value={id} />
+      ))}
+      <button disabled={pending}>{pending ? "Adding" : `Add all without conflicts (${entryIds.length})`}</button>
     </form>
   );
 }

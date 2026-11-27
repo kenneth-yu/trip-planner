@@ -26,9 +26,11 @@ export function decidedOutcome(tapped: Tapped, entry: DecidedEntry): Outcome {
   }
   if (state === "discarded") return { text: `${who} discarded ${label}, so it was not added. Add it again from its source if you need it.`, role: "alert" };
   if (tapped === "add") {
-    return state === "approved"
-      ? { text: `${who} already added ${label}.`, role: "status" }
-      : { text: `${who} merged ${label} into an item already on the trip, so it was not added twice.`, role: "status" };
+    if (state === "approved") return { text: `${who} already added ${label}.`, role: "status" };
+    return {
+      text: entry.intoVisible ? `${who} merged ${label} into an item already on the trip, so it was not added twice.` : `${who} merged ${label}, so it was not added twice.`,
+      role: "status",
+    };
   }
   return state === "merged"
     ? { text: `${who} already merged ${label}.`, role: "status" }
@@ -54,10 +56,14 @@ export function savedWithoutRemovedTraveler(p: Pick<ProposedItem, "type" | "titl
 }
 
 export function addAllText(r: AddAllResult): string {
-  if (r.added === 0 && r.needYou === 0 && r.alreadyDecided > 0) return "These were already decided by someone else.";
+  const decided = r.alreadyDecided + r.alreadyByYou;
+  if (r.added === 0 && r.needYou === 0 && decided > 0) return r.alreadyByYou === 0 ? "These were already decided by someone else." : "These were already decided.";
   const parts: string[] = [];
+  const be = (n: number) => (n === 1 ? "was" : "were");
   if (r.added > 0) parts.push(`Added ${r.added}.`);
-  if (r.alreadyDecided > 0) parts.push(`${r.alreadyDecided} ${r.alreadyDecided === 1 ? "was" : "were"} already decided by someone else.`);
+  if (r.alreadyDecided > 0) parts.push(`${r.alreadyDecided} ${be(r.alreadyDecided)} already decided by someone else.`);
+  if (r.alreadyByYou > 0) parts.push(`${r.alreadyByYou} ${be(r.alreadyByYou)} already decided.`);
+  if (r.withoutRemovedTraveler > 0) parts.push(`${r.withoutRemovedTraveler} ${be(r.withoutRemovedTraveler)} saved without a removed traveler.`);
   if (r.needYou > 0) parts.push(`${r.needYou} still ${r.needYou === 1 ? "needs" : "need"} you: see below.`);
   return parts.join(" ");
 }

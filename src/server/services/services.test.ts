@@ -84,7 +84,7 @@ describe("review inbox (phase 2 acceptance on a real database)", () => {
     const total = present((await listInbox(ctx, TRIP_ID, kenny)).find((e) => e.proposed.title.startsWith("Stay at Total")));
     expect(total.match?.strength).toBe("possible");
     expect(total.clean).toBe(false);
-    await expect(approveAllClean(ctx, TRIP_ID, kenny)).resolves.toEqual({ added: 0, alreadyDecided: 0, needYou: 0 });
+    await expect(approveAllClean(ctx, TRIP_ID, kenny)).resolves.toEqual({ added: 0, alreadyDecided: 0, alreadyByYou: 0, needYou: 0, withoutRemovedTraveler: 0 });
   });
 
   it("merging a re-imported NH159 adds Jacob's seat without touching Kenny's", async () => {
@@ -220,7 +220,7 @@ describe("inbox entry transitions come from the state table", () => {
         await discardEntry(ctx, TRIP_ID, clean[1].id, jacob);
       },
     };
-    await expect(approveAllClean(racing, TRIP_ID, kenny)).resolves.toEqual({ added: 2, alreadyDecided: 1, needYou: 0 });
+    await expect(approveAllClean(racing, TRIP_ID, kenny)).resolves.toEqual({ added: 2, alreadyDecided: 1, alreadyByYou: 0, needYou: 0, withoutRemovedTraveler: 0 });
     expect(await listInbox(ctx, TRIP_ID, kenny)).toEqual([]);
   });
 });

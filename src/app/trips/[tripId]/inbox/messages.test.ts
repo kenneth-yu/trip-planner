@@ -9,9 +9,10 @@ const flight = {
   flight: { flightNumber: "CX509", fromAirport: "NRT", toAirport: "HKG" },
 } as const satisfies Pick<ProposedItem, "type" | "title" | "flight">;
 
-const entry = (state: DecidedEntry["state"], by: string | null = "Jacob"): DecidedEntry => ({
+const entry = (state: DecidedEntry["state"], by: string | null = "Jacob", intoVisible = true): DecidedEntry => ({
   state,
   by,
+  intoVisible,
   proposed: { ...flight, start: { at: "2026-12-05T00:00:00.000Z", zone: "Asia/Tokyo" }, end: { at: "2026-12-05T04:00:00.000Z", zone: "Asia/Hong_Kong" }, startIsEstimated: false, endIsEstimated: false, location: null, travelerIds: [], private: [], deadlines: [], notes: "", status: "confirmed", problems: [] },
 });
 
@@ -30,6 +31,10 @@ describe("what a tap says when the entry was already decided", () => {
 
   it.each(table)("%s on an entry that is now %s", (tapped, state, text, role) => {
     expect(decidedOutcome(tapped, entry(state))).toEqual({ text, role });
+  });
+
+  it("does not mention an item already on the trip when the merge target is hidden from the reader", () => {
+    expect(decidedOutcome("add", entry("merged", "Jacob", false)).text).toBe("Jacob merged CX509 to Hong Kong, so it was not added twice.");
   });
 
   it("says You for a double tap", () => {
@@ -65,14 +70,19 @@ describe("labels", () => {
 });
 
 describe("the Add all result line", () => {
+  const r = (added: number, alreadyDecided: number, needYou: number, alreadyByYou = 0, withoutRemovedTraveler = 0) => ({ added, alreadyDecided, needYou, alreadyByYou, withoutRemovedTraveler });
   it.each([
-    [{ added: 4, alreadyDecided: 0, needYou: 0 }, "Added 4."],
-    [{ added: 4, alreadyDecided: 1, needYou: 0 }, "Added 4. 1 was already decided by someone else."],
-    [{ added: 3, alreadyDecided: 0, needYou: 1 }, "Added 3. 1 still needs you: see below."],
-    [{ added: 3, alreadyDecided: 1, needYou: 1 }, "Added 3. 1 was already decided by someone else. 1 still needs you: see below."],
-    [{ added: 0, alreadyDecided: 3, needYou: 0 }, "These were already decided by someone else."],
-    [{ added: 2, alreadyDecided: 2, needYou: 2 }, "Added 2. 2 were already decided by someone else. 2 still need you: see below."],
-    [{ added: 0, alreadyDecided: 0, needYou: 0 }, ""],
+    [r(4, 0, 0), "Added 4."],
+    [r(4, 1, 0), "Added 4. 1 was already decided by someone else."],
+    [r(3, 0, 1), "Added 3. 1 still needs you: see below."],
+    [r(3, 1, 1), "Added 3. 1 was already decided by someone else. 1 still needs you: see below."],
+    [r(0, 3, 0), "These were already decided by someone else."],
+    [r(2, 2, 2), "Added 2. 2 were already decided by someone else. 2 still need you: see below."],
+    [r(0, 0, 0, 2), "These were already decided."],
+    [r(0, 1, 0, 1), "These were already decided."],
+    [r(2, 0, 0, 1), "Added 2. 1 was already decided."],
+    [r(3, 0, 0, 0, 1), "Added 3. 1 was saved without a removed traveler."],
+    [r(0, 0, 0), ""],
   ])("%j", (result, text) => {
     expect(addAllText(result)).toBe(text);
   });

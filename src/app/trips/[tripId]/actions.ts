@@ -63,8 +63,9 @@ export async function decideEntry(form: FormData): Promise<DecideResult> {
 
 export async function addAllClean(form: FormData): Promise<{ text: string }> {
   const tripId = z.string().uuid().parse(form.get("tripId"));
+  const seen = z.array(z.string().uuid()).max(500).parse(form.getAll("entryId"));
   const { ctx, requester } = await loadTripPage(tripId);
-  const result = await approveAllClean(ctx, tripId, requester);
+  const result = await approveAllClean(ctx, tripId, requester, seen);
   revalidatePath(`/trips/${tripId}`, "layout");
   return { text: addAllText(result) };
 }
