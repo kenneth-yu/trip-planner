@@ -92,7 +92,26 @@ function rowToItem(r: typeof t.items.$inferSelect, privates: (typeof t.itemPriva
   };
 }
 
+export class UnknownTraveler extends Error {
+  constructor() {
+    super("That traveler was removed. Pick someone else.");
+    this.name = "UnknownTraveler";
+  }
+}
+
+async function holdTravelers(db: DbOrTx, item: Item): Promise<void> {
+  const wanted = [...new Set([...item.travelerIds, ...item.private.flatMap((p) => (p.travelerId ? [p.travelerId] : []))])];
+  if (wanted.length === 0) return;
+  const held = await db
+    .select({ id: t.travelers.id })
+    .from(t.travelers)
+    .where(and(eq(t.travelers.tripId, item.tripId), inArray(t.travelers.id, wanted)))
+    .for("share");
+  if (held.length !== wanted.length) throw new UnknownTraveler();
+}
+
 export async function saveItem(db: DbOrTx, item: Item): Promise<void> {
+  await holdTravelers(db, item);
   const row = {
     id: item.id,
     tripId: item.tripId,
