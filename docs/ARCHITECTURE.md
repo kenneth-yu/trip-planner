@@ -281,6 +281,8 @@ erDiagram
 | Mirrored events have no reminders and do not include codes or seats by default | v1 has no notifications; a Google calendar can be shared beyond the app's permissions | Per member setting `includeSensitive` exists and is off |
 | Places resolve offline first (airports, city-timezones, countries-and-timezones), then optionally by address lookup (OpenStreetMap, cached, `ADDRESS_LOOKUP=openstreetmap`); unclear results are saved as flags on the item and shown as checks | Times must be right without asking for offsets; when unsure, say so rather than guess | Off by default because it sends booking addresses to OpenStreetMap |
 | PGlite for dev and tests, Postgres in production | Same SQL and migrations; nobody installs a database to run tests | Never for prod: PGlite is single process |
+| Every page renders per request: the root layout awaits `connection()` | A nonce based CSP needs the nonce in every script tag, which a page prerendered at build time (the framework's 404 among them) cannot have | A page needs to be static for speed and can be served without scripts |
+| `getDb` caches the opening promise, and forgets it if opening fails | One open per process, but a database outage or missing key at start must not keep every later request failing until a restart | n/a |
 | Signed cookie session with a dev sign in | Lets the app run and be tested now | Replace with Auth.js (Google, Apple, email link) per CLAUDE.md before anyone but the builders uses it |
 
 ## Open questions (need an answer from the trip owner)
@@ -289,3 +291,24 @@ erDiagram
 2. **The Gmail "Queen beds" stay.** The fixture says it should merge into the Airbnb, but IMPORT.md's matching rules (similar name or address) do not match it. It is shown as a possible match for a person to merge. Confirm that is the intended behavior.
 3. **The $1,183.22 stay also overlaps the second Resol Ueno booking on Dec 13.** The fixture's expected checks do not list that overlap, but it is true, so the app reports it.
 4. **Whose seat is it?** When a shared calendar record has a seat but several travelers, the seat goes to the one traveler on that record who has no seat yet. Otherwise it stays unassigned. That is how NH159 resolves to 30K Kenny, 30C Jacob.
+
+## Encryption at rest
+
+`item_private.sealed`, `activity.sealed` and `imported_items.sealed` hold AES-256-GCM envelopes (`k1.iv.tag.body`) keyed by `DATA_ENCRYPTION_KEY`, with the purpose and row id as authenticated data. The key is checked when the database opens, so a missing or all-zero key stops the process at start with the setup message. Rows written by older code are sealed on start by `sealLegacyRows`.
+
+Imported free text is never copied into a plaintext column. A denylist of wordings ("confirmation code is", "Booking ID", hyphenated codes) will always miss one, so the design avoids the question:
+
+```mermaid
+flowchart LR
+  D["Event description"] --> E["extractPrivate: code, seat, price"]
+  D --> N["whole description"]
+  E --> P["item_private (sealed)"]
+  N --> P
+  D --> U["sentences it could not read"] --> S["imported_items.sealed"]
+  D --> C["deadline consequence: fixed text per kind"]
+```
+
+- The description becomes the private `notes` field, sealed with the other booking details. Only owners and editors see it ("From the booking" in the day details). `items.notes` stays empty for imports.
+- Deadline consequences from imports are the fixed text for the deadline kind, never a sentence from the description.
+- Sentences the parser could not read live in the sealed import payload and show only in the inbox.
+- Text a person types themselves (quick add notes, assistant `add_items` notes) stays in `items.notes`. The private fields exist for codes; putting one in a shared note is the person's choice.
