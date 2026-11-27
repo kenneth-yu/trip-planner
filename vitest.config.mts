@@ -6,6 +6,6 @@ export default defineConfig({
   test: {
     include: ["src/**/*.test.ts"],
     environment: "node",
-    env: { TZ: "Pacific/Kiritimati" },
+    env: { TZ: "Pacific/Kiritimati", DATA_ENCRYPTION_KEY: "ZmFrZS10ZXN0LWtleS1ub3QtZm9yLXJlYWwtZGF0YS0=" },
   },
 });
