@@ -5,6 +5,11 @@ import { cachedGeocoder, FakeGeocoder, nominatimGeocoder } from "./geocoder";
 
 const HIT = { lat: 35.66, lng: 139.72, label: "Nishiazabu, Minato, Tokyo, Japan" };
 
+function blockEventLoopFor(ms: number) {
+  const until = Date.now() + ms;
+  while (Date.now() < until);
+}
+
 describe("address lookup spacing", () => {
   it("keeps concurrent lookups apart by the minimum interval", async () => {
     const starts: number[] = [];
@@ -16,7 +21,37 @@ describe("address lookup spacing", () => {
     await Promise.all(Array.from({ length: 6 }, (_, i) => geo.lookup(`${i} Soy Street`)));
     expect(starts).toHaveLength(6);
     const gaps = starts.slice(1).map((s, i) => s - starts[i]);
-    for (const gap of gaps) expect(gap).toBeGreaterThanOrEqual(55);
+    for (const gap of gaps) expect(gap).toBeGreaterThanOrEqual(60);
+  });
+
+  it("keeps the interval from the real start of a late lookup", async () => {
+    const starts: number[] = [];
+    let calls = 0;
+    const fakeFetch: typeof fetch = async () => {
+      starts.push(Date.now());
+      calls += 1;
+      if (calls === 1) blockEventLoopFor(30);
+      return new Response(JSON.stringify([]), { status: 200 });
+    };
+    const geo = nominatimGeocoder({ userAgent: "trip-planner", minIntervalMs: 20, fetchImpl: fakeFetch });
+    const first = geo.lookup("1 Soy Street");
+    const second = geo.lookup("2 Soy Street");
+    const third = geo.lookup("3 Soy Street");
+    await Promise.all([first, second, third]);
+    expect(starts[2] - starts[1]).toBeGreaterThanOrEqual(20);
+  });
+});
+
+describe("address lookup failures", () => {
+  it("lets the next lookup run after one fails", async () => {
+    let calls = 0;
+    const fakeFetch: typeof fetch = async () => {
+      calls += 1;
+      return calls === 1 ? new Response("", { status: 503 }) : new Response(JSON.stringify([]), { status: 200 });
+    };
+    const geo = nominatimGeocoder({ userAgent: "trip-planner", minIntervalMs: 5, fetchImpl: fakeFetch });
+    const results = await Promise.allSettled([geo.lookup("1 Soy Street"), geo.lookup("2 Soy Street")]);
+    expect(results.map((r) => r.status)).toEqual(["rejected", "fulfilled"]);
   });
 });
 
