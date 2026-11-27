@@ -69,7 +69,7 @@ Each component lists what it shows and why.
 ### Event row
 * Time on the left (local, large enough to scan), title, and place underneath in secondary text.
 * Home time after the local time in small secondary text, only when it differs from local. The day name is added only when the home date is different.
-* Tap to expand: address, confirmation code (if allowed), phone, notes, source.
+* Tap to open the item's details page: address, confirmation code (if allowed), phone, notes, source. Rows do not expand in place; one tap, one level (see `UX.md`).
 * When the app is not sure where something is, the row says "Check where this is" in the warning color, and the details say why and what to add.
 * Why: the time is what people scan for; everything else is on demand.
 
