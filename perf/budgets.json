@@ -87,6 +87,12 @@
     },
     "/trips/[tripId]/share": {
       "budgetGzipBytes": 153000
+    },
+    "/account": {
+      "budgetGzipBytes": 155000
+    },
+    "/trips/[tripId]/settings/delete": {
+      "budgetGzipBytes": 155000
     }
   }
 }
