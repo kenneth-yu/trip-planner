@@ -146,7 +146,8 @@ describe("Vercel ignore rule", () => {
 
 describe("Vercel ignore rule for production", () => {
   const SHA = "0123456789abcdef0123456789abcdef01234567";
-  const approved = JSON.stringify({ state: "success", statuses: [{ context: "ci/other", state: "failure" }, { context: "deploy/approved", state: "success" }] });
+  const bot = { login: "github-actions[bot]" };
+  const approved = JSON.stringify({ state: "success", statuses: [{ context: "ci/other", state: "failure" }, { context: "deploy/approved", state: "success", creator: bot }] });
   const production = (curl: FakeCurl, sha = SHA) => run(repoWith([["src/app/page.tsx"]]), { VERCEL_ENV: "production", VERCEL_GIT_COMMIT_SHA: sha }, curl);
 
   it("builds only when the commit carries deploy/approved set to success", () => {
@@ -154,9 +155,12 @@ describe("Vercel ignore rule for production", () => {
   });
 
   it.each([
-    ["pending", JSON.stringify({ statuses: [{ context: "deploy/approved", state: "pending" }] })],
-    ["failure", JSON.stringify({ statuses: [{ context: "deploy/approved", state: "failure" }] })],
-    ["another context", JSON.stringify({ statuses: [{ context: "deploy/approved-ish", state: "success" }, { context: "approved", state: "success" }] })],
+    ["pending", JSON.stringify({ statuses: [{ context: "deploy/approved", state: "pending", creator: bot }] })],
+    ["failure", JSON.stringify({ statuses: [{ context: "deploy/approved", state: "failure", creator: bot }] })],
+    ["the same status from another account", JSON.stringify({ statuses: [{ context: "deploy/approved", state: "success", creator: { login: "someone-with-write-access" } }] })],
+    ["the same status from a lookalike bot", JSON.stringify({ statuses: [{ context: "deploy/approved", state: "success", creator: { login: "github-actions" } }] })],
+    ["the same status with no creator", JSON.stringify({ statuses: [{ context: "deploy/approved", state: "success" }] })],
+    ["another context", JSON.stringify({ statuses: [{ context: "deploy/approved-ish", state: "success", creator: bot }, { context: "approved", state: "success", creator: bot }] })],
     ["no statuses", JSON.stringify({ state: "pending", statuses: [] })],
     ["a rate limit answer", JSON.stringify({ message: "API rate limit exceeded", documentation_url: "https://docs.github.com" })],
     ["a statuses field that is not a list", JSON.stringify({ statuses: "deploy/approved success" })],

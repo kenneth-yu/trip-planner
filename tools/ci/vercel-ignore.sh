@@ -10,8 +10,8 @@ if [ "${VERCEL_ENV:-}" = "production" ]; then
     echo "Skipping: production builds only when the owner approved the commit, and this commit id is missing or malformed."
     exit 0
   fi
-  if reply="$(curl -fsS --max-time 15 "https://api.github.com/repos/kenneth-yu/trip-planner/commits/${sha}/status")" \
-    && printf '%s' "$reply" | node -e 'let d="";process.stdin.on("data",(c)=>{d+=c}).on("end",()=>{try{const s=JSON.parse(d).statuses;process.exit(Array.isArray(s)&&s.some((x)=>x.context==="deploy/approved"&&x.state==="success")?0:1)}catch(e){process.exit(1)}})'; then
+  if reply="$(curl -fsS --max-time 15 --max-filesize 1048576 "https://api.github.com/repos/kenneth-yu/trip-planner/commits/${sha}/status")" \
+    && printf '%s' "$reply" | node -e 'let d="";process.stdin.on("data",(c)=>{d+=c}).on("end",()=>{try{const s=JSON.parse(d).statuses;process.exit(Array.isArray(s)&&s.some((x)=>x.context==="deploy/approved"&&x.state==="success"&&x.creator&&x.creator.login==="github-actions[bot]")?0:1)}catch(e){process.exit(1)}})'; then
     echo "Building: the owner approved this commit for production (deploy/approved)."
     exit 1
   fi
