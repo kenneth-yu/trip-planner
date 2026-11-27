@@ -76,6 +76,9 @@
     "/trips/[tripId]/items/[itemId]": {
       "budgetGzipBytes": 151000
     },
+    "/trips/[tripId]/items/[itemId]/edit": {
+      "budgetGzipBytes": 183000
+    },
     "/invite/join": {
       "budgetGzipBytes": 146000
     },
