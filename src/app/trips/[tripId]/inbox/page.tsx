@@ -57,7 +57,7 @@ export default async function InboxPage({ params }: PageProps<"/trips/[tripId]/i
                   Could not read: “{u}”
                 </div>
               ))}
-              {e.namesRemovedTraveler && <div className={styles.warning}>Someone on this was removed from the trip. Adding it leaves them off.</div>}
+              {e.namesRemovedTraveler && <div className={styles.warning}>Someone on this was removed from the trip. They will be left off.</div>}
               <EntryForm tripId={tripId} entry={e} />
             </li>
           );

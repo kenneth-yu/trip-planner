@@ -12,6 +12,7 @@ import { getTripView, quickAddItem, requireAggregate } from "@/server/services/t
 import { AccessDenied, projectTrip } from "@/domain/visibility/project";
 import { inputToProposal } from "@/domain/import/quick-add";
 import { addAllClean, decideEntry } from "../actions";
+import { entryLabel } from "./messages";
 
 const page = vi.hoisted(() => {
   const state: { ctx: ServiceContext | null; requester: Requester | null } = { ctx: null, requester: null };
@@ -260,8 +261,10 @@ describe("an entry that names a removed traveler", () => {
     await importCalendarEvents(env.ctx, TRIP_ID, kenny, [events[2]], { source: "ics", label: "again", travelerIds: [TRAVELERS.jacob] });
     await env.db.delete(t.travelers).where(eq(t.travelers.id, TRAVELERS.jacob));
     const [again] = await listInbox(env.ctx, TRIP_ID, kenny);
-    const saved = await mergeEntry(env.ctx, TRIP_ID, again.id, kenny);
-    expect(saved.withoutRemovedTraveler).toBe(true);
+    page.ctx = env.ctx;
+    page.requester = kenny;
+    const result = await decideEntry(form(again.id, "merge"));
+    expect(result).toEqual({ kind: "done", outcome: { text: `Merged ${entryLabel(again.proposed)} into ${present(again.match).title} without the removed traveler.`, role: "status" } });
     expect(present((await getTripView(env.ctx, TRIP_ID, kenny)).items[0]).travelerIds).toEqual([TRAVELERS.kenny]);
   });
 });

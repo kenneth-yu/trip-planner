@@ -65,7 +65,8 @@ describe("labels", () => {
   });
 
   it("says what happened to a removed traveler without naming them", () => {
-    expect(savedWithoutRemovedTraveler(flight)).toEqual({ text: "Added CX509 to Hong Kong without the removed traveler.", role: "status" });
+    expect(savedWithoutRemovedTraveler(flight, null)).toEqual({ text: "Added CX509 to Hong Kong without the removed traveler.", role: "status" });
+    expect(savedWithoutRemovedTraveler(flight, "CX509")).toEqual({ text: "Merged CX509 to Hong Kong into CX509 without the removed traveler.", role: "status" });
   });
 });
 

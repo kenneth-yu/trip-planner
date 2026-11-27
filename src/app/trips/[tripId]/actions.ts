@@ -33,7 +33,7 @@ const Decide = z.object({ tripId: z.string().uuid(), entryId: z.string().uuid(),
 export type DecideResult = { kind: "needs_choice"; message: string } | { kind: "done"; outcome: Outcome };
 
 function savedOutcome(saved: Saved, action: "add" | "merge"): Outcome {
-  if (saved.withoutRemovedTraveler) return savedWithoutRemovedTraveler(saved.proposed);
+  if (saved.withoutRemovedTraveler) return savedWithoutRemovedTraveler(saved.proposed, action === "merge" ? saved.intoTitle : null);
   return action === "merge" && saved.intoTitle !== null ? mergedOutcome(saved.proposed, saved.intoTitle) : addedOutcome(saved.proposed);
 }
 

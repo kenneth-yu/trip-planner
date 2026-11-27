@@ -51,8 +51,9 @@ export function discardedOutcome(p: Pick<ProposedItem, "type" | "title" | "fligh
 
 export const ENTRY_GONE: Outcome = { text: "That item is no longer in the inbox.", role: "status" };
 
-export function savedWithoutRemovedTraveler(p: Pick<ProposedItem, "type" | "title" | "flight">): Outcome {
-  return { text: `Added ${entryLabel(p)} without the removed traveler.`, role: "status" };
+export function savedWithoutRemovedTraveler(p: Pick<ProposedItem, "type" | "title" | "flight">, intoTitle: string | null): Outcome {
+  const text = intoTitle === null ? `Added ${entryLabel(p)} without the removed traveler.` : `Merged ${entryLabel(p)} into ${intoTitle} without the removed traveler.`;
+  return { text, role: "status" };
 }
 
 export function addAllText(r: AddAllResult): string {
