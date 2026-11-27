@@ -31,7 +31,7 @@ const outsideLayer = (layers) => layers.flatMap((l) => [`@/${l}/*`, `**/${l}/*`]
 export default defineConfig([
   ...nextVitals,
   ...nextTs,
-  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", "drizzle/**", "node_modules/**"]),
+  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", "drizzle/**", "node_modules/**", ".claude/worktrees/**", ".pipeline/**"]),
   {
     files: ["**/*.{ts,tsx,mts,mjs,js}"],
     plugins: { principles },
