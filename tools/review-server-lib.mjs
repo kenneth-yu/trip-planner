@@ -6,7 +6,7 @@ import path from "node:path";
 
 export const MAX_SERVERS = 2;
 export const LIMIT_MS = 45 * 60 * 1000;
-const KILL_GRACE_MS = 5000;
+const KILL_AFTER_MS = 15000;
 
 export function stateDir(override = process.env.REVIEW_SERVER_DIR) {
   return override || path.join(os.tmpdir(), "trip-planner-review-servers");
@@ -74,9 +74,10 @@ export function releaseSlot(dir, pid) {
   rmSync(entryFile(dir, pid), { force: true });
 }
 
-export function runLimited(command, args, { cwd, env, limitMs, quiet = false }) {
-  const child = spawn(command, args, { cwd, env, stdio: quiet ? "ignore" : "inherit", detached: true });
-  let reason = "exited";
+export function runLimited(command, args, { cwd, env, limitMs, killAfterMs = KILL_AFTER_MS, quiet = false }) {
+  const guarded = ["--kill-after", `${killAfterMs / 1000}s`, `${limitMs / 1000}s`, command, ...args];
+  const child = spawn("timeout", guarded, { cwd, env, stdio: quiet ? "ignore" : "inherit", detached: true });
+  const startedAt = Date.now();
   const stop = (signal) => {
     try {
       process.kill(-child.pid, signal);
@@ -84,17 +85,12 @@ export function runLimited(command, args, { cwd, env, limitMs, quiet = false }) 
       if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
     }
   };
-  const timer = setTimeout(() => {
-    reason = "limit";
-    stop("SIGTERM");
-    setTimeout(() => stop("SIGKILL"), KILL_GRACE_MS).unref();
-  }, limitMs);
   const done = new Promise((resolve, reject) => {
     child.on("error", reject);
     child.on("exit", (code) => {
-      clearTimeout(timer);
       stop("SIGKILL");
-      resolve({ code, reason });
+      const limited = code === 124 || code === 137 || (code === null && Date.now() - startedAt >= limitMs);
+      resolve({ code, reason: limited ? "limit" : "exited" });
     });
   });
   return { child, done, stop: () => stop("SIGTERM") };

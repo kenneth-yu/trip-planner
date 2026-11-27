@@ -91,12 +91,11 @@ Use the review server. It picks a free port, seeds the demo trips into a scratch
 ```bash
 node tools/review-server.mjs
 node tools/review-server.mjs --dev
-node tools/review-server.mjs --database-url <scratch postgres url>
 ```
 
-- Default: `next build` then `next start`, the same code path as production. On the embedded database, dev sign in is off by design (production refuses it), so this mode shows the signed out screens, headers and build output. For a signed in view without Postgres, use `--dev`.
-- `--dev` runs `next dev` with dev sign in (`/api/dev/sign-in?as=kenny`). Use it only when asked: it is the heavy mode.
-- `--database-url` against a scratch Postgres runs a faithful preview (`VERCEL_ENV=preview`, migrations, `--preview-database` seed, dev sign in), like the CI e2e job.
-- It stops itself after 45 minutes (hard limit, the server and its children are killed) and on Ctrl-C. Stop it before you finish.
+- Default: `next build` then `next start` with `VERCEL_ENV=preview` and `DEV_SIGN_IN=1`, so you see the production build signed in (`/api/dev/sign-in?as=kenny`) on a scratch embedded database seeded with the demo trips.
+- `--dev` runs `next dev` instead. Use it only when asked: it is the heavy mode.
+- It refuses to start when `DATABASE_URL` is set in your shell or when the folder has an env file (`.env`, `.env.local` and the like), so it can never touch a real database or read real secrets. It never reads those files.
+- It stops itself after 45 minutes. The server runs under `timeout`, so it is killed on schedule even if the wrapper is killed. Stop it before you finish (Ctrl-C).
 - At most 2 review servers run at once across all worktrees. The lock lives in `trip-planner-review-servers` under the system temp directory, stale entries are removed, and a third start prints which pids and ports hold the slots.
 - Secrets are generated per run and never printed. The scratch database is deleted on exit. Never point it at a real database.

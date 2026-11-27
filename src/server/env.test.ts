@@ -95,7 +95,16 @@ describe("server environment", () => {
   });
 
   it("refuses any Vercel deployment without a database url", () => {
-    expect(failure({ ...production, VERCEL_ENV: "preview", DATABASE_URL: undefined }).message).toContain("DATABASE_URL");
+    expect(failure({ ...production, VERCEL_ENV: "preview", VERCEL: "1", DATABASE_URL: undefined }).message).toContain("DATABASE_URL");
+    expect(failure({ ...production, VERCEL_ENV: "production", VERCEL: "1", DATABASE_URL: undefined }).message).toContain("DATABASE_URL");
+    expect(failure({ ...production, VERCEL_ENV: "production", DATABASE_URL: undefined }).message).toContain("DATABASE_URL");
+  });
+
+  it("lets a local preview run on the embedded database only when Vercel did not set VERCEL", () => {
+    const local = parseServerEnv({ ...production, VERCEL_ENV: "preview", DEV_SIGN_IN: "1", DATABASE_URL: undefined, APP_URL: undefined });
+    expect(local.deployment).toBe("preview");
+    expect(local.databaseUrl).toBeUndefined();
+    expect(() => parseServerEnv({ ...production, VERCEL_ENV: "preview", VERCEL: "1", DATABASE_URL: undefined })).toThrow(/DATABASE_URL/);
   });
 
   it("requires the secrets on a preview deployment too", () => {

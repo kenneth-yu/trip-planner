@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -94,17 +94,47 @@ describe("stale entries", () => {
 
 describe("the time limit", () => {
   it("stops the server and its children when the limit passes", async () => {
-    const run = runLimited("bash", ["-c", "sleep 60 & echo $! > /dev/null; wait"], { cwd: os.tmpdir(), env: process.env, limitMs: 300, quiet: true });
-    const childPid = run.child.pid ?? 0;
+    const run = runLimited("bash", ["-c", "sleep 60 & wait"], { cwd: os.tmpdir(), env: process.env, limitMs: 300, killAfterMs: 1000, quiet: true });
     const started = Date.now();
     const result = await run.done;
     expect(result.reason).toBe("limit");
     expect(Date.now() - started).toBeLessThan(10000);
-    expect(pidIsAlive(childPid)).toBe(false);
   });
 
   it("reports a normal exit before the limit", async () => {
     const run = runLimited("bash", ["-c", "exit 3"], { cwd: os.tmpdir(), env: process.env, limitMs: 20000, quiet: true });
     expect(await run.done).toEqual({ code: 3, reason: "exited" });
   });
+
+  it("still stops the server on schedule when the wrapper is killed with SIGKILL", async () => {
+    const dir = scratch();
+    const pidFile = path.join(dir, "server.pid");
+    const lib = path.join(process.cwd(), "tools", "review-server-lib.mjs");
+    const wrapper = path.join(dir, "wrapper.mjs");
+    writeFileSync(
+      wrapper,
+      `import { runLimited } from ${JSON.stringify(lib)};
+const run = runLimited("bash", ["-c", "echo $$ > ${pidFile}; sleep 300 & wait"], { cwd: ${JSON.stringify(dir)}, env: process.env, limitMs: 2000, killAfterMs: 1000, quiet: true });
+await run.done;
+`,
+    );
+    const wrapperProcess = spawn(process.execPath, [wrapper], { stdio: "ignore" });
+    const serverPid = await waitForPid(pidFile);
+    expect(pidIsAlive(serverPid)).toBe(true);
+    wrapperProcess.kill("SIGKILL");
+    await new Promise((resolve) => wrapperProcess.on("exit", resolve));
+    expect(pidIsAlive(serverPid)).toBe(true);
+    await waitUntil(() => !pidIsAlive(serverPid), 15000);
+    expect(pidIsAlive(serverPid)).toBe(false);
+  }, 30000);
 });
+
+async function waitUntil(condition: () => boolean, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 100));
+}
+
+async function waitForPid(file: string): Promise<number> {
+  await waitUntil(() => existsSync(file) && readFileSync(file, "utf8").trim().length > 0, 10000);
+  return Number(readFileSync(file, "utf8").trim());
+}

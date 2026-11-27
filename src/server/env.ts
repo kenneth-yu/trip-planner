@@ -49,7 +49,7 @@ function problems(source: Record<string, string | undefined>, deployment: Deploy
   if (appUrlRequired(source)) {
     need("APP_URL", z.url({ protocol: /^https$/ }), "must be set to the https address of the site on a production deployment, or on a preview that sends email links");
   }
-  if (source.VERCEL_ENV) {
+  if (source.VERCEL_ENV && (source.VERCEL || source.VERCEL_ENV !== "preview")) {
     need("DATABASE_URL", present, "is not set. A Vercel deployment never runs on the embedded database");
   }
   if (source.DEV_SIGN_IN === "1" && deployment === "production") {

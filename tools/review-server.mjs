@@ -1,13 +1,11 @@
 import { randomBytes } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { claimSlot, freePort, LIMIT_MS, releaseSlot, runLimited, stateDir, TooManyServers } from "./review-server-lib.mjs";
 
 const args = process.argv.slice(2);
 const dev = args.includes("--dev");
-const databaseIndex = args.indexOf("--database-url");
-const databaseUrl = databaseIndex >= 0 ? args[databaseIndex + 1] : undefined;
 const root = process.cwd();
 const dir = stateDir();
 const startedAt = Date.now();
@@ -17,6 +15,10 @@ function fail(message) {
   process.stderr.write(`${message}\n`);
   process.exit(1);
 }
+
+if (process.env.DATABASE_URL) fail("DATABASE_URL is set in this shell. The review server runs on a scratch embedded database only; unset it first.");
+const envFiles = [".env", ".env.local", ".env.development", ".env.development.local", ".env.production", ".env.production.local"].filter((name) => existsSync(path.join(root, name)));
+if (envFiles.length > 0) fail(`Next would load ${envFiles.join(", ")} from this folder. Run the review server from a worktree without env files.`);
 
 const port = await freePort();
 try {
@@ -33,13 +35,10 @@ const secrets = {
   TOKEN_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
   DATA_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
 };
-const base = { ...process.env, ...secrets, NEXT_TELEMETRY_DISABLED: "1", APP_URL: `http://localhost:${port}`, PGLITE_DIR: path.join(scratch, "db"), DATABASE_URL: databaseUrl ?? "" };
-const preview = !dev && databaseUrl;
+const base = { ...process.env, ...secrets, NEXT_TELEMETRY_DISABLED: "1", APP_URL: `http://localhost:${port}`, PGLITE_DIR: path.join(scratch, "db"), DATABASE_URL: "" };
 const serverEnv = dev
   ? { ...base, DEV_SIGN_IN: "1" }
-  : preview
-    ? { ...base, DEV_SIGN_IN: "1", VERCEL: "1", VERCEL_ENV: "preview", TRUST_PROXY: "0" }
-    : { ...base, TRUST_PROXY: "0", APP_URL: `https://localhost:${port}` };
+  : { ...base, DEV_SIGN_IN: "1", VERCEL_ENV: "preview", AUTH_TRUST_HOST: "true", TRUST_PROXY: "0" };
 
 let current = null;
 let finished = false;
@@ -93,20 +92,13 @@ const next = path.join(root, "node_modules", ".bin", "next");
 const tsx = path.join(root, "node_modules", ".bin", "tsx");
 
 if (!dev) {
-  const build = await step(next, ["build"], { ...base, NODE_ENV: "production" });
+  const build = await step(next, ["build"], base);
   if (build.code !== 0) {
     cleanup();
     fail("next build failed.");
   }
 }
-if (preview) {
-  const migrate = await step(tsx, ["scripts/migrate.ts"], serverEnv);
-  if (migrate.code !== 0) {
-    cleanup();
-    fail("The migration failed.");
-  }
-}
-const seed = await step(tsx, ["scripts/seed.ts", ...(preview ? ["--preview-database"] : [])], preview ? serverEnv : { ...base, DEV_SIGN_IN: "1" });
+const seed = await step(tsx, ["scripts/seed.ts"], base);
 if (seed.code !== 0) {
   cleanup();
   fail("Seeding the demo data failed.");
@@ -114,9 +106,8 @@ if (seed.code !== 0) {
 
 current = runLimited(next, dev ? ["dev", "--port", String(port)] : ["start", "--port", String(port)], { cwd: root, env: serverEnv, limitMs: remaining() });
 await waitUntilReady();
-const signIn = dev || preview ? "dev sign in is on: /api/dev/sign-in?as=kenny" : "production mode on the embedded database: dev sign in is off by design; use --dev, or --database-url <scratch postgres> for a faithful preview";
-process.stdout.write(`Review server: http://localhost:${port} (${dev ? "dev" : "production"}, stops after 45 minutes, ${signIn})\n`);
-const result = await current.done;
+process.stdout.write(`Review server: http://localhost:${port} (${dev ? "dev" : "production build as a local preview"}, stops after 45 minutes; sign in with /api/dev/sign-in?as=kenny)\n`);
+const finalResult = await current.done;
 cleanup();
-if (result.reason === "limit") process.stderr.write("The 45 minute limit ended the review server.\n");
+if (finalResult.reason === "limit") process.stderr.write("The 45 minute limit ended the review server.\n");
 process.exit(0);
