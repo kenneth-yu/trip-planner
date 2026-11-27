@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import styles from "../../../ui/page.module.css";
 import { dismissCheckAction, restoreCheckAction } from "./actions";
@@ -19,6 +19,7 @@ export function CheckLine({ tripId, anchor, sentence, canEdit }: { tripId: strin
   const fine = useRef<HTMLButtonElement>(null);
   const undo = useRef<HTMLButtonElement>(null);
   const moved = useRef(false);
+  const statusId = useId();
 
   useEffect(() => {
     if (!moved.current) return;
@@ -35,40 +36,42 @@ export function CheckLine({ tripId, anchor, sentence, canEdit }: { tripId: strin
     setPhase(result.ok ? after : before);
   }
 
-  if (phase === "done" || phase === "undoing") {
-    return (
-      <>
-        <span role="status" className={styles.muted}>
-          Marked as fine.
-        </span>
-        <button ref={undo} type="button" className={styles.textButton} disabled={phase === "undoing"} onClick={() => change(restoreCheckAction, "undoing", "open", "done")}>
-          Undo
-        </button>
-        {failed && (
-          <p role="alert" className={styles.muted}>
-            That did not save. Try again.
-          </p>
-        )}
-      </>
-    );
-  }
+  const marked = phase === "done" || phase === "undoing";
   return (
     <>
-      <div>{sentence}</div>
-      {canEdit && (
+      <span role="status" id={statusId} className={styles.muted}>
+        {marked ? "Marked as fine." : ""}
+      </span>
+      {marked ? (
         <button
-          ref={fine}
+          ref={undo}
           type="button"
           className={styles.textButton}
-          aria-label={`This is fine: ${startOf(sentence)}`}
-          disabled={phase === "saving"}
-          onClick={() => change(dismissCheckAction, "saving", "done", "open")}
+          aria-describedby={statusId}
+          disabled={phase === "undoing"}
+          onClick={() => change(restoreCheckAction, "undoing", "open", "done")}
         >
-          {phase === "saving" ? "Saving" : "This is fine"}
+          Undo
         </button>
+      ) : (
+        <>
+          <div>{sentence}</div>
+          {canEdit && (
+            <button
+              ref={fine}
+              type="button"
+              className={styles.textButton}
+              aria-label={`This is fine: ${startOf(sentence)}`}
+              disabled={phase === "saving"}
+              onClick={() => change(dismissCheckAction, "saving", "done", "open")}
+            >
+              {phase === "saving" ? "Saving" : "This is fine"}
+            </button>
+          )}
+        </>
       )}
       {failed && (
-        <p role="alert" className={styles.muted}>
+        <p role="alert" className={styles.warning}>
           That did not save. Try again.
         </p>
       )}
@@ -103,7 +106,7 @@ export function ShowAgain({ tripId, anchor }: { tripId: string; anchor: string }
         Show again
       </button>
       {failed && (
-        <p role="alert" className={styles.muted}>
+        <p role="alert" className={styles.warning}>
           That did not save. Try again.
         </p>
       )}

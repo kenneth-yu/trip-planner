@@ -13,10 +13,17 @@ function Alert({ attention, checks, tripId }: { attention: Attention; checks: Op
   const className = `${styles.alert} ${warn ? styles.alertWarn : ""}`;
   if (alert.kind === "inbox") {
     return (
-      <Link className={className} href={`/trips/${tripId}/inbox`}>
-        {attention.pending === 1 ? "1 new item to look over" : `${attention.pending} new items to look over`}
-        <small>Nothing is added until you say so.{alert.more > 0 ? ` ${more(alert.more)}` : ""}</small>
-      </Link>
+      <div className={className}>
+        <Link className={styles.alertLink} href={`/trips/${tripId}/inbox`}>
+          {attention.pending === 1 ? "1 new item to look over" : `${attention.pending} new items to look over`}
+          <small>Nothing is added until you say so.</small>
+        </Link>
+        {alert.more > 0 && (
+          <small>
+            <Link href={`/trips/${tripId}/deadlines`}>{more(alert.more)}</Link>
+          </small>
+        )}
+      </div>
     );
   }
   return (

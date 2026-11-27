@@ -214,6 +214,6 @@
 
 .panelLink {
   color: var(--text);
-  text-decoration: none;
+  text-decoration: underline;
   display: block;
 }

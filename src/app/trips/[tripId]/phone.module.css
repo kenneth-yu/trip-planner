@@ -39,6 +39,12 @@
   margin-bottom: 10px;
 }
 
+.alertLink {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
 .alertWarn {
   background: color-mix(in srgb, var(--warning) 10%, var(--ground));
 }
