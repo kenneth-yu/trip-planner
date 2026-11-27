@@ -71,7 +71,7 @@ async function tokenRequest(body: Record<string, string>, fetchImpl: typeof fetc
   const res = await fetchImpl(TOKEN_URL, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(body) });
   if (!res.ok) {
     const text = await res.text();
-    const message = `Google sign in failed: ${res.status} ${text}`;
+    const message = `Google sign in failed: ${res.status}`;
     throw res.status === 400 && text.includes("invalid_grant") ? new GoogleAuthorizationError(res.status, message) : new Error(message);
   }
   return TokenResponseSchema.parse(await res.json());
