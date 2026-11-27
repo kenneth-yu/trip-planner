@@ -63,13 +63,26 @@ describe("assistant token", () => {
 });
 
 describe("item visibility", () => {
-  it("hiding then sharing returns to visible", () => {
-    expect(transition(itemVisibility, transition(itemVisibility, "Visible", "hide"), "share")).toBe("Visible");
-    expect(transition(itemVisibility, transition(itemVisibility, "Visible", "hideShowingBusy"), "share")).toBe("Visible");
+  it("hiding then sharing with everyone returns to everyone, whatever the busy setting", () => {
+    expect(transition(itemVisibility, transition(itemVisibility, "Everyone", "onlyMe"), "shareWithEveryone")).toBe("Everyone");
+    expect(transition(itemVisibility, "OnlyMeBusy", "shareWithEveryone")).toBe("Everyone");
+    expect(transition(itemVisibility, "SpecificBusy", "shareWithEveryone")).toBe("Everyone");
   });
 
-  it("a hidden item cannot jump straight between busy and absent", () => {
-    expect(() => transition(itemVisibility, "Busy", "hide")).toThrow(InvalidTransition);
+  it("a hidden item switches between busy and absent without changing who it is shared with", () => {
+    expect(transition(itemVisibility, "OnlyMeHidden", "showAsBusy")).toBe("OnlyMeBusy");
+    expect(transition(itemVisibility, "OnlyMeBusy", "stopShowingBusy")).toBe("OnlyMeHidden");
+    expect(transition(itemVisibility, "SpecificHidden", "showAsBusy")).toBe("SpecificBusy");
+    expect(transition(itemVisibility, "SpecificBusy", "stopShowingBusy")).toBe("SpecificHidden");
+  });
+
+  it("moving between only me and specific people keeps the busy setting", () => {
+    expect(transition(itemVisibility, "OnlyMeBusy", "onlySome")).toBe("SpecificBusy");
+    expect(transition(itemVisibility, "SpecificBusy", "onlyMe")).toBe("OnlyMeBusy");
+  });
+
+  it("an item shared with everyone has no busy setting to change", () => {
+    expect(() => transition(itemVisibility, "Everyone", "showAsBusy")).toThrow(InvalidTransition);
   });
 });
 

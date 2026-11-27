@@ -30,7 +30,8 @@ export async function enableMirror(ctx: ServiceContext, tripId: string, userId: 
   if (!agg.memberships.some((m) => m.userId === userId)) throw new Error("Only trip members can mirror a trip.");
   const [existing] = await ctx.db.select().from(t.calendarMirrors).where(and(eq(t.calendarMirrors.tripId, tripId), eq(t.calendarMirrors.userId, userId)));
   const from = existing ? mirrorState(existing) : "Off";
-  const enabled = isActive(from === "Off" ? transition(mirrorMachine, from, "enable") : from);
+  const next = from === "Off" ? transition(mirrorMachine, from, "enable") : from;
+  const enabled = isActive(next);
   await ctx.db
     .insert(t.calendarMirrors)
     .values({ id: ctx.newId(), tripId, userId, includeSensitive: opts.includeSensitive ?? false, enabled })

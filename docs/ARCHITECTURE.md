@@ -144,13 +144,21 @@ flowchart LR
 
 ## State charts
 
-Every state chart is generated from the transition tables the services use, in `src/domain/state/*.machine.ts`, and written to [STATECHARTS.md](STATECHARTS.md) by `npm run docs:statecharts`. CI fails when that file is stale. Services get the next state only from `transition`, which throws `InvalidTransition` for an event the state does not allow.
+Every state chart is generated from the transition tables in `src/domain/state/*.machine.ts`, and written to [STATECHARTS.md](STATECHARTS.md) by `npm run docs:statecharts`. CI fails when that file is stale. Where a machine is enforced (table below), services get the next state only from `transition`, which throws `InvalidTransition` for an event the state does not allow.
 
-- Inbox entry: claimed with one conditional `UPDATE ... WHERE state = 'pending'`, so the second of two concurrent decisions finds nothing to claim and fails. "Add all without conflicts" applies Add only to entries with no match, no differences and no problems.
-- Item as seen by one member: only the creator can move an item between these states. That includes the owner, who cannot see or edit an item someone else hid from them.
-- Google Calendar mirror: the state is derived from the row (`enabled`, `lastError`, `lastSyncedAt`). Sync is a diff. `buildMirrorEvents(view)` gives the events the calendar should hold, and `planMirrorSync` compares them with `mirror_events`, the event map of what was last pushed and its hash. The result is the minimal set of creates, updates and deletes. If someone deletes an event in Google, it is recreated on the next change: Google is a copy, the app is the source.
-- Assistant connection: revoking works only from Active, and a revoked token never resolves.
-- Invite and view link: tables only until WP-09 and WP-16 wire them. The session machine arrives with WP-01.
+| Machine | Status | Where it is enforced |
+|---|---|---|
+| `assistant-token` | Enforced | `assistant-service.ts`: revoking works only from Active, a second revoke throws `InvalidTransition`, a revoked token never resolves |
+| `calendar-mirror` | Enforced | `mirror-service.ts`: the state is derived from the row (`enabled`, `lastError`, `lastSyncedAt`) and every change goes through `transition`. `TornDown` is never read back, because a member who left is stored as `enabled = false`, which reads as Off. `Connecting` is only seen between enabling and the first sync |
+| `inbox-entry` | Specification | `inbox-service.ts` claims an entry with one conditional `UPDATE ... WHERE state = 'pending'`, which has the same effect for Pending. Wired to the machine in WP-14 |
+| `item-visibility` | Specification | `projectTrip` reads `visibility`, `visibleToUserIds` and `showAsBusy`. Editing them goes through the machine in WP-10 |
+| `invite` | Specification | Invites are not built yet (WP-09) |
+| `view-link` | Specification | The view link is not built yet (WP-16) |
+
+- Inbox entry: the second of two concurrent decisions finds nothing to claim and fails. "Add all without conflicts" applies Add only to entries with no match, no differences and no problems.
+- Item visibility: the chart is the creator's setting, `visibility` (everyone, only me, specific people) plus `showAsBusy`. A hidden item is a Busy block for people who cannot see it when `showAsBusy` is on, and absent for them when it is off. Only the creator can change it, and that includes the owner, who cannot see or edit an item someone else hid from them.
+- Google Calendar mirror: sync is a diff. `buildMirrorEvents(view)` gives the events the calendar should hold, and `planMirrorSync` compares them with `mirror_events`, the event map of what was last pushed and its hash. The result is the minimal set of creates, updates and deletes. If someone deletes an event in Google, it is recreated on the next change: Google is a copy, the app is the source.
+- The session machine arrives with WP-01.
 
 ## Sequences
 
