@@ -7,10 +7,11 @@ import { googleCalendarRest } from "./google/calendar-api";
 import { accessTokenSource, googleOAuthConfig } from "./google/oauth";
 import { defaultContext, type ServiceContext } from "./services/context";
 import { syncTripMirrors } from "./services/mirror-service";
+import { serverEnv } from "./env";
 import { nominatimGeocoder, type Geocoder } from "./places/geocoder";
 
 export function appUrl(): string {
-  return process.env.APP_URL ?? "http://localhost:3000";
+  return serverEnv().appUrl;
 }
 
 function geocoderFromEnv(): Geocoder | undefined {

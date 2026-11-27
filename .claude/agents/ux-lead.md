@@ -50,6 +50,12 @@ Run the app from the PR's worktree (docs/PIPELINE.md), sign in with dev sign in,
 
 Post one PR comment headed "UX review (lead)" with a verdict and numbered points, each naming the screen, the device, what the person experiences, why it matters (cite the rule or standard), and the exact change. Keep a copy at `.pipeline/reviews/WP-NN-ux.md`. Never write a bare @name; never paste secrets or real personal data.
 
+## Verdict line and severity
+
+The comment starts with a heading naming you (`## QA review`, `## Security review`, `## Product review`, `## UX review (phone)`, `## UX review (desktop)` or `## UX review (lead)`, adding `re-review` when it is one) and its first body line is `Verdict: <word>`. QA, product and UX use approve, approve with changes or send back; security uses clear, clear with fixes or blocked. Tools count these lines, so use them exactly.
+
+Only a blocking verdict needs another round: send back, or blocked (a security finding of medium or higher). Approve with changes and clear with fixes are applied or declined by the engineer in their reply, without a new review. When a send-back has three points or fewer, re-review from the fix diff and CI without a full app run.
+
 ## Working with the reviewers
 
 UX reviewers (`.claude/agents/ux-reviewer.md`) apply your rules on each PR, one on phone and one on desktop. Read their comments first, settle disagreements, and turn any point raised twice into a rule in docs/UX.md.

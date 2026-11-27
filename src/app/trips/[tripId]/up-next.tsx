@@ -24,7 +24,7 @@ export function UpNext({ entries, attention, tripId }: { entries: UpNextEntry[];
         <>
           <h2>Up next</h2>
           {entries.map((e) => (
-            <a key={e.key} className={styles.next} href={`?day=${e.dayKey}`}>
+            <Link key={e.key} className={styles.next} href={`/trips/${tripId}/items/${e.itemId}`}>
               <b>{e.time}</b>
               <span>
                 {e.title}
@@ -33,7 +33,7 @@ export function UpNext({ entries, attention, tripId }: { entries: UpNextEntry[];
                   {e.place ? `, ${e.place}` : ""} · {e.inHowLong}
                 </small>
               </span>
-            </a>
+            </Link>
           ))}
         </>
       )}

@@ -58,6 +58,16 @@ describe("projectTrip: sensitive fields", () => {
     }
   });
 
+  it.each([
+    ["invited viewer", viewer],
+    ["view link visitor", link],
+  ])("%s never receives item notes, owners and editors do", (_name, r) => {
+    const agg = tripWithViewer();
+    fixtureItem(agg, byFlight("CX509")).notes = "Gate code NOTE_CANARY";
+    expect(json(projectTrip(agg, r))).not.toContain("NOTE_CANARY");
+    for (const who of [owner, editor]) expect(json(projectTrip(agg, who))).toContain("NOTE_CANARY");
+  });
+
   it("link visitors do not receive user ids", () => {
     const out = json(projectTrip(tripWithViewer(), link));
     for (const id of [USERS.kenny.id, USERS.jacob.id, VIEWER.id]) expect(out).not.toContain(id);

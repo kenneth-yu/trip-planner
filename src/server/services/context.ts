@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Db } from "../db/client";
+import { serverEnv } from "../env";
 import type { GoogleCalendarApi } from "../google/calendar-api";
 import type { Geocoder } from "../places/geocoder";
 
@@ -22,7 +23,7 @@ export function defaultContext(
     db,
     now: () => new Date(),
     newId: () => randomUUID(),
-    appUrl: process.env.APP_URL ?? "http://localhost:3000",
+    appUrl: serverEnv().appUrl,
     ...overrides,
     onTripChanged: required.onTripChanged,
   };
