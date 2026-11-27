@@ -1,11 +1,10 @@
 import { randomBytes } from "node:crypto";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
-const port = 3190;
+const port = Number(process.env.E2E_PORT ?? 3190);
 const baseURL = `http://localhost:${port}`;
-const dbDir = process.env.CI ? path.join(tmpdir(), "trip-planner-e2e-db") : "/home/aorkennykiller/code/trip-planner/.pipeline/scratch/e2e/db";
+const dbDir = path.join(import.meta.dirname, ".pipeline", "scratch", "e2e", "db");
 
 export default defineConfig({
   testDir: "e2e",
@@ -27,6 +26,12 @@ export default defineConfig({
       PGLITE_DIR: dbDir,
       DATABASE_URL: "",
       DEV_SIGN_IN: "1",
+      EMAIL_API_KEY: "",
+      EMAIL_FROM: "",
+      GOOGLE_CLIENT_ID: "",
+      GOOGLE_CLIENT_SECRET: "",
+      ADDRESS_LOOKUP: "",
+      ADDRESS_LOOKUP_USER_AGENT: "",
       APP_URL: baseURL,
       NEXT_TELEMETRY_DISABLED: "1",
       SESSION_SECRET: randomBytes(32).toString("hex"),
