@@ -12,7 +12,7 @@ Every path a person or an assistant can take through the app, where it lives, an
 | Editor | Quick add a flight, stay, plan or transfer | form or API (UI pending) | `quickAddItem` | `quick-add.test.ts`, `services.test.ts` |
 | Editor | Review imported items: add, merge, discard, add all clean | `/trips/[id]/inbox` | `approveEntry`, `mergeEntry`, `discardEntry`, `approveAllClean` | `services.test.ts`, `pipeline.test.ts` |
 | Editor | Import calendar events | service (Google and .ics UI pending) | `importCalendarEvents` | `pipeline.test.ts`, `services.test.ts` |
-| Member | Connect Claude or ChatGPT | `/trips/[id]/connect` | `createAssistantToken`, `revokeAssistantToken` | `server.test.ts` |
+| Member | Connect Claude or ChatGPT; Disconnect again on a stale page shows it as disconnected | `/trips/[id]/connect` | `createAssistantToken`, `revokeAssistantToken` | `server.test.ts`, `actions.test.ts` |
 | Assistant | Read trips and the itinerary | `/api/mcp` `list_trips`, `get_trip` | `getTripView` | `server.test.ts` |
 | Assistant | Propose items (structured) | `/api/mcp` `add_items` | `importProposals` | `server.test.ts` |
 | Assistant | Propose calendar-shaped events | `/api/mcp` `import_calendar_events` | `importCalendarEvents` | `server.test.ts` |

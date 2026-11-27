@@ -59,7 +59,7 @@ function instant(t: { dateTime: string }, zone: Zone): ZonedTime {
 }
 
 function privateFor(text: string, travelerIds: string[]): ItemPrivate[] {
-  const p = extractPrivate(text);
+  const p = { ...extractPrivate(text), ...(text ? { notes: text } : {}) };
   if (!Object.keys(p).length) return [];
   return [{ travelerId: travelerIds.length === 1 ? travelerIds[0] : null, ...p }];
 }
@@ -97,7 +97,7 @@ function mapFlight(ev: TimedEvent, flightNumber: string, ctx: MapContext): Mappe
       travelerIds: ctx.travelerIds,
       private: privateFor(desc, ctx.travelerIds),
       deadlines: deadlines.map((d) => ({ kind: d.kind, at: fromLocal(d.local, d.zone), consequence: d.consequence, source: "parsed" as const })),
-      notes: desc,
+      notes: "",
       status: problems.length || !desc ? "needs_review" : "confirmed",
       problems,
     },
@@ -134,7 +134,7 @@ function mapAllDay(ev: AllDayEvent, ctx: MapContext): MappedEvent {
       travelerIds: ctx.travelerIds,
       private: privateFor(desc, ctx.travelerIds),
       deadlines: deadlines.map((d) => ({ kind: d.kind, at: fromLocal(d.local, d.zone), consequence: d.consequence, source: "parsed" as const })),
-      notes: desc,
+      notes: "",
       status: problems.length || !desc ? "needs_review" : "confirmed",
       problems,
     },
@@ -182,7 +182,7 @@ function mapTimed(ev: TimedEvent, ctx: MapContext): MappedEvent {
       travelerIds: ctx.travelerIds,
       private: privateFor(desc, ctx.travelerIds),
       deadlines: deadlines.map((d) => ({ kind: d.kind, at: fromLocal(d.local, d.zone), consequence: d.consequence, source: "parsed" as const })),
-      notes: desc,
+      notes: "",
       status: problems.length ? "needs_review" : "confirmed",
       problems,
     },
