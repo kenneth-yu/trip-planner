@@ -147,23 +147,32 @@ describe("Vercel ignore rule", () => {
 describe("Vercel ignore rule for production", () => {
   const SHA = "0123456789abcdef0123456789abcdef01234567";
   const bot = { login: "github-actions[bot]" };
-  const approved = JSON.stringify({ state: "success", statuses: [{ context: "ci/other", state: "failure" }, { context: "deploy/approved", state: "success", creator: bot }] });
+  const entry = (context: string, state: string, creator: { login: string } | null = bot) => ({ context, state, ...(creator ? { creator } : {}) });
+  const approved = JSON.stringify([entry("ci/other", "failure"), entry("deploy/approved", "success")]);
   const production = (curl: FakeCurl, sha = SHA) => run(repoWith([["src/app/page.tsx"]]), { VERCEL_ENV: "production", VERCEL_GIT_COMMIT_SHA: sha }, curl);
 
-  it("builds only when the commit carries deploy/approved set to success", () => {
+  it("builds only when the newest deploy/approved status is a success created by the Actions bot", () => {
     expect(production({ body: approved })).toBe("build");
+    expect(production({ body: JSON.stringify([entry("deploy/approved", "success"), entry("deploy/approved", "failure")]) })).toBe("build");
+  });
+
+  it("lets a newer status that is not a success beat an older success, because the list is newest first", () => {
+    expect(production({ body: JSON.stringify([entry("deploy/approved", "failure"), entry("deploy/approved", "success")]) })).toBe("skip");
+    expect(production({ body: JSON.stringify([entry("deploy/approved", "pending"), entry("deploy/approved", "success")]) })).toBe("skip");
   });
 
   it.each([
-    ["pending", JSON.stringify({ statuses: [{ context: "deploy/approved", state: "pending", creator: bot }] })],
-    ["failure", JSON.stringify({ statuses: [{ context: "deploy/approved", state: "failure", creator: bot }] })],
-    ["the same status from another account", JSON.stringify({ statuses: [{ context: "deploy/approved", state: "success", creator: { login: "someone-with-write-access" } }] })],
-    ["the same status from a lookalike bot", JSON.stringify({ statuses: [{ context: "deploy/approved", state: "success", creator: { login: "github-actions" } }] })],
-    ["the same status with no creator", JSON.stringify({ statuses: [{ context: "deploy/approved", state: "success" }] })],
-    ["another context", JSON.stringify({ statuses: [{ context: "deploy/approved-ish", state: "success", creator: bot }, { context: "approved", state: "success", creator: bot }] })],
-    ["no statuses", JSON.stringify({ state: "pending", statuses: [] })],
+    ["pending", JSON.stringify([entry("deploy/approved", "pending")])],
+    ["failure", JSON.stringify([entry("deploy/approved", "failure")])],
+    ["the same status from another account", JSON.stringify([entry("deploy/approved", "success", { login: "someone-with-write-access" })])],
+    ["a newer success from another account over an older one from the bot", JSON.stringify([entry("deploy/approved", "success", { login: "someone-with-write-access" }), entry("deploy/approved", "success")])],
+    ["the same status from a lookalike bot", JSON.stringify([entry("deploy/approved", "success", { login: "github-actions" })])],
+    ["the same status with no creator", JSON.stringify([entry("deploy/approved", "success", null)])],
+    ["another context", JSON.stringify([entry("deploy/approved-ish", "success"), entry("approved", "success")])],
+    ["an empty list", "[]"],
+    ["the combined status shape, which has no creators", JSON.stringify({ state: "success", statuses: [{ context: "deploy/approved", state: "success" }] })],
     ["a rate limit answer", JSON.stringify({ message: "API rate limit exceeded", documentation_url: "https://docs.github.com" })],
-    ["a statuses field that is not a list", JSON.stringify({ statuses: "deploy/approved success" })],
+    ["a list of things that are not statuses", JSON.stringify([null, 3, "deploy/approved"])],
     ["a page that is not JSON", "<html>Bad gateway</html>"],
     ["an empty answer", ""],
   ])("skips on %s", (_name, body) => {
