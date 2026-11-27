@@ -29,7 +29,7 @@ Standards we cite: WCAG 2.2 AA as the floor; Nielsen's ten heuristics; Apple HIG
 | Up next (phone) | none | before and during the trip: the next three things with "in 4 days" or "in 2 hours" | after the trip: replaced by one line, "You were back on Dec 15." |
 | Countdown | none | before the trip: "You leave in 4 days" | the trip starts: becomes "Day 3 of 15" |
 | Codes, seats, phone, price | the item's details page, one tap from any row | never on rows, grid or Up next | never |
-| Home time | none | on flights, arrival lines and deadlines; on other rows only when the day's place differs from home (see "Open question" below) | never |
+| Home time | none | small and secondary, after the local time, only where the place's zone differs from home (DESIGN.md, Event row); the day name only when the home date differs | never |
 | Past days | a tap on the folded day | no | at the end of each local day they fold |
 | "Added" marker | none | on the row just added | the next navigation |
 | "Saved", "Deleted", "You joined as an editor." | none | once, at the top, `role="status"` | the next navigation or tap |
@@ -50,7 +50,7 @@ Each screen answers one question. What follows is what answers it, in order, wha
 - **Order:** trip name, one line of dates and countdown; the nav; at most one alert; Up next (three rows); the day strip; the chosen day in its panel.
 - **Alert:** when something is pending, one alert. Order of precedence: deadlines within 3 days, then inbox entries, then checks in the next 14 days. It shows the most urgent sentence and "and 2 more" beneath. The warning tint is used only for deadlines within 3 days. Inbox entries and checks use the neutral soft panel.
 - **Day strip:** choosing a chip shows the chosen day without leaving the scroll position. It scrolls the day panel into view, or swaps the day in place and keeps the strip pinned. A chip's "needs a look" marker is a shape (a ring) as well as a color (WCAG 1.4.1).
-- **Rows:** time, then title, then a place only when it differs from the day header's place. Tapping a row opens the item's details page (rule 2).
+- **Rows:** time (with home time beneath, small, only when the zone differs from home), then title, then a place only when it differs from the day header's place. Tapping a row opens the item's details page (rule 2).
 - **Left out:** the route line (the strip's city bars carry it), the grid.
 
 ### Trip, desktop (1000px and wider)
@@ -136,8 +136,8 @@ Each was seen in the running app on Nov 27 (screenshots in `.pipeline/scratch/ux
 13. **Meaning carried by color alone.** On the day strip, "needs a look" is a red dot next to a grey "something planned" dot, the same size and shape. **Instead:** a ring or a different shape, as well as color.
 14. **Setup screens in the main nav.** "Connect" sits beside "Day by day" and wraps alone onto a second nav line on every phone screen. "Review inbox" stays in the nav when there is nothing to review. **Instead:** primary nav is Trip, Add, Deadlines; the inbox appears with its count when it has entries; Connect and Share go under "More".
 
-## Open questions for the owner (raised through the architect)
+## Owner decisions (Nov 27)
 
-1. **Event rows open a page instead of expanding** (DESIGN.md, Event row: "Tap to expand"). This file sets rule 2, one level of disclosure. If the owner wants expansion kept, the expanded row must carry the facts and the details page must be reached some other way.
-2. **Home time on every plan row** (DESIGN.md, Event row). On the packed week this adds a second line ("6:00pm Mon NY") to all nine rows on one day. Proposal: home time on flights, arrival lines and deadlines, which are the moments someone at home cares about. On other rows it shows only on the details page. Until the owner decides, DESIGN.md stands.
-3. **The route line under the trip title** (shown on desktop) repeats the Sleeping in row directly below it. Proposal: drop it on desktop. Phones already do not show it.
+1. **Rows open a details page instead of expanding.** Approved. DESIGN.md's Event row says so, and rule 2 above applies.
+2. **Home time stays as DESIGN.md has it:** small and secondary, after the local time, only where the place's zone differs from home. It is not added to rows where the zones match, and it is not removed from plan rows.
+3. **The route line under the trip title is removed on desktop** (the UX lead's call, delegated by the owner). The Sleeping in row directly below it already says the route, with each city's nights, so the line repeated it (rule 3). Phones never showed it; the day strip's city bars carry the shape there.
