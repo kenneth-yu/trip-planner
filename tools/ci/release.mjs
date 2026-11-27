@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { semverOf } from "../merge-gate-lib.mjs";
+import { changesApp, semverOf } from "../merge-gate-lib.mjs";
 import { latestTag, mergedPullRequestFor, nextTag } from "./release-lib.mjs";
 
 const REPO = process.env.GH_REPO || "kenneth-yu/trip-planner";
@@ -13,24 +13,42 @@ function run(command, parameters) {
   return execFileSync(command, parameters, { encoding: "utf8", timeout: 120000 }).trim();
 }
 
-const existing = run("git", ["tag", "--points-at", SHA, "--list", "v*.*.*"]);
-if (existing) {
-  process.stdout.write(`${SHA} is already tagged ${existing}.\n`);
+function done(message) {
+  process.stdout.write(`${message}\n`);
   process.exit(0);
 }
 
-const pulls = JSON.parse(run("gh", ["api", `repos/${REPO}/commits/${SHA}/pulls`]));
-const pull = mergedPullRequestFor(SHA, pulls);
-if (!pull) {
-  process.stdout.write("This commit is not the merge commit of one pull request: no release.\n");
-  process.exit(0);
-}
-const semver = semverOf(pull.body);
-if (!semver.level) {
-  process.stdout.write(`Pull request ${pull.number} ${semver.problem}: no release.\n`);
-  process.exit(0);
+function tags() {
+  run("git", ["fetch", "--tags", "--force", "--quiet", "origin"]);
+  return run("git", ["tag", "--list", "v*.*.*"]).split("\n");
 }
 
-const tag = nextTag(latestTag(run("git", ["tag", "--list", "v*.*.*"]).split("\n")), semver.level);
-run("gh", ["release", "create", tag, "--repo", REPO, "--target", SHA, "--title", pull.title, "--notes", `Pull request #${pull.number}: ${pull.html_url}\n\nSemver: ${semver.level}`]);
-process.stdout.write(`Released ${tag} for pull request ${pull.number} (${semver.level}).\n`);
+if (run("git", ["tag", "--points-at", SHA, "--list", "v*.*.*"])) done(`${SHA} is already tagged.`);
+
+const message = run("git", ["log", "-1", "--format=%B", SHA]);
+const body = message.split("\n").slice(1).join("\n");
+const semver = semverOf(body);
+if (!semver.level) done(`The merge commit message ${semver.problem}: no release.`);
+
+const changed = run("git", ["diff", "--name-only", "--no-renames", `${SHA}^1`, SHA]).split("\n").filter((line) => line.length > 0);
+if (!changesApp(changed)) done("The merge changed no app path: no release.");
+
+const pull = mergedPullRequestFor(SHA, JSON.parse(run("gh", ["api", `repos/${REPO}/commits/${SHA}/pulls`])));
+const title = pull ? pull.title : message.split("\n")[0];
+const notes = pull ? `Pull request #${pull.number}: ${pull.html_url}\n\nSemver: ${semver.level}` : `Semver: ${semver.level}`;
+
+function createTag() {
+  const tag = nextTag(latestTag(tags()), semver.level);
+  run("gh", ["api", "-X", "POST", `repos/${REPO}/git/refs`, "-f", `ref=refs/tags/${tag}`, "-f", `sha=${SHA}`]);
+  return tag;
+}
+
+let tag;
+try {
+  tag = createTag();
+} catch (error) {
+  process.stdout.write(`The tag could not be created (${error instanceof Error ? error.message.split("\n")[0].slice(0, 120) : "unknown error"}); working out the next one again.\n`);
+  tag = createTag();
+}
+run("gh", ["release", "create", tag, "--repo", REPO, "--verify-tag", "--title", title, "--notes", notes]);
+done(`Released ${tag} (${semver.level}).`);

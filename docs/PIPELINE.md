@@ -75,7 +75,7 @@ A job that its `if` skips (a draft, or a documentation-only change) reports "ski
 
 ### The merge gate
 
-Agents never merge by hand. They post verdicts and push; the `merge-gate` workflow does the rest. It runs when a ci, perf or security run finishes, on reviews and comments, when a pull request is opened, marked ready, pushed or relabelled, every 15 minutes, and on demand, one run at a time (`merge-gate` concurrency group, nothing cancelled). Each run goes through the open, non-draft pull requests from this repository and merges at most one.
+Agents never merge by hand. They post verdicts and push; the `merge-gate` workflow does the rest. It runs when a ci, perf or security run finishes, on comments, when a pull request is opened, marked ready, pushed or relabelled, every 15 minutes, and on demand, one run at a time (`merge-gate` concurrency group, nothing cancelled). Each run goes through the open, non-draft pull requests from this repository and merges at most one.
 
 A pull request merges when all of this holds (the logic is `tools/merge-gate-lib.mjs`, tested in `src/tools/merge-gate.test.ts`; the reviewer mapping is data in `tools/merge-gate-config.json`):
 
@@ -88,7 +88,7 @@ A pull request merges when all of this holds (the logic is `tools/merge-gate-lib
 
 When a pull request passes but its branch is behind main, the gate updates the branch and starts the checks again, then merges on a later run. When it passes and is up to date, the gate merges with `--match-head-commit` and starts `ci` and `perf` on main (a merge made with the workflow token does not start push workflows). When it does not pass, the gate leaves one comment, edited in place, listing what is missing.
 
-After a merge the `release` workflow tags the next version from the previous tag by the pull request's `Semver:` level and creates a GitHub release titled with the pull request's title. It never commits to main. Production deploys only when the owner asks: the `deploy-prod` workflow (run by hand, with the confirmation text) calls the Vercel deploy hook.
+At merge time the gate writes the validated level into the merge commit as a `Semver:` line and starts the `release` workflow for that commit. `release` reads that line only (never the pull request body, and not inside a code fence), releases only when the merge changed an app path, tags the next version from the latest tag at run time (it works the tag out again once if the tag already exists, and fails loudly after that) and creates a GitHub release titled with the pull request's title. It never commits to main. `deploy-prod` first sets a `deploy/approved` commit status on main's head, so the Vercel ignore script can tell an owner-requested production build from a merge. Production deploys only when the owner asks: the `deploy-prod` workflow (run by hand from main, with the confirmation text, in the `production` environment so a required reviewer can be added) calls the Vercel deploy hook.
 
 ### Working rules
 

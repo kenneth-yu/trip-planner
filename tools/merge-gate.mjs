@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { buildInput, evaluate, GateDataError, lastCodeCommit } from "./merge-gate-lib.mjs";
+import { buildInput, changesApp, evaluate, GateDataError, lastCodeCommit, semverOf } from "./merge-gate-lib.mjs";
 
 const REPO = "kenneth-yu/trip-planner";
 const MARKER = "<!-- merge-gate -->";
@@ -71,9 +71,14 @@ function gather(number) {
   return { pr, files, comments, commits, checkRuns, checkRunsTotal, compare, verifiedMerges, lastCodePushedAt };
 }
 
+function commentAuthor() {
+  return process.env.GITHUB_ACTIONS ? "github-actions[bot]" : api("user").login;
+}
+
 function upsertComment(number, lines) {
   const body = `${MARKER}\n## Merge gate\n\n${lines.join("\n")}\n`;
-  const existing = apiList(`repos/${REPO}/issues/${number}/comments`, ".[] | {id, body}").find((c) => typeof c.body === "string" && c.body.startsWith(MARKER));
+  const author = commentAuthor();
+  const existing = apiList(`repos/${REPO}/issues/${number}/comments`, ".[] | {id, body, author: .user.login}").find((c) => c.author === author && typeof c.body === "string" && c.body.startsWith(MARKER));
   if (existing && existing.body === body) return;
   if (existing) gh(["api", "-X", "PATCH", `repos/${REPO}/issues/comments/${existing.id}`, "-f", `body=${body}`]);
   else gh(["api", "-X", "POST", `repos/${REPO}/issues/${number}/comments`, "-f", `body=${body}`]);
@@ -88,7 +93,7 @@ function processPullRequest(number) {
   let input;
   try {
     raw = gather(number);
-    input = buildInput(raw, reviewerLogin());
+    input = buildInput(raw, reviewerLogin(), REPO);
   } catch (error) {
     const reason = error instanceof GateDataError ? error.message : `GitHub data could not be read (${error instanceof Error ? error.message.split("\n")[0].slice(0, 120) : "unknown error"}).`;
     say(`#${number}: not merging, ${reason}`);
@@ -105,25 +110,58 @@ function processPullRequest(number) {
     }
     return "blocked";
   }
+  const paths = input.files.flatMap((f) => [f.filename, f.previousFilename].filter((p) => typeof p === "string"));
   if (verdict.behind) {
     say(`#${number}: passes, but the branch is behind main`);
     if (dryRun) return "updated";
-    gh(["api", "-X", "PUT", `repos/${REPO}/pulls/${number}/update-branch`, "-f", `expected_head_sha=${raw.pr.head.sha}`]);
-    for (const workflow of ["ci.yml", "security.yml"]) gh(["workflow", "run", workflow, "--repo", REPO, "--ref", branch]);
+    try {
+      gh(["api", "-X", "PUT", `repos/${REPO}/pulls/${number}/update-branch`, "-f", `expected_head_sha=${raw.pr.head.sha}`]);
+      for (const workflow of ["ci.yml", "security.yml"]) gh(["workflow", "run", workflow, "--repo", REPO, "--ref", branch]);
+    } catch (error) {
+      return refused(number, "update the branch with main", error);
+    }
     upsertComment(number, ["Everything else passes. The branch was behind main, so the gate updated it and started the checks again. It merges once they pass."]);
     return "updated";
   }
   say(`#${number}: passes at ${raw.pr.head.sha}`);
   if (dryRun) return "merged";
-  gh(["pr", "merge", String(number), "--repo", REPO, "--merge", "--delete-branch", "--match-head-commit", raw.pr.head.sha]);
-  for (const workflow of ["ci.yml", "perf.yml"]) gh(["workflow", "run", workflow, "--repo", REPO, "--ref", "main"]);
+  const mergeArguments = ["pr", "merge", String(number), "--repo", REPO, "--merge", "--delete-branch", "--match-head-commit", raw.pr.head.sha];
+  if (changesApp(paths)) mergeArguments.push("--body", `Semver: ${semverOf(input.body).level}`);
+  try {
+    gh(mergeArguments);
+  } catch (error) {
+    return refused(number, "merge", error);
+  }
+  try {
+    const merged = api(`repos/${REPO}/pulls/${number}`).merge_commit_sha;
+    if (typeof merged !== "string" || !/^[0-9a-f]{40}$/.test(merged)) throw new GateDataError("The merge commit id could not be read.");
+    gh(["workflow", "run", "release.yml", "--repo", REPO, "--ref", "main", "-f", `sha=${merged}`]);
+    for (const workflow of ["ci.yml", "perf.yml"]) gh(["workflow", "run", workflow, "--repo", REPO, "--ref", "main"]);
+  } catch (error) {
+    say(`#${number}: merged, but a follow-up workflow could not be started (${describe(error)}).`);
+  }
   say(`#${number}: merged`);
   return "merged";
 }
 
+function describe(error) {
+  return error instanceof Error ? error.message.split("\n")[0].slice(0, 160) : "unknown error";
+}
+
+function refused(number, action, error) {
+  const reason = `GitHub refused to ${action} (${describe(error)}). Someone needs to look at it.`;
+  say(`#${number}: ${reason}`);
+  try {
+    upsertComment(number, ["Everything the gate checks passes, but:", "", `- ${reason}`]);
+  } catch (commentError) {
+    say(`#${number}: the comment could not be written either (${describe(commentError)}).`);
+  }
+  return "failed";
+}
+
 if (single) {
   const outcome = processPullRequest(single);
-  process.exit(outcome === "blocked" ? 1 : 0);
+  process.exit(outcome === "blocked" || outcome === "failed" ? 1 : 0);
 }
 
 let numbers;

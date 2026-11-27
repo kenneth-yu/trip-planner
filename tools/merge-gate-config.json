@@ -1,6 +1,6 @@
 {
   "requiredChecks": ["static", "test", "postgres", "prod-build", "gitleaks"],
-  "docsOnly": ["^docs/(?!STATECHARTS\\.md$).+\\.md$", "^[^/]+\\.md$", "^\\.pipeline/"],
+  "docsOnly": ["^docs/(?!STATECHARTS\\.md$|PIPELINE\\.md$|SECURITY\\.md$).+\\.md$", "^[^/]+\\.md$", "^\\.pipeline/"],
   "holdLabels": ["hold", "do-not-merge"],
   "ownerLabel": "needs-owner",
   "ownerOnly": ["^\\.claude/", "^CLAUDE\\.md$"],
@@ -19,7 +19,13 @@
         "^src/app/.*actions\\.ts$",
         "^drizzle/",
         "^package(-lock)?\\.json$",
-        "^scripts/(migrate|seed|import-trip)\\.ts$"
+        "^scripts/(migrate|seed|import-trip)\\.ts$",
+        "^\\.github/",
+        "^tools/ci/",
+        "^tools/merge-gate",
+        "^next\\.config\\.",
+        "^vercel\\.json$",
+        "^docs/SECURITY\\.md$"
       ],
       "exclude": ["\\.test\\.tsx?$"]
     },

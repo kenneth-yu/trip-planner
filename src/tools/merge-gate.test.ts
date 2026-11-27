@@ -3,6 +3,7 @@ import { buildInput, changesApp, evaluate, GateDataError, isDocsOnly, isIntegrat
 
 const T = (minute: number) => `2026-11-27T10:${String(minute).padStart(2, "0")}:00Z`;
 const ME = "kenneth-yu";
+const REPO = "kenneth-yu/trip-planner";
 
 interface Run {
   id: number;
@@ -286,6 +287,11 @@ describe("merge gate", () => {
   });
 
   describe("semver", () => {
+    it("ignores a Semver line inside a code fence", () => {
+      expect(semverOf("```\nSemver: major\n```\nSemver: patch")).toEqual({ level: "patch", problem: null });
+      expect(semverOf("~~~\nSemver: major\n~~~")).toEqual({ level: null, problem: "has no Semver line" });
+    });
+
     it.each([["Semver: major", "major"], ["semver: Minor", "minor"], ["Notes\n\nSemver: patch  \n", "patch"]])("reads %j", (body, level) => {
       expect(semverOf(body)).toEqual({ level, problem: null });
     });
@@ -320,9 +326,15 @@ describe("merge gate", () => {
       [["public/icon.svg"], ["qa", "ux"]],
       [["src/app/manifest.ts"], ["qa", "product", "ux"]],
       [["package.json"], ["qa", "security", "architect"]],
-      [[".github/workflows/ci.yml"], ["qa", "architect"]],
+      [[".github/workflows/ci.yml"], ["qa", "security", "architect"]],
       [["src/server/services/a.test.ts"], ["qa"]],
       [["docs/STATECHARTS.md"], ["qa"]],
+      [["docs/PIPELINE.md"], ["qa", "architect"]],
+      [["docs/SECURITY.md"], ["qa", "security"]],
+      [["tools/ci/vercel-ignore.sh"], ["qa", "security", "architect"]],
+      [["tools/merge-gate-lib.mjs"], ["qa", "security", "architect"]],
+      [["next.config.ts"], ["qa", "security", "architect"]],
+      [["vercel.json"], ["qa", "security", "architect"]],
     ])("%j needs %j", (paths, expected) => {
       expect([...requiredReviewers(paths)].sort()).toEqual([...expected].sort());
     });
@@ -436,7 +448,7 @@ describe("merge gate", () => {
 
   describe("failing closed on missing data", () => {
     const base = () => ({
-      pr: { head: { sha: "a".repeat(40), ref: "wp/x" }, state: "open", base: { ref: "main" }, draft: false, changed_files: 1, commits: 1, labels: [{ name: "perf" }], body: "Semver: patch" },
+      pr: { head: { sha: "a".repeat(40), ref: "wp/x", repo: { full_name: REPO } }, state: "open", base: { ref: "main" }, draft: false, changed_files: 1, commits: 1, labels: [{ name: "perf" }], body: "Semver: patch" },
       files: [{ filename: "src/a.ts" }],
       comments: [{ user: { login: ME, type: "User" }, updated_at: T(1), body: "hello" }],
       commits: [{ sha: sha("a"), parents: [{ sha: "p" }] }],
@@ -446,13 +458,17 @@ describe("merge gate", () => {
     });
 
     it("accepts complete data", () => {
-      expect(buildInput(base(), ME)).toMatchObject({ labels: ["perf"], behindBy: 0, changedFiles: 1 });
+      expect(buildInput(base(), ME, REPO)).toMatchObject({ labels: ["perf"], behindBy: 0, changedFiles: 1 });
     });
 
     it.each([
       ["no pull request", (r: Record<string, unknown>) => (r.pr = undefined)],
       ["no head sha", (r: Record<string, unknown>) => (r.pr = { ...base().pr, head: {} })],
       ["a malformed head sha", (r: Record<string, unknown>) => (r.pr = { ...base().pr, head: { sha: "abc" } })],
+      ["a draft pull request", (r: Record<string, unknown>) => (r.pr = { ...base().pr, draft: true })],
+      ["a pull request from a fork", (r: Record<string, unknown>) => (r.pr = { ...base().pr, head: { sha: "a".repeat(40), ref: "x", repo: { full_name: "someone/fork" } } })],
+      ["a pull request with no head repository", (r: Record<string, unknown>) => (r.pr = { ...base().pr, head: { sha: "a".repeat(40), ref: "x" } })],
+      ["a commit list that does not end at the head", (r: Record<string, unknown>) => (r.commits = [{ sha: sha("b"), parents: [{ sha: "p" }] }])],
       ["a closed pull request", (r: Record<string, unknown>) => (r.pr = { ...base().pr, state: "closed" })],
       ["another base", (r: Record<string, unknown>) => (r.pr = { ...base().pr, base: { ref: "dev" } })],
       ["no draft flag", (r: Record<string, unknown>) => (r.pr = { ...base().pr, draft: undefined })],
@@ -472,12 +488,12 @@ describe("merge gate", () => {
     ])("refuses %s", (_name, damage) => {
       const raw: Record<string, unknown> = base();
       damage(raw);
-      expect(() => buildInput(raw, ME)).toThrow(GateDataError);
+      expect(() => buildInput(raw, ME, REPO)).toThrow(GateDataError);
     });
 
     it("refuses when the trusted account is unknown", () => {
-      expect(() => buildInput(base(), "")).toThrow(GateDataError);
-      expect(() => buildInput(base(), undefined)).toThrow(GateDataError);
+      expect(() => buildInput(base(), "", REPO)).toThrow(GateDataError);
+      expect(() => buildInput(base(), undefined, REPO)).toThrow(GateDataError);
     });
   });
 });

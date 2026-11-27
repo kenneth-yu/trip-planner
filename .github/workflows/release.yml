@@ -3,13 +3,19 @@ name: release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: The merge commit to release
+        required: true
+        type: string
 
 permissions:
   contents: write
   pull-requests: read
 
 concurrency:
-  group: release-${{ github.sha }}
+  group: release
   cancel-in-progress: false
 
 jobs:
@@ -31,5 +37,5 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
+          SHA: ${{ inputs.sha || github.sha }}
         run: node tools/ci/release.mjs

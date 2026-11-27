@@ -52,8 +52,21 @@ export function changesApp(paths) {
   return paths.some((path) => SEMVER_PATHS.some((p) => p.test(path)) && !SEMVER_EXCLUDE.some((p) => p.test(path)));
 }
 
+function outsideCodeFences(text) {
+  let fenced = false;
+  const kept = [];
+  for (const line of (text ?? "").split("\n")) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      fenced = !fenced;
+      continue;
+    }
+    if (!fenced) kept.push(line);
+  }
+  return kept;
+}
+
 export function semverOf(body) {
-  const declared = (body ?? "").split("\n").map((line) => line.trim()).filter((line) => /^semver:/i.test(line));
+  const declared = outsideCodeFences(body).map((line) => line.trim()).filter((line) => /^semver:/i.test(line));
   if (declared.length !== 1) return { level: null, problem: declared.length === 0 ? "has no Semver line" : "has more than one Semver line" };
   const match = declared[0].match(/^semver:\s*(major|minor|patch)\s*$/i);
   return match ? { level: match[1].toLowerCase(), problem: null } : { level: null, problem: "has a Semver line that is not major, minor or patch" };
@@ -191,12 +204,14 @@ function need(condition, message) {
   if (!condition) throw new GateDataError(message);
 }
 
-export function buildInput(raw, reviewerLogin) {
+export function buildInput(raw, reviewerLogin, repo) {
   const { pr, files, comments, commits, checkRuns, checkRunsTotal, compare } = raw;
   need(pr && typeof pr === "object", "The pull request could not be read.");
   need(typeof pr.head?.sha === "string" && /^[0-9a-f]{40}$/.test(pr.head.sha), "The head commit id is missing or malformed.");
   need(pr.state === "open" && pr.base?.ref === "main", "The pull request is not an open pull request against main.");
   need(typeof pr.draft === "boolean", "Whether the pull request is a draft is missing.");
+  need(pr.draft === false, "The pull request is a draft.");
+  need(typeof repo === "string" && pr.head?.repo?.full_name === repo, "The pull request does not come from this repository.");
   need(Number.isInteger(pr.changed_files), "The changed file count is missing.");
   need(Number.isInteger(pr.commits), "The commit count is missing.");
   need(Array.isArray(pr.labels), "The labels are missing.");
@@ -204,6 +219,7 @@ export function buildInput(raw, reviewerLogin) {
   need(files.length === pr.changed_files, `Only ${files.length} of ${pr.changed_files} changed files could be listed.`);
   need(Array.isArray(commits) && commits.every((c) => typeof c.sha === "string" && Array.isArray(c.parents)), "The commits could not be listed.");
   need(commits.length === pr.commits, `Only ${commits.length} of ${pr.commits} commits could be listed.`);
+  need(commits.length > 0 && commits[commits.length - 1].sha === pr.head.sha, "The last listed commit is not the head, so the commit list is not current.");
   need(Array.isArray(comments) && comments.every((c) => typeof c.user?.login === "string" && typeof c.updated_at === "string" && typeof c.body === "string"), "The comments could not be read.");
   need(Array.isArray(checkRuns) && Number.isInteger(checkRunsTotal) && checkRuns.length === checkRunsTotal, "The check runs could not all be read.");
   need(Number.isInteger(compare?.behind_by), "How far the branch is behind main could not be read.");
