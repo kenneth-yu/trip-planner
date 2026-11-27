@@ -3,8 +3,9 @@ import { loadTripPage } from "@/server/web";
 import { listInbox } from "@/server/services/inbox-service";
 import { formatClock, formatDayHeader, toLocal } from "@/domain/time/format";
 import { buildFlightCard } from "@/domain/time/flight-card";
-import { addAllClean } from "../actions";
+import { AddAllForm } from "./add-all-form";
 import { EntryForm } from "./entry-form";
+import { InboxResults } from "./result";
 
 const SOURCE: Record<string, string> = {
   google_calendar: "Google Calendar",
@@ -19,16 +20,12 @@ export default async function InboxPage({ params }: PageProps<"/trips/[tripId]/i
   const { ctx, requester, view } = await loadTripPage(tripId);
   if (!view.permissions.canEdit) return <p className={styles.muted}>Only editors review imports.</p>;
   const entries = await listInbox(ctx, tripId, requester);
-  if (!entries.length) return <p className={styles.muted}>Nothing waiting. Items from calendars and assistants show up here first.</p>;
-  const clean = entries.filter((e) => e.clean).length;
+  const clean = entries.filter((e) => e.clean).map((e) => e.id);
   return (
     <div className={styles.narrow}>
-      {clean > 0 && (
-        <form action={addAllClean} className={styles.row} style={{ marginBottom: 16 }}>
-          <input type="hidden" name="tripId" value={tripId} />
-          <button>Add all without conflicts ({clean})</button>
-        </form>
-      )}
+      <InboxResults>
+        {clean.length > 0 && <AddAllForm tripId={tripId} entryIds={clean} />}
+        {!entries.length && <p className={styles.muted}>Nothing waiting. Items from calendars and assistants show up here first.</p>}
       <ul className={styles.list}>
         {entries.map((e) => {
           const p = e.proposed;
@@ -60,11 +57,13 @@ export default async function InboxPage({ params }: PageProps<"/trips/[tripId]/i
                   Could not read: “{u}”
                 </div>
               ))}
+              {e.namesRemovedTraveler && <div className={styles.warning}>Someone on this was removed from the trip. They will be left off.</div>}
               <EntryForm tripId={tripId} entry={e} />
             </li>
           );
         })}
       </ul>
+      </InboxResults>
     </div>
   );
 }
