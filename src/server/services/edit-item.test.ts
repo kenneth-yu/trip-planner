@@ -213,14 +213,24 @@ describe("deleting an item", () => {
     expect(remaining).not.toContain(flight.id);
   });
 
-  it("answers NotFound when the item is already gone, and an update after a delete never re-creates it", async () => {
+  it("leaves no item and no private rows whichever of a delete and an update wins the lock", async () => {
     const { ctx, db } = await testContext();
     const flight = await flightOf(ctx, kenny, "NH159");
     const [removed, updated] = await Promise.allSettled([removeItem(ctx, TRIP_ID, flight.id, kenny), updateItem(ctx, TRIP_ID, flight.id, jacob, { title: "Late edit" })]);
     expect(removed.status).toBe("fulfilled");
-    expect([updated.status === "rejected" ? updated.reason : "ok"]).toEqual([expect.any(NotFound)]);
+    if (updated.status === "rejected") expect(updated.reason).toBeInstanceOf(NotFound);
     expect(await db.select().from(t.items).where(eq(t.items.id, flight.id))).toHaveLength(0);
+    expect(await db.select().from(t.itemPrivate).where(eq(t.itemPrivate.itemId, flight.id))).toHaveLength(0);
+    expect(await db.select().from(t.deadlines).where(eq(t.deadlines.itemId, flight.id))).toHaveLength(0);
     await expect(removeItem(ctx, TRIP_ID, flight.id, kenny)).rejects.toThrow(NotFound);
+  });
+
+  it("answers NotFound to an update that arrives after the delete and never re-creates the item", async () => {
+    const { ctx, db } = await testContext();
+    const flight = await flightOf(ctx, kenny, "NH159");
+    await removeItem(ctx, TRIP_ID, flight.id, kenny);
+    await expect(updateItem(ctx, TRIP_ID, flight.id, jacob, { title: "Late edit" })).rejects.toThrow(NotFound);
+    expect(await db.select().from(t.items).where(eq(t.items.id, flight.id))).toHaveLength(0);
   });
 
   it("clears an inbox match instead of failing when the item is deleted", async () => {

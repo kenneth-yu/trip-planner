@@ -497,13 +497,21 @@ describe("itemToFormValues round trip", () => {
     expect(long.ok ? null : long.errors[`seat:${TRAVELERS.kenny}`]).toBe(MESSAGES.tooLong);
   });
 
+  it("saves codes, booking references and seats in capitals", () => {
+    const item = present(view.items.find((i) => i.flight?.flightNumber === "NH159"));
+    const base = entriesOfValues(itemToFormValues(item, view.travelers)).filter(([k]) => !k.startsWith("code:") && !k.startsWith("seat:"));
+    const parsed = parseEditForm([...base, [`code:${TRAVELERS.kenny}`, "ab12cd"], [`seat:${TRAVELERS.kenny}`, "14b"], ["bookingReference", "ref9"]], { travelerIds: item.travelerIds, previous: [] });
+    if (!parsed.ok) throw new Error(JSON.stringify(parsed.errors));
+    expect(parsed.private.map((r) => [r.confirmationCode, r.seat, r.bookingReference])).toEqual([[undefined, "14B", undefined], ["AB12CD", undefined, "REF9"]]);
+  });
+
   it("stores unusual codes and prices as text", () => {
     const item = present(view.items.find((i) => i.title === "Hotel Resol Ueno"));
     const base = entriesOfValues(itemToFormValues(item, view.travelers)).filter(([k]) => !k.startsWith("code:"));
     const entries: FormEntries = [...base, [`code:${TRAVELERS.kenny}`, "<script>1</script> é"], ["price", "$1,200.00"], ["bookingReference", "ab 12"]];
     const parsed = parseEditForm(entries, { travelerIds: item.travelerIds, previous: [] });
     if (!parsed.ok) throw new Error(JSON.stringify(parsed.errors));
-    expect(parsed.private.find((r) => r.confirmationCode)?.confirmationCode).toBe("<script>1</script> é");
+    expect(parsed.private.find((r) => r.confirmationCode)?.confirmationCode).toBe("<SCRIPT>1</SCRIPT> É");
     expect(parsed.private.find((r) => r.price)?.price).toEqual({ amount: "1200.00", currency: "USD" });
   });
 });

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import styles from "./item-form.module.css";
-import { FLASH_COOKIE, flashCookieSchema, type Flash } from "./flash";
+import { FLASH_COOKIE, FLASH_TEXT, flashKind, flashPath, type FlashKind } from "./flash";
 
 const subscribeNever = () => () => undefined;
 
@@ -12,30 +12,38 @@ function readCookie(): string {
   return found ? found.slice(prefix.length) : "";
 }
 
-export function parseFlash(raw: string): Flash | null {
-  const parsed = flashCookieSchema.safeParse(raw);
+export function parseFlash(raw: string): FlashKind | null {
+  const parsed = flashKind.safeParse(raw);
   return parsed.success ? parsed.data : null;
 }
 
-export function FlashStatus({ kind, focusId }: { kind: Flash["kind"]; focusId?: string }) {
+export function FlashStatus({ kind, tripId, focusId }: { kind: FlashKind; tripId: string; focusId?: string }) {
   const raw = useSyncExternalStore(subscribeNever, readCookie, () => "");
-  const flash = parseFlash(raw);
-  const shown = flash?.kind === kind ? flash : null;
-  const present = shown !== null;
+  const matches = parseFlash(raw) === kind;
+  const holder = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    if (!present) return;
-    if (focusId) document.getElementById(focusId)?.focus();
+    if (!matches) return;
+    const shown = (holder.current?.getClientRects().length ?? 0) > 0;
+    setVisible(shown);
+    if (shown) {
+      holder.current?.scrollIntoView({ block: "nearest" });
+      if (focusId) document.getElementById(focusId)?.focus();
+    }
     const timer = window.setTimeout(() => {
-      document.cookie = `${FLASH_COOKIE}=; Max-Age=0; path=/`;
+      document.cookie = `${FLASH_COOKIE}=; Max-Age=0; path=${flashPath(tripId)}`;
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [present, focusId]);
+  }, [matches, focusId, tripId]);
 
-  if (!shown) return null;
   return (
-    <p role="status" className={styles.flash}>
-      {kind === "saved" ? "Saved" : `Deleted ${shown.text ?? "the item"}.`}
-    </p>
+    <div ref={holder}>
+      {visible && (
+        <p role="status" className={styles.flash}>
+          {FLASH_TEXT[kind]}
+        </p>
+      )}
+    </div>
   );
 }

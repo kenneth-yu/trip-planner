@@ -490,13 +490,14 @@ export function parseEditForm(entries: FormEntries, options: EditOptions): EditF
   if (Object.keys(errors).length) return { ok: false, errors, values: entries };
   const input = parsed.input;
   const single = ids.length === 1;
-  const perTraveler = ids.map((id) => ({ id, seat: e.get(`seat:${id}`) || undefined, code: single ? undefined : e.get(`code:${id}`) || undefined }));
+  const upper = (value: string | undefined): string | undefined => value?.toUpperCase();
+  const perTraveler = ids.map((id) => ({ id, seat: upper(e.get(`seat:${id}`) || undefined), code: single ? undefined : upper(e.get(`code:${id}`) || undefined) }));
   const distinctCodes = [...new Set(perTraveler.flatMap((p) => (p.code ? [p.code] : [])))];
-  const sharedCode = single ? input.confirmationCode : distinctCodes.length === 1 ? distinctCodes[0] : undefined;
+  const sharedCode = single ? upper(input.confirmationCode) : distinctCodes.length === 1 ? distinctCodes[0] : undefined;
   const sharedRow: ItemPrivate = {
     travelerId: single ? ids[0] : null,
     confirmationCode: sharedCode,
-    bookingReference: input.bookingReference,
+    bookingReference: upper(input.bookingReference),
     phone: input.phone,
     price: input.price,
     notes: input.notes,

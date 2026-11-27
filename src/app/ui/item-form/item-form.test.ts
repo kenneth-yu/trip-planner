@@ -7,7 +7,7 @@ import { projectTrip } from "@/domain/visibility/project";
 import { present } from "@/testing/present";
 import { ItemForm } from "./item-form";
 import { parseFlash } from "./flash-status";
-import { FLASH_COOKIE } from "./flash";
+import { FLASH_COOKIE, FLASH_TEXT } from "./flash";
 
 vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams() }));
 
@@ -69,12 +69,21 @@ describe("edit form", () => {
 });
 
 describe("flash cookie", () => {
-  it("reads a saved or deleted flash and nothing else", () => {
-    expect(parseFlash(encodeURIComponent(JSON.stringify({ kind: "deleted", text: "NH159 to Tokyo" })))).toEqual({ kind: "deleted", text: "NH159 to Tokyo" });
-    expect(parseFlash(encodeURIComponent(JSON.stringify({ kind: "saved" })))).toEqual({ kind: "saved" });
+  it("reads only the kind of flash", () => {
+    expect(parseFlash("deleted")).toBe("deleted");
+    expect(parseFlash("saved")).toBe("saved");
     expect(parseFlash("")).toBeNull();
-    expect(parseFlash("%E0%A4%A")).toBeNull();
-    expect(parseFlash(encodeURIComponent(JSON.stringify({ kind: "other" })))).toBeNull();
+    expect(parseFlash("NH159%20to%20Tokyo")).toBeNull();
     expect(FLASH_COOKIE).toBe("trip-flash");
+  });
+
+  it("is set with the kind alone, on the trip's own path, and never carries a title", async () => {
+    const set = vi.fn();
+    vi.doMock("next/headers", () => ({ cookies: async () => ({ set }) }));
+    const { setFlash } = await import("./set-flash");
+    await setFlash("deleted", view.trip.id);
+    expect(set).toHaveBeenCalledWith("trip-flash", "deleted", expect.objectContaining({ path: `/trips/${view.trip.id}`, maxAge: 60, sameSite: "lax" }));
+    expect(JSON.stringify(set.mock.calls)).not.toContain("NH159");
+    expect(FLASH_TEXT.deleted).toBe("Item deleted.");
   });
 });

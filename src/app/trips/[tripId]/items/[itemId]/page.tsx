@@ -18,6 +18,9 @@ export default async function ItemPage({ params }: PageProps<"/trips/[tripId]/it
   const item = itemOf(view, itemId);
   if (!item) notFound();
   const travelerId = await viewerTravelerId(ctx, tripId, requester);
+  const heading = itemHeading(item);
+  const shared = view.items.some((other) => other.id !== item.id && itemHeading(other) === heading);
+  const promptName = shared ? `${heading} on ${formatDayHeader(toLocal(item.start))}` : heading;
   return (
     <div className={styles.narrow}>
       <p className={styles.muted}>
@@ -25,10 +28,10 @@ export default async function ItemPage({ params }: PageProps<"/trips/[tripId]/it
           Back to {formatDayHeader(toLocal(item.start))}
         </Link>
       </p>
-      <FlashStatus kind="saved" focusId="item-title" />
+      <FlashStatus kind="saved" tripId={tripId} focusId="item-title" />
       <ItemDetails view={view} item={item} nowMs={ctx.now().getTime()} viewerTravelerId={travelerId} />
       {view.permissions.canEdit && (
-        <ItemActions tripId={tripId} itemId={itemId} heading={itemHeading(item)} editHref={`/trips/${tripId}/items/${itemId}/edit`} remove={deleteItem} />
+        <ItemActions tripId={tripId} itemId={itemId} heading={promptName} editHref={`/trips/${tripId}/items/${itemId}/edit`} remove={deleteItem} />
       )}
     </div>
   );

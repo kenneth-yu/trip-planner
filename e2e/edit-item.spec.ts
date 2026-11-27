@@ -1,5 +1,6 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "./fixtures";
-import { addPlan, DECEMBER_TRIP } from "./trips";
+import { addPlan, DECEMBER_TRIP, STANFORD_HOTEL } from "./trips";
 
 const JACOB_TRAVELER = "00000000-0000-4000-8200-000000000002";
 const CODE = "PLACEHOLDER_STAY1";
@@ -50,8 +51,31 @@ test("Delete asks first, keeps focus on Keep, then lands on the day with Deleted
   await kenny.getByRole("button", { name: "Delete" }).click();
   await kenny.getByRole("button", { name: "Delete" }).click();
   await expect(kenny).toHaveURL(/\/trips\/[0-9a-f-]+\?day=2026-12-03$/);
-  await expect(kenny.getByRole("status").filter({ hasText: "Deleted Duplicate lunch." }).first()).toBeVisible();
+  await expect(kenny.getByRole("status").filter({ hasText: "Item deleted." }).first()).toBeVisible();
   await expect(kenny.getByText("Duplicate lunch", { exact: true })).toHaveCount(0);
   await kenny.reload();
   await expect(kenny.getByRole("status").filter({ hasText: "Deleted" })).toHaveCount(0);
+});
+
+test("the details, edit, delete confirmation and add pages have no serious or critical axe violations", async ({ pageSignedInAs }) => {
+  const kenny = await pageSignedInAs("kenny", `/trips/${DECEMBER_TRIP}/items/${STANFORD_HOTEL}`);
+  const serious = async () => (await new AxeBuilder({ page: kenny }).analyze()).violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`);
+  await expect(kenny.getByRole("link", { name: "Edit", exact: true })).toBeVisible();
+  expect(await serious()).toEqual([]);
+  await kenny.getByRole("button", { name: "Delete" }).click();
+  await expect(kenny.getByRole("button", { name: "Keep" })).toBeVisible();
+  expect(await serious()).toEqual([]);
+  await kenny.goto(`/trips/${DECEMBER_TRIP}/items/${STANFORD_HOTEL}/edit`);
+  await expect(kenny.getByRole("button", { name: "Save changes" })).toBeVisible();
+  expect(await serious()).toEqual([]);
+  await kenny.goto(`/trips/${DECEMBER_TRIP}/add`);
+  await expect(kenny.getByRole("button", { name: /^Add / })).toBeVisible();
+  expect(await serious()).toEqual([]);
+});
+
+test("every field on the edit page has a label that attaches to its input", async ({ pageSignedInAs }) => {
+  const kenny = await pageSignedInAs("kenny", `/trips/${DECEMBER_TRIP}/items/${STANFORD_HOTEL}/edit?focus=code`);
+  await expect(kenny.getByLabel("Name")).toBeVisible();
+  await expect(kenny.getByLabel("Booking reference")).toBeVisible();
+  await expect(kenny.getByLabel("Kenneth")).toBeVisible();
 });

@@ -59,7 +59,7 @@ export async function editItem(_prev: FormState, form: FormData): Promise<FormSt
     console.error("Edit failed", { tripId, error: e instanceof Error ? e.name : "unknown" });
     return { errors: {}, message: e instanceof InputProblem ? e.message : FORM_ERROR, values: entries };
   }
-  await setFlash({ kind: "saved" });
+  await setFlash("saved", tripId);
   revalidatePath(`/trips/${tripId}`, "layout");
   redirect(`/trips/${tripId}/items/${itemId}`);
 }

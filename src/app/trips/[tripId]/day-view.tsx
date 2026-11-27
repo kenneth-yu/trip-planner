@@ -107,7 +107,7 @@ export function DayView({ view, days, todayKey, only, anchors = true }: { view: 
   if (!days.length) {
     return (
       <div className={styles.empty}>
-        <FlashStatus kind="deleted" />
+        <FlashStatus kind="deleted" tripId={view.trip.id} />
         {view.permissions.canEdit ? (
           <>
             <p className={styles.emptyTitle}>Add your first flight or stay.</p>
@@ -128,7 +128,7 @@ export function DayView({ view, days, todayKey, only, anchors = true }: { view: 
   }
   return (
     <>
-      <FlashStatus kind="deleted" />
+      <FlashStatus kind="deleted" tripId={view.trip.id} />
       {groupFreeDays(days).filter((day) => !only || day.keys.includes(only)).map((day) => (
         <details key={day.key} id={anchors ? `day-${day.key}` : undefined} className={styles.day} open={Boolean(only) || day.keys[day.keys.length - 1] >= todayKey}>
           <summary>

@@ -9,7 +9,6 @@ import { parseTripId } from "@/domain/import/item-form";
 import { localDateKey } from "@/domain/time/format";
 import { AccessDenied } from "@/domain/visibility/project";
 import { setFlash } from "@/app/ui/item-form/set-flash";
-import { itemHeading } from "./item-title";
 import { itemOf } from "./item-of";
 
 const ItemId = z.string().uuid();
@@ -26,7 +25,6 @@ export async function deleteItem(_prev: DeleteState, form: FormData): Promise<De
   const { ctx, requester, view } = await loadTripPage(tripId);
   const item = itemOf(view, itemId);
   if (!item) redirect(`/trips/${tripId}`);
-  const heading = itemHeading(item);
   const day = localDateKey(item.start);
   try {
     await removeItem(ctx, tripId, itemId, requester);
@@ -36,7 +34,7 @@ export async function deleteItem(_prev: DeleteState, form: FormData): Promise<De
     console.error("Delete failed", { tripId, error: e instanceof Error ? e.name : "unknown" });
     return { failed: true };
   }
-  await setFlash({ kind: "deleted", text: heading });
+  await setFlash("deleted", tripId);
   revalidatePath(`/trips/${tripId}`, "layout");
   redirect(`/trips/${tripId}?day=${day}`);
 }
