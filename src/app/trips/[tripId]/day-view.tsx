@@ -2,6 +2,7 @@ import Link from "next/link";
 import styles from "./days.module.css";
 import formStyles from "@/app/ui/item-form/item-form.module.css";
 import { AddedMarker } from "@/app/ui/item-form/added-marker";
+import { FlashStatus } from "@/app/ui/item-form/flash-status";
 
 import type { Day, DayEntry } from "@/domain/time/days";
 import type { FlightCard } from "@/domain/time/flight-card";
@@ -106,6 +107,7 @@ export function DayView({ view, days, todayKey, only, anchors = true }: { view: 
   if (!days.length) {
     return (
       <div className={styles.empty}>
+        <FlashStatus kind="deleted" tripId={view.trip.id} />
         {view.permissions.canEdit ? (
           <>
             <p className={styles.emptyTitle}>Add your first flight or stay.</p>
@@ -126,6 +128,7 @@ export function DayView({ view, days, todayKey, only, anchors = true }: { view: 
   }
   return (
     <>
+      <FlashStatus kind="deleted" tripId={view.trip.id} />
       {groupFreeDays(days).filter((day) => !only || day.keys.includes(only)).map((day) => (
         <details key={day.key} id={anchors ? `day-${day.key}` : undefined} className={styles.day} open={Boolean(only) || day.keys[day.keys.length - 1] >= todayKey}>
           <summary>

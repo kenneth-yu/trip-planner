@@ -41,8 +41,8 @@ describe("trip service on a real database", () => {
   it("only the creator changes who can see an item, and hidden items cannot be edited by others", async () => {
     const { ctx } = await testContext({ withItems: false });
     const secret = await quickAddItem(ctx, TRIP_ID, jacob, { type: "plan", title: "Ring shopping", city: "Hong Kong", startLocal: "2026-12-05T20:00", endLocal: "2026-12-05T21:00" }, { visibility: "only_me" });
-    await expect(updateItem(ctx, TRIP_ID, secret.id, kenny, { title: "Found it" })).rejects.toThrow(AccessDenied);
-    await expect(removeItem(ctx, TRIP_ID, secret.id, kenny)).rejects.toThrow(AccessDenied);
+    await expect(updateItem(ctx, TRIP_ID, secret.id, kenny, { title: "Found it" })).rejects.toThrow(NotFound);
+    await expect(removeItem(ctx, TRIP_ID, secret.id, kenny)).rejects.toThrow(NotFound);
     const shared = await quickAddItem(ctx, TRIP_ID, jacob, { type: "plan", title: "Dinner", city: "Hong Kong", startLocal: "2026-12-05T19:00", endLocal: "2026-12-05T20:00" });
     await expect(updateItem(ctx, TRIP_ID, shared.id, kenny, { visibility: "only_me" })).rejects.toThrow(/Only the person who added this/);
   });

@@ -5,6 +5,7 @@ import * as t from "../db/schema";
 import { openJson, SealError, sealJson } from "../crypto/sealed";
 import { itemPrivateSchema } from "../crypto/schemas";
 import type { Deadline, Item, ItemPrivate, TripAggregate } from "@/domain/types";
+import { InputProblem } from "@/domain/import/problem";
 
 const iso = (d: Date) => d.toISOString();
 
@@ -92,7 +93,7 @@ function rowToItem(r: typeof t.items.$inferSelect, privates: (typeof t.itemPriva
   };
 }
 
-export class UnknownTraveler extends Error {
+export class UnknownTraveler extends InputProblem {
   constructor() {
     super("That traveler was removed. Pick someone else.");
     this.name = "UnknownTraveler";
