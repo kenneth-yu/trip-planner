@@ -15,7 +15,7 @@ concurrency:
 jobs:
   measure:
     name: measure
-    runs-on: [self-hosted, trip-planner]
+    runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 30
     env:
@@ -37,7 +37,7 @@ jobs:
       - run: npx next build
       - name: Point Lighthouse at Playwright's Chromium
         run: |
-          npx playwright install chromium
+          npx playwright install --with-deps chromium
           echo "CHROME_PATH=$(node -e "console.log(require('@playwright/test').chromium.executablePath())")" >> "$GITHUB_ENV"
       - name: Hot paths and MCP get_trip
         id: hot
@@ -107,7 +107,7 @@ jobs:
     name: pull request comment
     needs: measure
     if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
-    runs-on: [self-hosted, trip-planner]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
