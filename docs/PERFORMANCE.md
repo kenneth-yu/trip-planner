@@ -8,7 +8,7 @@ All numbers are measured on the built app (`npx next build`, then `next start`),
 
 - Hot paths and MCP: build first, then `npx vitest run --config vitest.perf.config.mts`. It starts the built app on a free port with a throwaway PGlite database, seeds the demo trips, creates a read-only assistant token, and stops everything afterwards.
 - Bundle: `npx tsx scripts/bundle-budget.ts` after the build.
-- Lighthouse: runs on the CI runner only (`npx @lhci/cli`); it is not installed locally.
+- Lighthouse: runs on the CI runner only (`npx @lhci/cli`), on GitHub-hosted ubuntu-latest with the runner's installed Chrome; it is not installed locally. The Lighthouse budgets were set from the medians of hosted runs, so they apply to that runner class; a run on other hardware (for example the self-hosted runner used for a few hours on Nov 27) is not comparable.
 - Results land in `.next/perf/` as JSON and Markdown; CI uploads them as the `perf` artifact, writes the job summary and keeps one pull request comment up to date.
 
 Budgets live in `perf/budgets.json`. A new hot path, MCP call or route with no entry fails with a message that says to add a measured budget.

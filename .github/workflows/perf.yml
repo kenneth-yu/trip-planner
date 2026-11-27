@@ -35,10 +35,6 @@ jobs:
         run: |
           echo "DATA_ENCRYPTION_KEY=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
       - run: npx next build
-      - name: Point Lighthouse at Playwright's Chromium
-        run: |
-          npx playwright install --with-deps chromium
-          echo "CHROME_PATH=$(node -e "console.log(require('@playwright/test').chromium.executablePath())")" >> "$GITHUB_ENV"
       - name: Hot paths and MCP get_trip
         id: hot
         continue-on-error: true
