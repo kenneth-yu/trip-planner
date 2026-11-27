@@ -83,6 +83,24 @@ test("the strip stays visible while a day is read, and back and forward each ret
   expect(Math.abs((await settledScroll(page)) - later), "forward returns to the place it was left").toBeLessThanOrEqual(2);
 });
 
+test("back from an item's details returns to the earlier place on the trip page", async ({ pageSignedInAs }) => {
+  const page = await pageSignedInAs("kenny", `/trips/${PACKED_TRIP}`);
+  await chipFor(page, "2027-03-09").click();
+  await expect(page).toHaveURL(/day=2027-03-09/);
+  await page.mouse.wheel(0, 500);
+  const earlier = await settledScroll(page);
+  expect(earlier).toBeGreaterThan(100);
+  const row = page.locator("#day-panel a[href*='/items/']").last();
+  await row.scrollIntoViewIfNeeded();
+  const leftAt = await settledScroll(page);
+  await row.click();
+  await expect(page).toHaveURL(/\/items\//);
+  await page.goBack();
+  await expect(page).toHaveURL(/day=2027-03-09/);
+  await expect(stripOf(page)).toHaveAttribute("data-scroll-restored", /day=2027-03-09/);
+  expect(Math.abs((await settledScroll(page)) - leftAt), "back from the details page returns to where the row was tapped").toBeLessThanOrEqual(2);
+});
+
 test("while a long day scrolls, its date stays pinned just under the strip", async ({ pageSignedInAs }) => {
   const page = await pageSignedInAs("kenny", `/trips/${PACKED_TRIP}`);
   const strip = stripOf(page);

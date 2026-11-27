@@ -16,6 +16,27 @@ function remember(url: string, scrollY: number): void {
   if (places.size > PLACES_KEPT && !oldest.done) places.delete(oldest.value);
 }
 
+let traversalPending = false;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("popstate", () => {
+    traversalPending = true;
+  });
+  document.addEventListener(
+    "click",
+    () => {
+      traversalPending = false;
+    },
+    true,
+  );
+}
+
+function consumeTraversal(): boolean {
+  const arrived = traversalPending;
+  traversalPending = false;
+  return arrived;
+}
+
 const here = () => `${window.location.pathname}${window.location.search}`;
 
 const CITY = [styles.city1, styles.city2, styles.city3, styles.city4, styles.city5];
@@ -29,22 +50,29 @@ export function DayStrip({ days, selectedKey }: { days: StripDay[]; selectedKey:
     return el && getComputedStyle(el).position === "sticky" ? el.offsetHeight : 0;
   };
   const lastUrl = useRef<string | null>(null);
+  const arrivedByTraversal = useRef(false);
   useEffect(() => {
+    arrivedByTraversal.current = consumeTraversal();
     const native = window.history.scrollRestoration;
     window.history.scrollRestoration = "manual";
     lastUrl.current = here();
     const leaving = () => {
       if (lastUrl.current) remember(lastUrl.current, window.scrollY);
     };
+    const scrolled = () => remember(here(), window.scrollY);
     window.addEventListener("popstate", leaving);
+    window.addEventListener("scroll", scrolled, { passive: true });
     return () => {
       window.removeEventListener("popstate", leaving);
+      window.removeEventListener("scroll", scrolled);
       window.history.scrollRestoration = native;
     };
   }, []);
   useEffect(() => {
     const url = here();
-    const restore = !tapped.current && lastUrl.current !== url ? places.get(url) : undefined;
+    const arrived = arrivedByTraversal.current;
+    arrivedByTraversal.current = false;
+    const restore = !tapped.current && (lastUrl.current !== url || arrived) ? places.get(url) : undefined;
     lastUrl.current = url;
     const el = strip.current;
     el?.removeAttribute("data-scroll-restored");
