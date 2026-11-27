@@ -1,0 +1,40 @@
+name: deploy-prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type "deploy production" to confirm. Production deploys only when the owner asks.
+        required: true
+        type: string
+
+permissions:
+  statuses: write
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    if: ${{ inputs.confirm == 'deploy production' && github.ref == 'refs/heads/main' }}
+    steps:
+      - name: Approve this commit for a production build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: gh api -X POST "repos/${GH_REPO}/statuses/${SHA}" -f state=success -f context=deploy/approved -f description="The owner asked for a production deploy"
+      - name: Ask Vercel to build and deploy production
+        env:
+          HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "::error::The VERCEL_DEPLOY_HOOK_URL secret is not set."; exit 1; fi
+          status="$(curl -sS -o response.json -w '%{http_code}' -X POST "$HOOK")"
+          echo "Vercel answered $status"
+          if [ "$status" != "200" ] && [ "$status" != "201" ]; then echo "::error::The deploy hook was refused."; exit 1; fi
+          jq -r '"Deployment job " + .job.state' response.json
