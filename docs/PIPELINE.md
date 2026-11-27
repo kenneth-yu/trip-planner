@@ -86,9 +86,17 @@ Then open `http://localhost:8766/?url=http://localhost:3000/trips/<trip id>`. Th
 
 ## Running an app from a worktree
 
-Each reviewer runs their own copy so nobody touches the main dev database:
+Use the review server. It picks a free port, seeds the demo trips into a scratch database, and prints the URL:
 
 ```bash
-PGLITE_DIR=<main>/.pipeline/scratch/WP-NN/db DATA_ENCRYPTION_KEY=<base64 32 bytes> npm run db:seed
-PGLITE_DIR=<main>/.pipeline/scratch/WP-NN/db DEV_SIGN_IN=1 SESSION_SECRET=<32+ chars> TOKEN_ENCRYPTION_KEY=<base64 32 bytes> DATA_ENCRYPTION_KEY=<base64 32 bytes> npx next dev --port 31NN
+node tools/review-server.mjs
+node tools/review-server.mjs --dev
+node tools/review-server.mjs --database-url <scratch postgres url>
 ```
+
+- Default: `next build` then `next start`, the same code path as production. On the embedded database, dev sign in is off by design (production refuses it), so this mode shows the signed out screens, headers and build output. For a signed in view without Postgres, use `--dev`.
+- `--dev` runs `next dev` with dev sign in (`/api/dev/sign-in?as=kenny`). Use it only when asked: it is the heavy mode.
+- `--database-url` against a scratch Postgres runs a faithful preview (`VERCEL_ENV=preview`, migrations, `--preview-database` seed, dev sign in), like the CI e2e job.
+- It stops itself after 45 minutes (hard limit, the server and its children are killed) and on Ctrl-C. Stop it before you finish.
+- At most 2 review servers run at once across all worktrees. The lock lives in `trip-planner-review-servers` under the system temp directory, stale entries are removed, and a third start prints which pids and ports hold the slots.
+- Secrets are generated per run and never printed. The scratch database is deleted on exit. Never point it at a real database.
