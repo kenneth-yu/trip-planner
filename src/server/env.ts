@@ -21,7 +21,12 @@ const LOCAL_APP_URL = "http://localhost:3000";
 const present = z.string().min(1);
 const secret = present.min(32);
 
+export function isReviewServer(source: Record<string, string | undefined>): boolean {
+  return source.REVIEW_SERVER === "1" && !source.VERCEL && !source.VERCEL_ENV && !source.DATABASE_URL;
+}
+
 export function deploymentOf(source: Record<string, string | undefined>): Deployment {
+  if (isReviewServer(source)) return "local";
   if (source.VERCEL_ENV === "production") return "production";
   if (source.VERCEL_ENV === "preview") return "preview";
   if (source.NODE_ENV === "production") return "production";
@@ -51,6 +56,9 @@ function problems(source: Record<string, string | undefined>, deployment: Deploy
   }
   if (source.VERCEL_ENV) {
     need("DATABASE_URL", present, "is not set. A Vercel deployment never runs on the embedded database");
+  }
+  if (source.REVIEW_SERVER === "1" && !isReviewServer(source)) {
+    found.push("REVIEW_SERVER=1 is set on a deployment or with a database url. Remove REVIEW_SERVER; it is only for the local review server");
   }
   if (source.DEV_SIGN_IN === "1" && deployment === "production") {
     found.push("DEV_SIGN_IN=1 is set on a production deployment. Remove DEV_SIGN_IN from the production environment variables");
