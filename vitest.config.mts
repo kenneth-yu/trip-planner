@@ -7,7 +7,7 @@ export default defineConfig({
     include: ["src/**/*.test.ts"],
     exclude: ["**/node_modules/**", ".claude/worktrees/**", ".pipeline/**"],
     environment: "node",
-    setupFiles: ["src/server/db/test-setup.ts", "src/server/db/test-db.ts"],
+    setupFiles: ["src/server/db/test-setup.ts"],
     env: { TZ: "Pacific/Kiritimati", DATA_ENCRYPTION_KEY: "ZmFrZS10ZXN0LWtleS1ub3QtZm9yLXJlYWwtZGF0YS0=" },
     coverage: {
       provider: "v8",

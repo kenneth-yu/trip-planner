@@ -26,7 +26,7 @@ export async function createIsolatedPostgresDb(url: string): Promise<IsolatedDb>
   await admin.query(`CREATE SCHEMA "${schemaName}"`);
   const pool = new Pool({ connectionString: url, options: `-c search_path=${schemaName}` });
   for (const migration of readMigrationFiles({ migrationsFolder: MIGRATIONS })) {
-    for (const statement of migration.sql) await pool.query(statement);
+    for (const statement of migration.sql) await pool.query(statement.replaceAll(`"public".`, `"${schemaName}".`));
   }
   const close = async () => {
     open.delete(close);
