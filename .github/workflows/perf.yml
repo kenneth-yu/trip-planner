@@ -15,7 +15,8 @@ concurrency:
 jobs:
   measure:
     name: measure
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, trip-planner]
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 30
     env:
       SESSION_SECRET: ci-only-secret-ci-only-secret-0000000
@@ -34,6 +35,10 @@ jobs:
         run: |
           echo "DATA_ENCRYPTION_KEY=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
       - run: npx next build
+      - name: Point Lighthouse at Playwright's Chromium
+        run: |
+          npx playwright install chromium
+          echo "CHROME_PATH=$(node -e "console.log(require('@playwright/test').chromium.executablePath())")" >> "$GITHUB_ENV"
       - name: Hot paths and MCP get_trip
         id: hot
         continue-on-error: true
@@ -53,7 +58,7 @@ jobs:
           exit 1
       - name: Read the demo session cookie
         run: |
-          cookie=$(jq -r .cookie .next/perf/server.json)
+          cookie=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.next/perf/server.json', 'utf8')).cookie)")
           echo "::add-mask::$cookie"
           echo "LH_COOKIE=$cookie" >> "$GITHUB_ENV"
           echo "LH_HEADERS={\"Cookie\":\"$cookie\"}" >> "$GITHUB_ENV"
@@ -80,7 +85,7 @@ jobs:
         run: |
           rm -f .next/perf/server.json .next/perf/server.log
           find .next/perf -name '*.report.html' -delete
-          find .next/perf -name '*.report.json' -exec sh -c 'jq "del(.configSettings.extraHeaders)" "$1" > "$1.tmp" && mv "$1.tmp" "$1"' _ {} \;
+          find .next/perf -name '*.report.json' -exec node -e "const fs = require('fs'); const f = process.argv[1]; const r = JSON.parse(fs.readFileSync(f, 'utf8')); if (r.configSettings) delete r.configSettings.extraHeaders; fs.writeFileSync(f, JSON.stringify(r))" {} \;
           if [ -n "$LH_COOKIE" ] && grep -rqF "$LH_COOKIE" .next/perf; then
             echo "::error::The session cookie is still present in the perf results, so they will not be uploaded."
             exit 1
@@ -102,7 +107,7 @@ jobs:
     name: pull request comment
     needs: measure
     if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, trip-planner]
     timeout-minutes: 5
     permissions:
       contents: read
