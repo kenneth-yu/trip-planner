@@ -10,6 +10,8 @@ afterEach(() => {
   globalThis.__tripDb = undefined;
 });
 
+const EMBEDDED_INITDB_MS = 15_000;
+
 describe("migrations at open", () => {
   it("does not migrate a Postgres database and keeps the pool small", async () => {
     const poolOptions: unknown[] = [];
@@ -39,7 +41,7 @@ describe("migrations at open", () => {
     const db = await createPgliteDb(dir);
     await expect(db.select().from(users)).resolves.toEqual([]);
     await rm(dir, { recursive: true, force: true });
-  });
+  }, EMBEDDED_INITDB_MS);
 
   it("refuses to open a Vercel deployment without a database url", async () => {
     vi.stubEnv("VERCEL_ENV", "preview");
