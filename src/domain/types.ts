@@ -49,6 +49,7 @@ export interface ItemPrivate {
   seat?: string;
   phone?: string;
   price?: Money;
+  notes?: string;
   bookingSite?: string;
 }
 
@@ -59,6 +60,7 @@ export const SENSITIVE_FIELDS = [
   "phone",
   "price",
   "bookingSite",
+  "notes",
 ] as const satisfies readonly (keyof ItemPrivate)[];
 
 export type DeadlineKind = "free_cancellation" | "partial_refund" | "change" | "other";

@@ -7,6 +7,7 @@ import { testContext, kenny } from "../testing";
 import { createAssistantToken, resolveAssistantToken, revokeAssistantToken } from "../services/assistant-service";
 import { getTripView } from "../services/trip-service";
 import { listInbox } from "../services/inbox-service";
+import { InvalidTransition } from "@/domain/state/machine";
 import { createMcpServer } from "./server";
 import type { ServiceContext } from "../services/context";
 
@@ -95,5 +96,15 @@ describe("MCP server for AI assistants", () => {
     await revokeAssistantToken(ctx, USERS.jacob.id, scoped.id);
     expect(await resolveAssistantToken(ctx, scoped.token)).toBeNull();
     expect(await resolveAssistantToken(ctx, "tpa_not-a-real-token")).toBeNull();
+  });
+
+  it("a token can be revoked only once, by its owner, and a revoked token never resolves again", async () => {
+    const { ctx } = await testContext();
+    const { id, token } = await createAssistantToken(ctx, USERS.jacob.id, { label: "Jacob's Claude" });
+    await revokeAssistantToken(ctx, USERS.kenny.id, id);
+    expect(await resolveAssistantToken(ctx, token)).not.toBeNull();
+    await revokeAssistantToken(ctx, USERS.jacob.id, id);
+    await expect(revokeAssistantToken(ctx, USERS.jacob.id, id)).rejects.toThrow(InvalidTransition);
+    expect(await resolveAssistantToken(ctx, token)).toBeNull();
   });
 });
