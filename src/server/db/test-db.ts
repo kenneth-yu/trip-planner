@@ -37,7 +37,15 @@ async function withAdminPool<T>(url: string, run: (pool: Pool) => Promise<T>): P
 const open = new Set<() => Promise<void>>();
 
 export async function closeIsolatedPostgresDbs(): Promise<void> {
-  await Promise.all([...open].map((close) => close()));
+  const failures: unknown[] = [];
+  for (const close of [...open]) {
+    try {
+      await close();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length > 0) throw failures[0];
 }
 
 async function migrateInOneTransaction(pool: Pool, schemaName: string): Promise<void> {
@@ -60,11 +68,15 @@ export async function createIsolatedPostgresDb(url: string): Promise<IsolatedDb>
   assertSafeTestDatabaseUrl(url, process.env.DATABASE_URL);
   const schemaName = `t_${randomUUID().replaceAll("-", "")}`;
   await withAdminPool(url, (admin) => admin.query(`CREATE SCHEMA "${schemaName}"`));
-  const pool = new Pool({ connectionString: url, max: 2, options: `-c search_path=${schemaName}` });
-  const close = async () => {
-    open.delete(close);
-    await pool.end();
-    await withAdminPool(url, (admin) => admin.query(`DROP SCHEMA "${schemaName}" CASCADE`));
+  const pool = new Pool({ connectionString: url, max: 2, idleTimeoutMillis: 200, options: `-c search_path=${schemaName}` });
+  let closing: Promise<void> | undefined;
+  const close = () => {
+    closing ??= (async () => {
+      open.delete(close);
+      await pool.end();
+      await withAdminPool(url, (admin) => admin.query(`DROP SCHEMA "${schemaName}" CASCADE`));
+    })();
+    return closing;
   };
   open.add(close);
   try {

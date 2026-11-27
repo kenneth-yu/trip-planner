@@ -1,0 +1,104 @@
+{
+  "hotPaths": {
+    "projectTrip/december": {
+      "budgetMs": 1
+    },
+    "buildTripGrid/december": {
+      "budgetMs": 33
+    },
+    "buildDays/december": {
+      "budgetMs": 22
+    },
+    "runChecks/december": {
+      "budgetMs": 46
+    },
+    "planCalendarImport/december": {
+      "budgetMs": 145
+    },
+    "projectTrip/packed": {
+      "budgetMs": 1
+    },
+    "buildTripGrid/packed": {
+      "budgetMs": 21
+    },
+    "buildDays/packed": {
+      "budgetMs": 10
+    },
+    "runChecks/packed": {
+      "budgetMs": 9
+    },
+    "planCalendarImport/packed": {
+      "budgetMs": 144
+    }
+  },
+  "mcp": {
+    "get_trip/in-memory": {
+      "budgetMs": 120
+    },
+    "get_trip/http": {
+      "budgetMs": 140
+    }
+  },
+  "bundle": {
+    "/": {
+      "budgetGzipBytes": 151000
+    },
+    "/_global-error": {
+      "budgetGzipBytes": 146000
+    },
+    "/_not-found": {
+      "budgetGzipBytes": 146000
+    },
+    "/not-on-your-account": {
+      "budgetGzipBytes": 149000
+    },
+    "/sign-in": {
+      "budgetGzipBytes": 148000
+    },
+    "/trips/[tripId]": {
+      "budgetGzipBytes": 151000
+    },
+    "/trips/[tripId]/add": {
+      "budgetGzipBytes": 178000
+    },
+    "/trips/[tripId]/connect": {
+      "budgetGzipBytes": 151000
+    },
+    "/trips/[tripId]/deadlines": {
+      "budgetGzipBytes": 150000
+    },
+    "/trips/[tripId]/inbox": {
+      "budgetGzipBytes": 151000
+    },
+    "/trips/new": {
+      "budgetGzipBytes": 150000
+    },
+    "/trips/[tripId]/items/[itemId]": {
+      "budgetGzipBytes": 151000
+    },
+    "/trips/[tripId]/items/[itemId]/edit": {
+      "budgetGzipBytes": 183000
+    },
+    "/invite/join": {
+      "budgetGzipBytes": 146000
+    },
+    "/invite/lost": {
+      "budgetGzipBytes": 150000
+    },
+    "/invite/problem/[kind]": {
+      "budgetGzipBytes": 146000
+    },
+    "/trips/[tripId]/share": {
+      "budgetGzipBytes": 153000
+    },
+    "/account": {
+      "budgetGzipBytes": 155000
+    },
+    "/trips/[tripId]/settings/delete": {
+      "budgetGzipBytes": 155000
+    },
+    "/trips/[tripId]/settings": {
+      "budgetGzipBytes": 156000
+    }
+  }
+}

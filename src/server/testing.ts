@@ -1,4 +1,5 @@
-import { createPgliteDb, type Db } from "./db/client";
+import { closeWhenDone } from "./db/test-closers";
+import { openPgliteDb, type Db } from "./db/client";
 import { createIsolatedPostgresDb } from "./db/test-db";
 import { defaultContext, type ServiceContext } from "./services/context";
 import { seedFixtureTrip } from "./seed";
@@ -10,8 +11,9 @@ export const jacob: Requester = { kind: "member", userId: USERS.jacob.id, homeZo
 
 async function openTestDb(): Promise<Db> {
   const url = process.env.TEST_DATABASE_URL;
-  if (!url) return createPgliteDb();
-  return (await createIsolatedPostgresDb(url)).db;
+  const opened = url ? await createIsolatedPostgresDb(url) : await openPgliteDb();
+  closeWhenDone(opened.close);
+  return opened.db;
 }
 
 export async function testContext(opts: { withItems?: boolean; overrides?: Partial<Omit<ServiceContext, "db" | "onTripChanged">> } = {}) {

@@ -13,6 +13,7 @@ export interface PageUnderTest {
   path: string;
   route: string;
   signedIn: boolean;
+  status?: number;
 }
 
 const TRIP_PAGES: { suffix: string; route: string }[] = [
@@ -22,13 +23,29 @@ const TRIP_PAGES: { suffix: string; route: string }[] = [
   { suffix: "/deadlines", route: "/trips/[tripId]/deadlines" },
   { suffix: "/inbox", route: "/trips/[tripId]/inbox" },
   { suffix: "/connect", route: "/trips/[tripId]/connect" },
+  { suffix: "/share", route: "/trips/[tripId]/share" },
+  { suffix: "/settings", route: "/trips/[tripId]/settings" },
+  { suffix: "/settings/delete", route: "/trips/[tripId]/settings/delete" },
 ];
+
+const DECEMBER_FLIGHT = "00000000-0000-4000-8400-000000000001";
+const DECEMBER_STAY = "00000000-0000-4000-8400-000000000002";
+const DECEMBER = DEMO_TRIPS[0].id;
 
 export const PAGES: PageUnderTest[] = [
   { label: "sign in", path: "/sign-in", route: "/sign-in", signedIn: false },
   { label: "trip list", path: "/", route: "/", signedIn: true },
   { label: "new trip", path: "/trips/new", route: "/trips/new", signedIn: true },
   { label: "trip not on your account", path: "/not-on-your-account", route: "/not-on-your-account", signedIn: true },
+  { label: "account", path: "/account", route: "/account", signedIn: true },
+  { label: "page not found", path: "/no-such-page", route: "/not-found", signedIn: true, status: 404 },
+  { label: "invite lost", path: "/invite/lost", route: "/invite/lost", signedIn: false },
+  { label: "invite join without a cookie", path: "/invite/join", route: "/invite/join", signedIn: false },
+  { label: "invite expired", path: "/invite/problem/expired", route: "/invite/problem/[kind]", signedIn: false },
+  { label: "invite unusable", path: "/invite/problem/unusable", route: "/invite/problem/[kind]", signedIn: false },
+  { label: "December flight details", path: `/trips/${DECEMBER}/items/${DECEMBER_FLIGHT}`, route: "/trips/[tripId]/items/[itemId]", signedIn: true },
+  { label: "December stay details", path: `/trips/${DECEMBER}/items/${DECEMBER_STAY}`, route: "/trips/[tripId]/items/[itemId]", signedIn: true },
+  { label: "December flight edit", path: `/trips/${DECEMBER}/items/${DECEMBER_FLIGHT}/edit`, route: "/trips/[tripId]/items/[itemId]/edit", signedIn: true },
   ...DEMO_TRIPS.flatMap((trip) => TRIP_PAGES.map((p) => ({ label: `${trip.name}${p.suffix === "" ? "" : ` ${p.suffix}`}`, path: `/trips/${trip.id}${p.suffix}`, route: p.route, signedIn: true }))),
 ];
 

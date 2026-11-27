@@ -10,6 +10,12 @@ import { present } from "@/testing/present";
 import { USERS } from "@/fixtures/december-trip";
 import type { Db } from "../db/client";
 
+function flipFirstBit(base64url: string): string {
+  const bytes = Buffer.from(base64url, "base64url");
+  bytes.writeUInt8(bytes.readUInt8(0) ^ 1, 0);
+  return bytes.toString("base64url");
+}
+
 const jar = new Map<string, { value: string; options: Record<string, unknown> }>();
 const database: { current: Promise<Db> | null } = { current: null };
 
@@ -61,7 +67,8 @@ describe("tokens", () => {
     expect(sealed).not.toContain("refresh");
     expect(decryptSecret(sealed)).toBe("1//refresh-token");
     const [iv, tag, body] = sealed.split(".");
-    expect(() => decryptSecret([iv, tag, body.slice(0, -2) + "AA"].join("."))).toThrow();
+    expect(() => decryptSecret([iv, tag, flipFirstBit(body)].join("."))).toThrow();
+    expect(() => decryptSecret([iv, flipFirstBit(tag), body].join("."))).toThrow();
   });
 });
 
@@ -126,6 +133,13 @@ describe("devSignInEnabled", () => {
 
   it("throws in production with no Vercel environment", () => {
     expect(() => devSignInEnabled({ DEV_SIGN_IN: "1", NODE_ENV: "production" })).toThrow(/DEV_SIGN_IN/);
+  });
+
+  it("is true under NODE_ENV=production only for the local review server", () => {
+    expect(devSignInEnabled({ DEV_SIGN_IN: "1", NODE_ENV: "production", REVIEW_SERVER: "1" })).toBe(true);
+    for (const extra of [{ VERCEL_ENV: "production" }, { VERCEL: "1" }, { DATABASE_URL: "postgres://u:p@localhost/x" }]) {
+      expect(() => devSignInEnabled({ DEV_SIGN_IN: "1", NODE_ENV: "production", REVIEW_SERVER: "1", ...extra })).toThrow(/DEV_SIGN_IN/);
+    }
   });
 
   it("throws on a Vercel production deployment, whatever NODE_ENV says", () => {

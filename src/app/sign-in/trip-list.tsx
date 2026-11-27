@@ -1,8 +1,9 @@
 import Link from "next/link";
 import styles from "../ui/page.module.css";
 import signInStyles from "./sign-in.module.css";
+import accountStyles from "../account/account.module.css";
 
-export function TripList({ trips, signOut }: { trips: { id: string; name: string }[]; signOut: () => Promise<void> }) {
+export function TripList({ trips, signOut }: { trips: { id: string; name: string; role: "owner" | "editor" | "viewer" }[]; signOut: () => Promise<void> }) {
   return (
     <main className={styles.page}>
       {trips.length === 0 ? (
@@ -17,8 +18,13 @@ export function TripList({ trips, signOut }: { trips: { id: string; name: string
           <h1 className={styles.title}>Your trips</h1>
           <ul className={styles.list}>
             {trips.map((t) => (
-              <li key={t.id}>
+              <li key={t.id} className={signInStyles.tripRow}>
                 <Link href={`/trips/${t.id}`}>{t.name}</Link>
+                {t.role !== "viewer" && (
+                  <Link href={`/trips/${t.id}/settings`} className={signInStyles.settings} aria-label={`Settings for ${t.name}`}>
+                    Settings
+                  </Link>
+                )}
               </li>
             ))}
           </ul>
@@ -27,8 +33,15 @@ export function TripList({ trips, signOut }: { trips: { id: string; name: string
           </p>
         </>
       )}
-      <form action={signOut} className={styles.section}>
-        <button type="submit">Sign out</button>
+      <p className={styles.section}>
+        <Link href="/account" className={accountStyles.link}>
+          Your account
+        </Link>
+      </p>
+      <form action={signOut}>
+        <button type="submit" className={accountStyles.signOut}>
+          Sign out
+        </button>
       </form>
     </main>
   );

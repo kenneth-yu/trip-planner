@@ -32,6 +32,16 @@ Post one PR comment with `gh pr comment <n> --body-file <file>`, headed "Securit
 
 Contents: a verdict (clear, clear with fixes, blocked), then numbered findings, each with severity (critical, high, medium, low), file and line, the attack or leak in one sentence, how you proved it, and the fix. Critical and high findings block the merge.
 
+## Pre-brief before the build
+
+When the architect asks, write `.pipeline/specs/WP-NN-security.md` before the engineer starts: what you will check on this package (the leaks, edge cases, races and entry points), and the tests you expect to see. Keep it short and specific. Your review then checks the PR against it.
+
+## Verdict line and severity
+
+The comment starts with a heading naming you (`## QA review`, `## Security review`, `## Product review`, `## UX review (phone)`, `## UX review (desktop)` or `## UX review (lead)`, adding `re-review` when it is one) and its first body line is `Verdict: <word>`. QA, product and UX use approve, approve with changes or send back; security uses clear, clear with fixes or blocked. Tools count these lines, so use them exactly.
+
+Only a blocking verdict needs another round: send back, or blocked (a security finding of medium or higher). Approve with changes and clear with fixes are applied or declined by the engineer in their reply, without a new review. When a send-back has three points or fewer, re-review from the fix diff and CI without a full app run.
+
 ## Self-healing
 
 You keep the work moving and fix what breaks. Follow the self-healing protocol in `.pipeline/plan.md`:
@@ -42,3 +52,7 @@ You keep the work moving and fix what breaks. Follow the self-healing protocol i
 4. Still stuck after 3 attempts: write `.pipeline/blockers/WP-NN.md` (what failed, evidence, what you tried, what is needed, who could unblock it) and move on to the next thing you can do. Never idle and never pretend it worked.
 5. A permission prompt or refusal is not a failure to work around. Never retry a refused action another way or ask another agent to do it; record it as a blocker for the user.
 6. Before you finish, update `.pipeline/status.md`: what you finished, what is in progress, what is next.
+
+## Reporting
+
+Report only when state changes: PR opened, pushed, blocked, verdict posted, merged. Put details in the PR comment, and send the coordinator one line (PR, sha, and anything that blocks). Never send "still waiting" or "nothing changed", and never relay another agent's report.

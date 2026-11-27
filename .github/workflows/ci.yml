@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
@@ -13,10 +14,43 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  lint:
-    name: lint
+  changes:
+    name: changes
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.decide.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          persist-credentials: false
+      - name: Decide whether anything other than documentation changed
+        id: decide
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then echo "code=true" >> "$GITHUB_OUTPUT"; echo "Push: running everything."; exit 0; fi
+          if [ ! -f tools/ci/changed-paths.mjs ]; then echo "code=true" >> "$GITHUB_OUTPUT"; echo "No decision script on the base branch: running CI."; exit 0; fi
+          files="$(gh api "repos/${GH_REPO}/pulls/${PR}/files" --paginate --jq '.[] | .filename, (.previous_filename // empty)')" || files=""
+          total="$(gh api "repos/${GH_REPO}/pulls/${PR}" --jq .changed_files)" || total=""
+          code="$(printf '%s\n' "$files" | CHANGED_TOTAL="$total" node tools/ci/changed-paths.mjs docs)" || code=true
+          [ "$code" = "false" ] || code=true
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Code changed: $code"
+
+  static:
+    name: static
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name == 'push' || (github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository && !(needs.changes.result == 'success' && needs.changes.outputs.code == 'false'))) }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -27,26 +61,38 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
-
-  typecheck:
-    name: typecheck
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
       - run: npm run typecheck
+      - run: npm run docs:statecharts:check
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npx drizzle-kit check
+      - run: npx drizzle-kit generate --name ci
+      - name: Fail when the schema has changes without a migration
+        run: |
+          if [ -n "$(git status --porcelain -- drizzle/)" ]; then
+            echo "::error::The schema differs from the checked-in migrations. Run npm run db:generate and commit the result."
+            git status --porcelain -- drizzle/
+            git diff -- drizzle/
+            exit 1
+          fi
+      - name: Fail a branch that lacks commits main's tooling needs
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --no-tags --unshallow origin
+          git fetch --no-tags origin "${{ github.event.pull_request.head.sha }}" "+refs/heads/main:refs/remotes/origin/main"
+          for f in branch-current.sh required-commits.txt; do
+            git show "origin/main:tools/ci/$f" > "$RUNNER_TEMP/$f" 2>/dev/null || cp "tools/ci/$f" "$RUNNER_TEMP/$f"
+          done
+          git checkout --detach "${{ github.event.pull_request.head.sha }}"
+          bash "$RUNNER_TEMP/branch-current.sh" origin/main "$RUNNER_TEMP/required-commits.txt" 40
 
   test:
     name: test
     runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name == 'push' || (github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository && !(needs.changes.result == 'success' && needs.changes.outputs.code == 'false'))) }}
     timeout-minutes: 15
+    env:
+      VITEST_MAX_WORKERS: "2"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -76,83 +122,11 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-  build:
-    name: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      SESSION_SECRET: ci-only-secret-ci-only-secret-0000000
-      AUTH_SECRET: ci-only-auth-secret-ci-only-auth-0000000
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Generate throwaway build secrets
-        run: |
-          echo "DATA_ENCRYPTION_KEY=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
-      - run: npx next build
-
-  audit:
-    name: audit
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm audit --omit=dev --audit-level=high
-
-  migrations:
-    name: migrations
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npx drizzle-kit check
-      - run: npx drizzle-kit generate --name ci
-      - name: Fail when the schema has changes without a migration
-        run: |
-          if [ -n "$(git status --porcelain -- drizzle/)" ]; then
-            echo "::error::The schema differs from the checked-in migrations. Run npm run db:generate and commit the result."
-            git status --porcelain -- drizzle/
-            git diff -- drizzle/
-            exit 1
-          fi
-
-  statecharts:
-    name: statecharts
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run docs:statecharts:check
-
   postgres:
     name: postgres
     runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name == 'push' || (github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository && !(needs.changes.result == 'success' && needs.changes.outputs.code == 'false'))) }}
     timeout-minutes: 15
     services:
       postgres:
@@ -162,15 +136,17 @@ jobs:
           POSTGRES_PASSWORD: ci-only-postgres
           POSTGRES_DB: trip_test
         ports:
-          - 5432:5432
+          - 5432
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
     env:
-      TEST_DATABASE_URL: postgres://postgres:ci-only-postgres@localhost:5432/trip_test
+      VITEST_MAX_WORKERS: "2"
     steps:
+      - name: Point at this job's Postgres port
+        run: echo "TEST_DATABASE_URL=postgres://postgres:ci-only-postgres@localhost:${{ job.services.postgres.ports[5432] }}/trip_test" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -181,22 +157,153 @@ jobs:
       - run: npm ci
       - name: Migrate an empty database with drizzle
         run: npx vitest run src/server/db/migrate.test.ts
-      - run: npm test
+      - name: Run every other test against Postgres
+        run: npm test -- --exclude src/server/db/migrate.test.ts
 
-  branch-current:
-    name: branch current
-    if: github.event_name == 'pull_request'
+  prod-build:
+    name: prod-build
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name == 'push' || (github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository && !(needs.changes.result == 'success' && needs.changes.outputs.code == 'false'))) }}
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17@sha256:97fb53376be3e4fb1a8a61421daa69dcc3bf2fa39bda3259f5245f9a455af1a9
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-postgres
+          POSTGRES_DB: trip_prod_guard
+        ports:
+          - 5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
     steps:
+      - name: Point at this job's Postgres port
+        run: |
+          base="postgres://postgres:ci-only-postgres@localhost:${{ job.services.postgres.ports[5432] }}"
+          echo "DATABASE_URL=$base/trip_prod_guard" >> "$GITHUB_ENV"
+          echo "E2E_DATABASE_URL=$base/trip_e2e" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
           persist-credentials: false
-      - name: Fail a branch that lacks commits main's tooling needs
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .next/cache
+          key: next-cache-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**', 'next.config.ts') }}
+          restore-keys: |
+            next-cache-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+      - run: npx playwright install --with-deps chromium
+      - name: Generate masked throwaway secrets
         run: |
-          for f in branch-current.sh required-commits.txt; do
-            git show "origin/main:tools/ci/$f" > "$RUNNER_TEMP/$f" 2>/dev/null || cp "tools/ci/$f" "$RUNNER_TEMP/$f"
+          for name in SESSION_SECRET:hex AUTH_SECRET:hex TOKEN_ENCRYPTION_KEY:base64 DATA_ENCRYPTION_KEY:base64; do
+            for prefix in "" "E2E_"; do
+              value="$(openssl rand -${name#*:} 32)"
+              echo "::add-mask::$value"
+              echo "${prefix}${name%%:*}=$value" >> "$GITHUB_ENV"
+            done
           done
-          bash "$RUNNER_TEMP/branch-current.sh" origin/main "$RUNNER_TEMP/required-commits.txt" 40
+      - name: Create the e2e database
+        run: |
+          node -e "const { Client } = require('pg'); const c = new Client({ connectionString: process.env.DATABASE_URL }); c.connect().then(() => c.query('create database trip_e2e')).then(() => c.end())"
+      - id: build
+        run: npx next build
+      - name: End to end tests against the production build
+        env:
+          E2E_PRODUCTION_BUILD: "1"
+        run: npx playwright test --project=phone
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          if-no-files-found: ignore
+          retention-days: 3
+      - name: Switch to production mode
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        env:
+          APP_URL: https://ci.example.test
+        run: |
+          echo "APP_URL=$APP_URL" >> "$GITHUB_ENV"
+          echo "TRUST_PROXY=1" >> "$GITHUB_ENV"
+          echo "NODE_ENV=production" >> "$GITHUB_ENV"
+          echo "VERCEL_ENV=production" >> "$GITHUB_ENV"
+      - name: Migrate twice and find the tables
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          npx tsx scripts/migrate.ts
+          npx tsx scripts/migrate.ts
+          table="$(node -e "const { Client } = require('pg'); const c = new Client({ connectionString: process.env.DATABASE_URL }); c.connect().then(() => c.query(\"select to_regclass('public.users') as t\")).then((r) => { console.log(r.rows[0].t ?? ''); return c.end(); })")"
+          echo "users table: $table"
+          [ "$table" = "users" ] || { echo "::error::the users table does not exist after migrating"; exit 1; }
+      - name: Production serves no dev routes and sends security headers
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          node node_modules/next/dist/bin/next start -p 3100 > start.log 2>&1 &
+          server=$!
+          for i in $(seq 1 30); do curl -s -o /dev/null localhost:3100/sign-in && break; sleep 1; done
+          for route in "/api/dev/sign-in?as=kenny" /api/dev/outbox; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "localhost:3100$route")
+            echo "$route answered $code"
+            [ "$code" = "404" ] || { echo "::error::$route answered $code, expected 404"; exit 1; }
+          done
+          for page in / /sign-in; do
+            headers=$(curl -s -D - -o /dev/null "localhost:3100$page" | tr 'A-Z' 'a-z' | tr -d '\r')
+            echo "$page headers:"
+            echo "$headers" | grep -E '^(content-security-policy|strict-transport-security|x-content-type-options|cross-origin-opener-policy|permissions-policy):' | cut -c1-160
+            for header in content-security-policy strict-transport-security x-content-type-options cross-origin-opener-policy permissions-policy; do
+              echo "$headers" | grep -q "^$header:" || { echo "::error::$page is missing $header"; exit 1; }
+            done
+            if echo "$headers" | grep -q "^x-powered-by:"; then echo "::error::$page sends x-powered-by"; exit 1; fi
+            csp=$(echo "$headers" | grep "^content-security-policy:")
+            echo "$csp" | grep -q "script-src 'self' 'nonce-" || { echo "::error::$page CSP has no script nonce"; exit 1; }
+            echo "$csp" | grep -q "'strict-dynamic'" || { echo "::error::$page CSP lacks strict-dynamic"; exit 1; }
+            echo "$csp" | grep -q "frame-ancestors 'none'" || { echo "::error::$page CSP lacks frame-ancestors none"; exit 1; }
+            if echo "$csp" | grep -o "script-src[^;]*" | grep -q "unsafe-"; then echo "::error::$page CSP allows unsafe script"; exit 1; fi
+          done
+          kill "$server"
+          exit 0
+      - name: Production refuses dev sign in
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        env:
+          DEV_SIGN_IN: "1"
+        run: |
+          node node_modules/next/dist/bin/next start -p 3101 > refuse.log 2>&1 &
+          server=$!
+          for i in $(seq 1 30); do curl -s -o /dev/null localhost:3101/sign-in && break; sleep 1; done
+          code=$(curl -s -o /dev/null -w '%{http_code}' "localhost:3101/api/dev/sign-in?as=kenny")
+          echo "dev sign in answered $code"
+          [ "$code" = "500" ] || { echo "::error::dev sign in answered $code, expected 500"; exit 1; }
+          home=$(curl -s -o /dev/null -w '%{http_code}' localhost:3101/sign-in)
+          echo "sign in page answered $home"
+          [ "$home" = "500" ] || { echo "::error::the sign in page answered $home, expected 500 because startup refused"; exit 1; }
+          grep -q "instrumentation hook" refuse.log || { echo "::error::startup did not refuse in the instrumentation hook"; exit 1; }
+          grep -q "DEV_SIGN_IN" refuse.log || { echo "::error::the refusal did not name DEV_SIGN_IN"; exit 1; }
+          kill "$server"
+          exit 0
+      - name: Production refuses the review server flag
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        env:
+          REVIEW_SERVER: "1"
+          DEV_SIGN_IN: "1"
+        run: |
+          npx next start -p 3102 > review-flag.log 2>&1 &
+          for i in $(seq 1 30); do curl -s -o /dev/null localhost:3102/sign-in && break; sleep 1; done
+          code=$(curl -s -o /dev/null -w '%{http_code}' "localhost:3102/api/dev/sign-in?as=kenny")
+          echo "dev sign in with the review flag answered $code"
+          [ "$code" = "500" ] || { echo "::error::dev sign in with REVIEW_SERVER=1 answered $code, expected 500"; exit 1; }
+          home=$(curl -s -o /dev/null -w '%{http_code}' localhost:3102/sign-in)
+          echo "sign in page answered $home"
+          [ "$home" = "500" ] || { echo "::error::the sign in page answered $home, expected 500 because startup refused"; exit 1; }
+          grep -q "REVIEW_SERVER" review-flag.log || { echo "::error::the refusal did not name REVIEW_SERVER"; exit 1; }
+          for pid in $(ss -ltnp | grep ':3102 ' | sed 's/.*pid=\([0-9]*\).*/\1/'); do kill "$pid"; done
+          exit 0

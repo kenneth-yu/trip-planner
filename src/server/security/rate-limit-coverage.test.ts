@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { ruleForRequest } from "./rate-limit";
 
 const APP_DIR = path.join(import.meta.dirname, "..", "..", "app");
-const LIMIT_CALLS = new Set(["consumeRateLimit", "spendSignInAttempt"]);
+const LIMIT_CALLS = new Set(["consumeRateLimit", "spendSignInAttempt", "spendInviteBudget"]);
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
 const ROUTE_ALLOWLIST: Record<string, string> = {
@@ -23,6 +23,23 @@ const ACTION_ALLOWLIST: Record<string, string> = {
   "src/app/trips/[tripId]/actions.ts#addAllClean": "Signed in and permission checked in the service; SECURITY.md lists no per person limit for it.",
   "src/app/trips/[tripId]/actions.ts#connectAssistant": "Any trip member can mint links (viewers get read only ones) and nothing limits how many; known gap. Needs a per person rule in RATE_RULES, then remove this entry.",
   "src/app/trips/[tripId]/actions.ts#revokeAssistant": "Signed in and owner checked in the service; SECURITY.md lists no per person limit for it.",
+  "src/app/account/actions.ts#deleteAccountAction": "Signed in, deletes only the caller's own account after a typed confirmation, and the session ends with it; one shot, nothing to repeat.",
+  "src/app/account/notice-actions.ts#clearOneTimeNotice": "Signed in and clears one notice flag on the caller's own session; idempotent and harmless.",
+  "src/app/invite/actions.ts#continueToSignIn": "Posted to /invite/join, which the inviteLookup rule in REQUEST_RULES limits per address before the action runs; it only forwards the invite cookie to sign in.",
+  "src/app/invite/actions.ts#joinTrip": "Posted to /invite/join, which the inviteLookup rule in REQUEST_RULES limits per address before the action runs; the invite token is 256 bit and single use.",
+  "src/app/invite/notice-actions.ts#dismissJoinedNotice": "Signed in and clears one notice flag on the caller's own session; idempotent and harmless.",
+  "src/app/trips/[tripId]/deadlines/actions.ts#dismissCheckAction": "Editors only (assertCanEditTrip), idempotent, writes one row per check of the caller's own findings; SECURITY.md lists no per person limit for it.",
+  "src/app/trips/[tripId]/deadlines/actions.ts#restoreCheckAction": "Editors only (assertCanEditTrip), idempotent, removes one row; SECURITY.md lists no per person limit for it.",
+  "src/app/trips/[tripId]/items/[itemId]/actions.ts#deleteItem": "Signed in and edit rights on the item checked in the service; each call removes one item, and the activity log keeps the before copy.",
+  "src/app/trips/[tripId]/settings/actions.ts#renameTripAction": "Owner only, checked in the service; SECURITY.md lists no per person limit for it.",
+  "src/app/trips/[tripId]/settings/actions.ts#renameTravelerAction": "Owner only, checked in the service; SECURITY.md lists no per person limit for it.",
+  "src/app/trips/[tripId]/settings/actions.ts#linkTravelerAction": "Owner only, checked in the service; SECURITY.md lists no per person limit for it.",
+  "src/app/trips/[tripId]/settings/actions.ts#removeTravelerAction": "Owner only, checked in the service, and refused while any item still names the traveler.",
+  "src/app/trips/[tripId]/settings/delete/actions.ts#deleteTripAction": "Owner only after a typed confirmation, and it removes the trip; one shot, nothing to repeat.",
+  "src/app/trips/[tripId]/share/actions.ts#revokeInviteAction": "Owner only, checked in the service; revoking is idempotent.",
+  "src/app/trips/[tripId]/share/actions.ts#changeRoleAction": "Owner only, checked in the service; SECURITY.md lists no per person limit for it.",
+  "src/app/trips/[tripId]/share/actions.ts#previewRemoval": "Owner only, checked in the service; it only reads what removing a member would take.",
+  "src/app/trips/[tripId]/share/actions.ts#removeMemberAction": "Owner only, checked in the service; each call removes one member.",
   "src/app/trips/[tripId]/actions.ts#mirrorAction": "Signed in and acts only on the caller's own mirror, but can start Google Calendar API calls with no per person limit; Google's quota is the only brake. Known gap; add a rule if it is abused.",
 };
 

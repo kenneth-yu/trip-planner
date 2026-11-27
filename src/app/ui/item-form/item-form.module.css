@@ -206,6 +206,12 @@
   font-size: var(--size-small);
 }
 
+.form input,
+.form select,
+.form textarea {
+  scroll-margin-bottom: 120px;
+}
+
 .primaryLink {
   display: inline-block;
   min-height: 44px;
@@ -261,6 +267,14 @@
   font-weight: 400;
 }
 
-.back {
-  display: inline-block;
+.flash {
+  margin: 0 0 12px;
+  font-weight: 700;
+}
+
+@media (min-width: 1000px) {
+  .submitBar {
+    position: static;
+    max-width: 36rem;
+  }
 }

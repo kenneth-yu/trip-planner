@@ -4,12 +4,12 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { ServiceContext } from "../services/context";
 import type { AssistantIdentity } from "../services/assistant-service";
 import { getTripView, listTrips, requireAggregate } from "../services/trip-service";
-import { disagreementFindings, importCalendarEvents, importProposals, listInbox } from "../services/inbox-service";
+import { importCalendarEvents, importProposals, listInbox } from "../services/inbox-service";
+import { visibleFindings } from "../services/check-service";
 import { describeInbox, describeTrip } from "./describe";
 import { ItemInput, inputToProposal, InputProblem, placeQueries } from "@/domain/import/quick-add";
 import { placeContextFor } from "../services/place-service";
 import { buildDeadlineLines } from "@/domain/deadlines/deadlines";
-import { runChecks } from "@/domain/checks/checks";
 import { AccessDenied, projectTrip } from "@/domain/visibility/project";
 import type { ProposedItem } from "@/domain/import/proposal";
 import type { Requester } from "@/domain/types";
@@ -22,12 +22,12 @@ const SERVER_INSTRUCTIONS = [
   "Use IATA airport codes for flights. Only send facts you read from a source such as a confirmation email; leave a field out rather than guess it.",
 ].join(" ");
 
-const CalendarEventTime = z.object({ dateTime: z.string().optional(), date: z.string().optional(), timeZone: z.string().optional() });
+const CalendarEventTime = z.object({ dateTime: z.string().max(64).optional(), date: z.string().max(32).optional(), timeZone: z.string().max(64).optional() });
 const CalendarEventInput = z.object({
-  summary: z.string(),
-  description: z.string().optional(),
-  location: z.string().optional(),
-  calendar: z.string().optional(),
+  summary: z.string().max(500),
+  description: z.string().max(20000).optional(),
+  location: z.string().max(500).optional(),
+  calendar: z.string().max(200).optional(),
   start: CalendarEventTime,
   end: CalendarEventTime,
 });
@@ -72,15 +72,14 @@ export function createMcpServer(ctx: ServiceContext, who: AssistantIdentity): Mc
     {
       title: "Get trip",
       description: "The whole itinerary day by day in local times, with deadlines and problems found. Read this before proposing items.",
-      inputSchema: { trip_id: z.string() },
+      inputSchema: { trip_id: z.string().max(64) },
       annotations: { readOnlyHint: true },
     },
     ({ trip_id }) =>
       guarded(async () => {
         allowedTrip(trip_id);
         const view = await getTripView(ctx, trip_id, requester);
-        const extra = await disagreementFindings(ctx, trip_id, requester);
-        const findings = runChecks(view, { extra });
+        const findings = await visibleFindings(ctx, view, requester);
         const deadlines = buildDeadlineLines(view, ctx.now().getTime());
         return text(describeTrip(view, deadlines, findings));
       }),
@@ -92,7 +91,7 @@ export function createMcpServer(ctx: ServiceContext, who: AssistantIdentity): Mc
       title: "Propose trip items",
       description:
         "Send flights, stays, plans or transfers to the trip's review inbox. A person approves them before they appear on the trip. Times are local at the place; zones are worked out from airports and cities.",
-      inputSchema: { trip_id: z.string(), items: z.array(ItemInput).min(1).max(50) },
+      inputSchema: { trip_id: z.string().max(64), items: z.array(ItemInput).min(1).max(50) },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
     },
     ({ trip_id, items }) =>
@@ -127,9 +126,9 @@ export function createMcpServer(ctx: ServiceContext, who: AssistantIdentity): Mc
       description:
         "Send calendar style events (as Google Calendar returns them: summary, description, location, start and end with dateTime or date) to the review inbox. Use this when you have events or reservation emails but not structured fields.",
       inputSchema: {
-        trip_id: z.string(),
+        trip_id: z.string().max(64),
         events: z.array(CalendarEventInput).min(1).max(100),
-        traveler_names: z.array(z.string()).optional().describe("Who these events are for. Defaults to you."),
+        traveler_names: z.array(z.string().max(120)).max(20).optional().describe("Who these events are for. Defaults to you."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
@@ -153,7 +152,7 @@ export function createMcpServer(ctx: ServiceContext, who: AssistantIdentity): Mc
     {
       title: "List review inbox",
       description: "Imported items waiting for a person to approve, with matches and disagreements.",
-      inputSchema: { trip_id: z.string() },
+      inputSchema: { trip_id: z.string().max(64) },
       annotations: { readOnlyHint: true },
     },
     ({ trip_id }) =>

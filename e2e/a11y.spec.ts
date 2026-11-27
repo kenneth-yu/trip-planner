@@ -22,9 +22,9 @@ interface TargetReading {
   height: number;
 }
 
-async function open(page: Page, path: string): Promise<void> {
+async function open(page: Page, path: string, status = 200): Promise<void> {
   const response = await page.goto(path, { waitUntil: "load" });
-  expect(response?.ok(), `${path} answered ${response?.status()}`).toBe(true);
+  expect(response?.status(), `${path} answered ${response?.status()}`).toBe(status);
   await expect(page.locator("main")).toBeVisible();
 }
 
@@ -95,7 +95,7 @@ test.describe("accessibility gate", () => {
         try {
           const page = await context.newPage();
           if (entry.signedIn) await page.goto("/api/dev/sign-in?as=kenny&next=/");
-          await open(page, entry.path);
+          await open(page, entry.path, entry.status);
 
           const results = await new AxeBuilder({ page }).analyze();
           const serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");

@@ -52,3 +52,20 @@
   color: var(--muted);
   font-size: var(--size-small);
 }
+
+.tripRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: var(--size-small);
+  text-decoration: none;
+}

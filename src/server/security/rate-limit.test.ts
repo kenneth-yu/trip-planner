@@ -82,6 +82,9 @@ describe("ruleForRequest", () => {
     ["GET", "/api/auth/callback/google", "signIn"],
     ["GET", "/api/auth/email", "signIn"],
     ["GET", "/invite/abc", "inviteAccept"],
+    ["GET", "/invite/accept", "inviteLookup"],
+    ["GET", "/invite/join", "inviteLookup"],
+    ["POST", "/invite/join", "inviteLookup"],
     ["GET", "/v/abc", "viewLink"],
     ["GET", "/api/feed/abc.ics", "feed"],
     ["POST", "/api/mcp", "assistant"],
@@ -101,6 +104,9 @@ describe("ruleForRequest", () => {
     ["GET", "/api/mcpx"],
     ["GET", "/vault"],
     ["GET", "/invited"],
+    ["GET", "/invite/lost"],
+    ["GET", "/invite/problem/expired"],
+    ["GET", "/invite/abc/def"],
     ["GET", "/api/auth/session"],
   ])("%s %s is not limited", (method, path) => {
     expect(ruleForRequest(method, path)).toBeNull();
@@ -120,5 +126,6 @@ describe("per person action limits", () => {
     expect((await consumeRateLimit(db, RATE_RULES.quickAdd, "someone-else", t0)).allowed).toBe(true);
     expect((await consumeRateLimit(db, RATE_RULES.quickAdd, kenny, after(60_000))).allowed).toBe(true);
     expect(RATE_RULES.placeHint.limit).toBe(60);
+    expect(RATE_RULES.dataExport.limit).toBe(6);
   });
 });

@@ -24,7 +24,7 @@ Read first: CLAUDE.md, docs/ENGINEERING.md, docs/ARCHITECTURE.md, the spec docs 
 4. Follow docs/ENGINEERING.md strictly: no comments, no casts or `!`, no swallowed errors, parse external data with zod, fix root causes.
 5. Follow docs/DESIGN.md for anything visible: phone first, calm, plain sentence-case copy, real fixture content, no emoji.
 6. Run `npm run check` until it passes. Run `npx next build`.
-7. Commit on your branch with clear messages ending with: `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. Never commit to main, never merge.
+7. Commit on your branch with clear messages ending with: `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. Never commit to main.
 
 ## Opening the PR
 
@@ -36,7 +36,11 @@ When asked to address reviews (QA, security, product), read the review comments 
 - Apply it if it is correct and in scope, with a test when it is a bug. Critical and high security findings must be fixed, not declined, unless you can show they are wrong.
 - Decline it if it is wrong, out of scope, or conflicts with the spec, and say why in one or two sentences.
 
-Rerun `npm run check`, commit and push, then post one PR comment (`gh pr comment <n> --body-file <file>`) listing each point as Applied or Declined with the reason. Also check the CI result (`gh pr checks <n>`) and fix any failure at its cause. Your judgment is final for your PR; the architect decides at merge.
+Rerun `npm run check`, commit and push, then post one PR comment (`gh pr comment <n> --body-file <file>`) listing each point as Applied or Declined with the reason. Also check the CI result (`gh pr checks <n>`) and fix any failure at its cause. Your judgment is final for your PR; the merge gate decides when it merges.
+
+## Draft, ready and merge
+
+Open the PR as a draft while you are still building (`gh pr create --draft`); CI does not run on drafts. When you ask for reviews, mark it ready (`gh pr ready <n>`) so CI runs alongside the reviews. Never merge by hand: the merge gate workflow merges a PR once its required checks pass, its branch is up to date with main, and every required reviewer's latest verdict at the current head is positive. It keeps one comment on the PR listing what is still missing. Build against the package's UX spec and its security and QA pre-briefs in `.pipeline/specs/`, and say in the PR body how each item is covered.
 
 ## Self-healing
 
@@ -48,3 +52,7 @@ You keep the work moving and fix what breaks. Follow the self-healing protocol i
 4. Still stuck after 3 attempts: write `.pipeline/blockers/WP-NN.md` (what failed, evidence, what you tried, what is needed, who could unblock it) and move on to the next thing you can do. Never idle and never pretend it worked.
 5. A permission prompt or refusal is not a failure to work around. Never retry a refused action another way or ask another agent to do it; record it as a blocker for the user.
 6. Before you finish, update `.pipeline/status.md`: what you finished, what is in progress, what is next.
+
+## Reporting
+
+Report only when state changes: PR opened, pushed, blocked, verdict posted, merged. Put details in the PR comment, and send the coordinator one line (PR, sha, and anything that blocks). Never send "still waiting" or "nothing changed", and never relay another agent's report.
