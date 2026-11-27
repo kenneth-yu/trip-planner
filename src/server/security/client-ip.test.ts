@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { clientIp } from "./client-ip";
+import { trustProxy } from "./trust-proxy";
 
 const headers = (xff?: string) => new Headers(xff ? { "x-forwarded-for": xff } : {});
 
@@ -29,5 +30,21 @@ describe("clientIp", () => {
   it("falls back to one shared bucket when a trusted proxy sent nothing usable", () => {
     expect(clientIp(headers(), true)).toBe("direct");
     expect(clientIp(headers(" , "), true)).toBe("direct");
+  });
+});
+
+describe("trustProxy", () => {
+  it("reads TRUST_PROXY=1 as trusted and 0 as not", () => {
+    expect(trustProxy({ NODE_ENV: "production", TRUST_PROXY: "1" })).toBe(true);
+    expect(trustProxy({ NODE_ENV: "production", TRUST_PROXY: "0" })).toBe(false);
+  });
+
+  it("refuses to run in production without an explicit TRUST_PROXY", () => {
+    expect(() => trustProxy({ NODE_ENV: "production" })).toThrow("Set TRUST_PROXY to 1 behind a proxy that appends the client address (Vercel), or 0 when clients connect directly.");
+    expect(() => trustProxy({ NODE_ENV: "production", TRUST_PROXY: "yes" })).toThrow("Set TRUST_PROXY");
+  });
+
+  it("treats an unset TRUST_PROXY outside production as not trusted", () => {
+    expect(trustProxy({ NODE_ENV: "development" })).toBe(false);
   });
 });
