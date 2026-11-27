@@ -68,6 +68,7 @@ Sizes are bytes, and the kB in the CI report is 1024 bytes (137.3 kB is 140,6xx 
 | /trips/[tripId]/share | 142,153 B | 153,000 B |
 | /account | 144,486 B (141.1 kB on the runner) | 155,000 B |
 | /trips/[tripId]/settings/delete | 144,384 B (141.0 kB on the runner) | 155,000 B |
+| /trips/[tripId]/settings | 145,785 B | 156,000 B |
 | /trips/new | 139,957 B | 150,000 B |
 
 About 133 kB of every route is the React and Next.js runtime; the add form adds about 25 kB.

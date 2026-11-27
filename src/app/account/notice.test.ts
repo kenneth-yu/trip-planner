@@ -27,7 +27,7 @@ describe("the one time status lines", () => {
 
 describe("the home page account link", () => {
   it("sits above Sign out and leaves Sign out working", () => {
-    const html = renderToStaticMarkup(createElement(TripList, { trips: [{ id: "t1", name: "Lisbon, someday" }], signOut: async () => undefined }));
+    const html = renderToStaticMarkup(createElement(TripList, { trips: [{ id: "t1", name: "Lisbon, someday", role: "owner" as const }], signOut: async () => undefined }));
     expect(html).toContain('href="/account"');
     expect(html).toContain("Your account");
     expect(html.indexOf("Your account")).toBeLessThan(html.indexOf("Sign out"));

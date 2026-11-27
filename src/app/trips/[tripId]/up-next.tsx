@@ -1,25 +1,39 @@
 import Link from "next/link";
 import styles from "./phone.module.css";
 import type { UpNextEntry } from "@/domain/timeline/trip-grid";
-import type { Attention } from "@/server/attention";
+import { phoneAlert, type Attention } from "@/server/attention";
+import type { OpenCheck } from "@/server/services/check-service";
 
-export function UpNext({ entries, attention, tripId }: { entries: UpNextEntry[]; attention: Attention; tripId: string }) {
-  const soon = attention.deadlines.filter((d) => !d.passed && d.warning);
-  const checks = attention.findings.length;
+const more = (n: number) => `and ${n} more`;
+
+function Alert({ attention, checks, tripId }: { attention: Attention; checks: OpenCheck[]; tripId: string }) {
+  const alert = phoneAlert(attention, checks);
+  if (!alert) return null;
+  const warn = alert.kind === "deadline";
+  const className = `${styles.alert} ${warn ? styles.alertWarn : ""}`;
+  const base = `/trips/${tripId}`;
+  const main = alert.kind === "inbox" ? `${base}/inbox` : alert.anchor ? `${base}/deadlines#check-${alert.anchor}` : `${base}/deadlines`;
+  const rest = alert.moreIsInboxOnly ? `${base}/inbox` : `${base}/deadlines`;
+  return (
+    <div className={className}>
+      <Link className={styles.alertLink} href={main}>
+        {alert.kind === "check" && <small>Worth a look</small>}
+        {alert.kind === "inbox" ? (attention.pending === 1 ? "1 new item to look over" : `${attention.pending} new items to look over`) : alert.sentence}
+        {alert.kind === "inbox" && <small>Nothing is added until you say so.</small>}
+      </Link>
+      {alert.more > 0 && (
+        <small>
+          <Link href={rest}>{more(alert.more)}</Link>
+        </small>
+      )}
+    </div>
+  );
+}
+
+export function UpNext({ entries, attention, checks, tripId }: { entries: UpNextEntry[]; attention: Attention; checks: OpenCheck[]; tripId: string }) {
   return (
     <section className={styles.upNext}>
-      {attention.pending > 0 && (
-        <Link className={styles.alert} href={`/trips/${tripId}/inbox`}>
-          {attention.pending === 1 ? "1 new item to look over" : `${attention.pending} new items to look over`}
-          <small>Nothing is added until you say so.</small>
-        </Link>
-      )}
-      {(soon.length > 0 || checks > 0) && (
-        <Link className={styles.alert} href={`/trips/${tripId}/deadlines`}>
-          {soon.length > 0 ? soon[0].sentence : `${checks} thing${checks === 1 ? "" : "s"} worth a look`}
-          <small>{soon.length > 1 ? `and ${soon.length - 1} more to decide soon` : soon.length === 1 && checks > 0 ? `and ${checks} thing${checks === 1 ? "" : "s"} worth a look` : "Tap to see"}</small>
-        </Link>
-      )}
+      <Alert attention={attention} checks={checks} tripId={tripId} />
       {entries.length > 0 && (
         <>
           <h2>Up next</h2>

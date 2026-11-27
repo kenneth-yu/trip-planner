@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import * as t from "../db/schema";
-import { saveItem, touchTrip, type DbOrTx } from "../repo/trip-repo";
+import { saveItem, touchTrip, UnknownTraveler, type DbOrTx } from "../repo/trip-repo";
 import type { ServiceContext } from "./context";
 import { placeContextFor } from "./place-service";
 import { NotFound, proposalToItem, requireAggregate } from "./trip-service";
@@ -202,7 +202,7 @@ function onlyKnownTravelers<T extends { travelerIds: string[]; private: ItemPriv
   return { record: { ...record, travelerIds, private: priv }, dropped };
 }
 
-export async function approveEntry(ctx: ServiceContext, tripId: string, entryId: string, requester: Requester, decision: Decision = {}): Promise<Saved> {
+async function approveOnce(ctx: ServiceContext, tripId: string, entryId: string, requester: Requester, decision: Decision): Promise<Saved> {
   if (requester.kind !== "member") throw new NotFound();
   const saved = await ctx.db.transaction(async (tx) => {
     const agg = await requireAggregate(tx, tripId);
@@ -222,12 +222,12 @@ export async function approveEntry(ctx: ServiceContext, tripId: string, entryId:
   return saved;
 }
 
-export async function mergeEntry(
+async function mergeOnce(
   ctx: ServiceContext,
   tripId: string,
   entryId: string,
   requester: Requester,
-  decision: Decision & { intoItemId?: string; keep?: Choices } = {},
+  decision: Decision & { intoItemId?: string; keep?: Choices },
 ): Promise<Saved> {
   if (requester.kind !== "member") throw new NotFound();
   const saved = await ctx.db.transaction(async (tx) => {
@@ -262,6 +262,29 @@ export async function mergeEntry(
   });
   await ctx.onTripChanged(tripId);
   return saved;
+}
+
+async function retryingRemovedTraveler<T>(save: () => Promise<T>): Promise<T> {
+  try {
+    return await save();
+  } catch (e) {
+    if (!(e instanceof UnknownTraveler)) throw e;
+    return save();
+  }
+}
+
+export function approveEntry(ctx: ServiceContext, tripId: string, entryId: string, requester: Requester, decision: Decision = {}): Promise<Saved> {
+  return retryingRemovedTraveler(() => approveOnce(ctx, tripId, entryId, requester, decision));
+}
+
+export function mergeEntry(
+  ctx: ServiceContext,
+  tripId: string,
+  entryId: string,
+  requester: Requester,
+  decision: Decision & { intoItemId?: string; keep?: Choices } = {},
+): Promise<Saved> {
+  return retryingRemovedTraveler(() => mergeOnce(ctx, tripId, entryId, requester, decision));
 }
 
 export async function discardEntry(ctx: ServiceContext, tripId: string, entryId: string, requester: Requester): Promise<ProposedItem> {

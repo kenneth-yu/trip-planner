@@ -14,21 +14,24 @@ Sharing has to be the easiest part of the app. One tap to share, nothing to expl
 * Invite and remove people, change roles
 * Turn the view link on or off, rotate it, choose whether it shows deadlines
 * Choose whether viewers see deadlines
-* Transfer ownership, delete the trip
+* Rename the trip, transfer ownership, delete the trip
 
 **Editor** (signed in)
 * Add, change, delete items they can see
 * Import from their own calendar or emails into the review inbox, and approve inbox items
 * See sensitive fields on items they can see
 * See deadlines and checks
+* Open Settings and manage travelers: add, rename, link a traveler to a member who has none, and remove a traveler who is on no item
 
 **Viewer** (invited and signed in, or anyone with the view link)
-* See Now, Day by day and Timeline
+* See Now, Trip (day by day) and Timeline
 * See deadlines only if the owner allowed it (separate switches for invited viewers and for the view link)
 * Never see sensitive fields
 * Cannot edit anything
 
 Inviting is owner only in v1.
+
+Settings: the owner decided that editors can open Settings and manage travelers, because the person adding Maya to a train is often the editor. Only the owner renames or deletes the trip, and only the owner manages members and roles. Viewers and view link visitors get the same not found answer as for a missing trip, from the page and from every action. A traveler cannot be removed while any item lists them or gives them a seat. The refusal names only items the requester can see; when everything left is hidden from the requester it says only that the traveler is still on something, with no title and no count.
 
 ## Invites
 1. Owner taps Share, picks a role (editor or viewer) and, optionally, which traveler the person is, then creates an invite link and sends it however they like. The app never sends email.

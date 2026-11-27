@@ -181,3 +181,48 @@
 .resultLine:empty {
   margin: 0;
 }
+
+.checkLine:target {
+  box-shadow: inset 2px 0 0 var(--text);
+  padding-left: 12px;
+}
+
+.textButton {
+  display: block;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 400;
+  font-size: var(--size-small);
+  text-decoration: underline;
+  border: 0;
+}
+
+.textButton:disabled {
+  cursor: default;
+  text-decoration: none;
+}
+
+.panel {
+  display: block;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--soft);
+  margin-bottom: 28px;
+}
+
+.panel .list > li:first-child {
+  border-top: 0;
+}
+
+.panel .list > li:last-child {
+  border-bottom: 0;
+}
+
+.panelLink {
+  color: var(--text);
+  text-decoration: underline;
+  display: block;
+}

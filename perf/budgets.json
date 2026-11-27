@@ -93,6 +93,9 @@
     },
     "/trips/[tripId]/settings/delete": {
       "budgetGzipBytes": 155000
+    },
+    "/trips/[tripId]/settings": {
+      "budgetGzipBytes": 156000
     }
   }
 }
