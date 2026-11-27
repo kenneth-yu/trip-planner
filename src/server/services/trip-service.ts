@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import * as t from "../db/schema";
-import { deleteItem, loadTripAggregate, saveItem, touchTrip, tripsForUser, type DbOrTx } from "../repo/trip-repo";
+import { deleteItem, loadTripAggregate, saveItem, touchTrip, tripsForUser, UnknownTraveler, type DbOrTx } from "../repo/trip-repo";
 import { insertActivity } from "../repo/activity-repo";
 import type { ServiceContext } from "./context";
 import { AccessDenied, assertCanEditItem, assertCanEditTrip, canSeeItem, projectTrip, type TripView } from "@/domain/visibility/project";
@@ -160,7 +160,7 @@ export async function updateItem(ctx: ServiceContext, tripId: string, itemId: st
       throw new AccessDenied("Only the person who added this can change who sees it.");
     }
     const knownTravelers = new Set(agg.travelers.map((x) => x.id));
-    if (patch.travelerIds?.some((id) => !knownTravelers.has(id))) throw new InputProblem("That change is not valid.");
+    if (patch.travelerIds?.some((id) => !knownTravelers.has(id))) throw new UnknownTraveler();
     const travelerIds = patch.travelerIds ?? before.travelerIds;
     if (patch.private?.some((row) => row.travelerId !== null && !travelerIds.includes(row.travelerId))) throw new InputProblem("That change is not valid.");
     const reviewed = patch.status === "confirmed" || patch.location !== undefined || patch.start !== undefined || patch.end !== undefined;
