@@ -44,7 +44,7 @@ describe("exact names in end to end locators", () => {
 
   it("offers a fix only for an object literal it can complete", () => {
     const linter = new Linter();
-    const config = [{ files: ["**/*.js"], plugins: { principles: { rules: { "exact-names": exactNames } } }, rules: { "principles/exact-names": "error" } }];
+    const config: Linter.Config[] = [{ files: ["**/*.js"], plugins: { principles: { rules: { "exact-names": exactNames } } }, rules: { "principles/exact-names": "error" } }];
     expect(linter.verifyAndFix('page.getByRole("button", { name: "Save" }); page.getByLabel("Name"); page.getByRole("button", opts)', config, "spec.js").output).toBe(
       'page.getByRole("button", { name: "Save", exact: true }); page.getByLabel("Name", { exact: true }); page.getByRole("button", opts)',
     );
