@@ -1,5 +1,5 @@
-const CACHE = "trips-offline-0798b9aaae43";
-const NAVIGATION_TIMEOUT_MS = 8000;
+const CACHE = "trips-offline-ecdaeb0c213a";
+const NAVIGATION_TIMEOUT_MS = 15000;
 const OFFLINE_PATH = "/offline";
 const ICON_PATHS = ["/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/apple-touch-icon.png", "/icon.svg"];
 const CACHED_PATHS = [OFFLINE_PATH, ...ICON_PATHS];
@@ -12,9 +12,17 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((names) => Promise.all(names.filter((name) => name !== CACHE).map((name) => caches.delete(name)))),
+      .then((names) => Promise.all(names.filter((name) => name !== CACHE).map((name) => caches.delete(name))))
+      .then(refill),
   );
 });
+
+async function refill() {
+  const cache = await caches.open(CACHE);
+  for (const path of CACHED_PATHS) {
+    if (!(await cache.match(path))) await cache.add(path);
+  }
+}
 
 async function navigate(request) {
   const controller = new AbortController();
@@ -35,6 +43,7 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
   if (request.mode === "navigate") {
     event.respondWith(navigate(request));
+    event.waitUntil(refill());
     return;
   }
   const url = new URL(request.url);

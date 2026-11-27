@@ -1,6 +1,6 @@
 export const OFFLINE_COPY = {
-  heading: "You are offline.",
-  reconnect: "Your trip will show again when you have a connection.",
+  heading: "Your trip can't load right now.",
+  reconnect: "You may be offline, or the connection is too slow. Try again in a moment.",
   screenshots: "If you saved screenshots of your bookings, they are in your photos.",
   retry: "Try again",
 };

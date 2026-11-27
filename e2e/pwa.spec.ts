@@ -26,8 +26,8 @@ test("a navigation with no network shows the offline page and Try again reloads"
   await page.reload();
   await context.setOffline(true);
   await page.goto(`/trips/${DECEMBER_TRIP}`);
-  await expect(page.getByRole("heading", { level: 1, name: "You are offline." })).toBeVisible();
-  await expect(page.getByText("Your trip will show again when you have a connection.")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Your trip can't load right now." })).toBeVisible();
+  await expect(page.getByText("You may be offline, or the connection is too slow. Try again in a moment.")).toBeVisible();
   await expect(page.getByText("If you saved screenshots of your bookings, they are in your photos.")).toBeVisible();
   await expect(page.getByText("Asia, December 2026")).toHaveCount(0);
   await context.setOffline(false);

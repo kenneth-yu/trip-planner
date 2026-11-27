@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   description: "Flights, stays and plans in one place, in local time.",
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "Trips", statusBarStyle: "default" },
-  icons: { apple: "/apple-touch-icon.png" },
+  icons: { icon: [{ url: "/icon.svg", type: "image/svg+xml" }, { url: "/favicon.ico" }], apple: "/apple-touch-icon.png" },
 };
 
 export const viewport: Viewport = {

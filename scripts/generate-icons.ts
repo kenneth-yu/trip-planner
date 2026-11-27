@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 
@@ -24,3 +24,16 @@ for (const { file, size, source } of targets) {
     .png()
     .toFile(path.join(publicDir, file));
 }
+
+const FAVICON_SIZE = 48;
+const faviconPng = await sharp(roundedSvg, { density: 72 * 2 }).resize(FAVICON_SIZE, FAVICON_SIZE).png().toBuffer();
+const iconDirectory = Buffer.alloc(22);
+iconDirectory.writeUInt16LE(1, 2);
+iconDirectory.writeUInt16LE(1, 4);
+iconDirectory.writeUInt8(FAVICON_SIZE, 6);
+iconDirectory.writeUInt8(FAVICON_SIZE, 7);
+iconDirectory.writeUInt16LE(1, 10);
+iconDirectory.writeUInt16LE(32, 12);
+iconDirectory.writeUInt32LE(faviconPng.length, 14);
+iconDirectory.writeUInt32LE(iconDirectory.length, 18);
+writeFileSync(path.join(import.meta.dirname, "..", "src", "app", "favicon.ico"), Buffer.concat([iconDirectory, faviconPng]));

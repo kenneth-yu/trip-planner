@@ -18,7 +18,7 @@ function expectedCacheName() {
 
 type Listener = (event: Record<string, unknown>) => void;
 
-function load(networkUp: boolean, offlineStatus = 200, stalled = false) {
+function load(networkUp: boolean, offlineStatus = 200, stalled = false, delayMs = 0) {
   const listeners = new Map<string, Listener>();
   const stores = new Map<string, Map<string, string>>();
   const fetched: string[] = [];
@@ -27,6 +27,12 @@ function load(networkUp: boolean, offlineStatus = 200, stalled = false) {
     const store = stores.get(name) ?? new Map<string, string>();
     stores.set(name, store);
     return {
+      match: async (p: string) => store.get(p),
+      add: async (p: string) => {
+        const response = await context.fetch({ url: `https://trips.test${p}` });
+        if (!response.ok) throw new TypeError(`bad response for ${p}`);
+        store.set(p, `cached ${p}`);
+      },
       addAll: async (paths: string[]) => {
         for (const p of paths) {
           const response = await context.fetch({ url: `https://trips.test${p}` });
@@ -63,6 +69,9 @@ function load(networkUp: boolean, offlineStatus = 200, stalled = false) {
       }
       if (!up) return Promise.reject(new TypeError("network down"));
       const ok = request.url.endsWith("/offline") ? offlineStatus === 200 : true;
+      if (delayMs > 0 && !request.url.endsWith("/offline") && !request.url.endsWith(".png") && !request.url.endsWith(".svg")) {
+        return new Promise((resolve) => setTimeout(() => resolve({ ok, body: `network ${request.url}` }), delayMs));
+      }
       return Promise.resolve({ ok, body: `network ${request.url}` });
     },
   };
@@ -134,13 +143,13 @@ describe("service worker", () => {
     await expect(sw.run("install", {})).rejects.toThrow("bad response for /offline");
   });
 
-  it("falls back to the offline page when a navigation stalls for 8 seconds and never caches the late page", async () => {
+  it("falls back to the offline page when a navigation stalls for 15 seconds and never caches the late page", async () => {
     vi.useFakeTimers();
     const sw = load(true, 200, true);
     await sw.run("install", {});
     const before = JSON.stringify([...sw.stores]);
     const pending = sw.run("fetch", { request: request("/trips/abc", "navigate") });
-    await vi.advanceTimersByTimeAsync(7999);
+    await vi.advanceTimersByTimeAsync(14999);
     let settled = false;
     void pending.then(() => {
       settled = true;
@@ -150,6 +159,26 @@ describe("service worker", () => {
     await vi.advanceTimersByTimeAsync(1);
     expect((await pending)?.value).toBe("cached /offline");
     expect(JSON.stringify([...sw.stores])).toBe(before);
+  });
+
+  it("passes through a page that answers after 10 seconds", async () => {
+    vi.useFakeTimers();
+    const sw = load(true, 200, false, 10_000);
+    await sw.run("install", {});
+    const pending = sw.run("fetch", { request: request("/trips/abc", "navigate") });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect((await pending)?.value).toEqual({ ok: true, body: "network https://trips.test/trips/abc" });
+  });
+
+  it("refills the cache when the browser evicted it, on activate and on the next navigation", async () => {
+    const sw = load(true);
+    await sw.run("install", {});
+    sw.stores.clear();
+    await sw.run("activate", {});
+    expect([...(sw.stores.values().next().value?.keys() ?? [])]).toContain("/offline");
+    sw.stores.clear();
+    await sw.run("fetch", { request: request("/trips/abc", "navigate") });
+    expect([...(sw.stores.values().next().value?.keys() ?? [])]).toHaveLength(6);
   });
 
   it("names its cache after a hash of the offline page and icons, so changing either needs a new name", () => {
@@ -175,14 +204,14 @@ describe("service worker", () => {
 describe("offline page", () => {
   it("uses the exact words from the spec", () => {
     expect(OFFLINE_COPY).toEqual({
-      heading: "You are offline.",
-      reconnect: "Your trip will show again when you have a connection.",
+      heading: "Your trip can't load right now.",
+      reconnect: "You may be offline, or the connection is too slow. Try again in a moment.",
       screenshots: "If you saved screenshots of your bookings, they are in your photos.",
       retry: "Try again",
     });
     const html = offlineHtml(null);
     for (const text of Object.values(OFFLINE_COPY)) expect(html).toContain(text);
-    expect(html).toContain("<h1>You are offline.</h1>");
+    expect(html).toContain("<h1>Your trip can't load right now.</h1>");
     expect(html).toContain('<button type="button"');
   });
 
@@ -198,6 +227,9 @@ describe("offline page", () => {
     expect(html).toContain("prefers-color-scheme: dark");
     expect(html).toContain("env(safe-area-inset-top)");
     expect(html).toContain("min-height: 44px");
+    expect(html).toContain("font-family: system-ui, sans-serif");
+    expect(html).toContain("--ground: #0f1113");
+    expect(html).toContain("background: var(--text)");
   });
 });
 
