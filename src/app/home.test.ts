@@ -90,6 +90,11 @@ describe("sign in screen", () => {
     expect(failed).not.toContain("email already");
   });
 
+  it("tells someone over the sign in limit to wait", () => {
+    const env = { NODE_ENV: "production", EMAIL_API_KEY: "k", EMAIL_FROM: "a@example.com", ...google };
+    expect(render(env, { error: "TooMany" })).toContain("Too many sign in attempts. Wait a few minutes and try again.");
+  });
+
   it("drops an unsafe next so it never reaches the form", () => {
     const html = render({ NODE_ENV: "production", ...google }, { next: "https://evil.example" });
     expect(html).not.toContain("evil.example");

@@ -81,8 +81,6 @@ describe("ruleForRequest", () => {
     ["POST", "/api/auth/signin/email", "signIn"],
     ["GET", "/api/auth/callback/google", "signIn"],
     ["GET", "/api/auth/email", "signIn"],
-    ["POST", "/", "signIn"],
-    ["POST", "/sign-in", "signIn"],
     ["GET", "/invite/abc", "inviteAccept"],
     ["GET", "/v/abc", "viewLink"],
     ["GET", "/api/feed/abc.ics", "feed"],
@@ -94,6 +92,8 @@ describe("ruleForRequest", () => {
 
   it.each<[string, string]>([
     ["GET", "/"],
+    ["POST", "/"],
+    ["POST", "/sign-in"],
     ["GET", "/sign-in"],
     ["POST", "/sign-in/x"],
     ["GET", "/trips/abc"],

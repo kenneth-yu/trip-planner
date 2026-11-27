@@ -31,18 +31,17 @@ async function statuses(method: string, url: string, times: number) {
 }
 
 describe("proxy rate limits sign in", () => {
-  it.each(["https://trips.test/", "https://trips.test/sign-in", "https://trips.test/api/auth/signin/email"])("POST %s is refused after 10 in 15 minutes", async (url) => {
+  it("refuses POST /api/auth/signin/email after 10 in 15 minutes", async () => {
     store.db = createPgliteDb();
-    const seen = await statuses("POST", url, 11);
+    const seen = await statuses("POST", "https://trips.test/api/auth/signin/email", 11);
     expect(seen.slice(0, 10).every((s) => s === 200)).toBe(true);
     expect(seen[10]).toBe(429);
   });
 
-  it("shares one sign in budget across the sign in entry points", async () => {
+  it("leaves page POSTs to the actions, so signing out on the home page spends nothing", async () => {
     store.db = createPgliteDb();
-    await statuses("POST", "https://trips.test/", 5);
-    await statuses("POST", "https://trips.test/sign-in", 5);
-    expect(await statuses("POST", "https://trips.test/api/auth/signin/email", 1)).toEqual([429]);
+    expect((await statuses("POST", "https://trips.test/", 12)).every((s) => s === 200)).toBe(true);
+    expect(await statuses("POST", "https://trips.test/api/auth/signin/email", 1)).toEqual([200]);
   });
 
   it("does not limit reading the sign in page", async () => {
