@@ -2,6 +2,12 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import * as t from "../db/schema";
 import { generateToken, hashToken } from "../auth/tokens";
 import type { ServiceContext } from "./context";
+import { machine as tokenMachine, type AssistantTokenState } from "@/domain/state/assistant-token.machine";
+import { canTransition, InvalidTransition, transition } from "@/domain/state/machine";
+
+function tokenState(row: { revokedAt: Date | null }): AssistantTokenState {
+  return row.revokedAt ? "Revoked" : "Active";
+}
 
 export type AssistantScope = "read" | "propose";
 
@@ -42,8 +48,8 @@ export async function resolveAssistantToken(ctx: ServiceContext, token: string |
     .select({ tok: t.assistantTokens, user: t.users })
     .from(t.assistantTokens)
     .innerJoin(t.users, eq(t.users.id, t.assistantTokens.userId))
-    .where(and(eq(t.assistantTokens.tokenHash, hashToken(token)), isNull(t.assistantTokens.revokedAt)));
-  if (!row) return null;
+    .where(eq(t.assistantTokens.tokenHash, hashToken(token)));
+  if (!row || !canTransition(tokenMachine, tokenState(row.tok), "use")) return null;
   await ctx.db.update(t.assistantTokens).set({ lastUsedAt: ctx.now() }).where(eq(t.assistantTokens.id, row.tok.id));
   return {
     tokenId: row.tok.id,
@@ -64,5 +70,13 @@ export async function listAssistantTokens(ctx: ServiceContext, userId: string) {
 }
 
 export async function revokeAssistantToken(ctx: ServiceContext, userId: string, tokenId: string) {
-  await ctx.db.update(t.assistantTokens).set({ revokedAt: ctx.now() }).where(and(eq(t.assistantTokens.id, tokenId), eq(t.assistantTokens.userId, userId)));
+  const [row] = await ctx.db.select().from(t.assistantTokens).where(and(eq(t.assistantTokens.id, tokenId), eq(t.assistantTokens.userId, userId)));
+  if (!row) return;
+  transition(tokenMachine, tokenState(row), "revoke");
+  const revoked = await ctx.db
+    .update(t.assistantTokens)
+    .set({ revokedAt: ctx.now() })
+    .where(and(eq(t.assistantTokens.id, tokenId), isNull(t.assistantTokens.revokedAt)))
+    .returning({ id: t.assistantTokens.id });
+  if (revoked.length === 0) throw new InvalidTransition(tokenMachine.name, "Revoked", "revoke");
 }
