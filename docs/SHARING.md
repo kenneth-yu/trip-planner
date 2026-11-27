@@ -23,7 +23,7 @@ Sharing has to be the easiest part of the app. One tap to share, nothing to expl
 * See deadlines and checks
 
 **Viewer** (invited and signed in, or anyone with the view link)
-* See Now, Day by day and Timeline
+* See Now, Trip (day by day) and Timeline
 * See deadlines only if the owner allowed it (separate switches for invited viewers and for the view link)
 * Never see sensitive fields
 * Cannot edit anything
