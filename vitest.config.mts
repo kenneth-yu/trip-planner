@@ -8,7 +8,7 @@ export default defineConfig({
     include: ["src/**/*.test.ts"],
     exclude: ["**/node_modules/**", ".claude/worktrees/**", ".pipeline/**"],
     environment: "node",
-    maxWorkers: "50%",
+    maxWorkers: Number(process.env.VITEST_MAX_WORKERS ?? 4),
     globalSetup: ["src/server/db/test-global-setup.ts"],
     setupFiles: ["src/server/db/test-setup.ts"],
     env: { TZ: "Pacific/Kiritimati", DATA_ENCRYPTION_KEY: randomBytes(32).toString("base64") },

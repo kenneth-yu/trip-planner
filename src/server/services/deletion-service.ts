@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 import * as t from "../db/schema";
 import type { ServiceContext } from "./context";
-import { teardownMirror } from "./mirror-service";
+import { syncTripMirrors, teardownMirror } from "./mirror-service";
 import { NotFound, requireAggregate } from "./trip-service";
 import { AccessDenied, permissionsFor } from "@/domain/visibility/project";
 import type { Requester } from "@/domain/types";
@@ -46,7 +46,7 @@ export interface AccountDeletion {
 
 type Reader = Pick<ServiceContext["db"], "select" | "selectDistinct">;
 
-async function tripsBlockingDeletion(db: Reader, userId: string): Promise<{ tripId: string; name: string }[]> {
+export async function tripsBlockingDeletion(db: Reader, userId: string): Promise<{ tripId: string; name: string }[]> {
   const owned = await db.select({ id: t.trips.id, name: t.trips.name }).from(t.trips).where(eq(t.trips.ownerId, userId));
   if (owned.length === 0) return [];
   const shared = await db
@@ -66,7 +66,7 @@ async function removeItems(tx: Tx, itemIds: string[]): Promise<void> {
   await tx.delete(t.items).where(inArray(t.items.id, itemIds));
 }
 
-async function settleHiddenItems(tx: Tx, userId: string, removeAll: boolean): Promise<void> {
+async function settleHiddenItems(tx: Tx, userId: string, removeAll: boolean): Promise<Set<string>> {
   const hidden = await tx
     .select({ id: t.items.id, tripId: t.items.tripId, visibility: t.items.visibility, visibleTo: t.items.visibleToUserIds })
     .from(t.items)
@@ -91,6 +91,7 @@ async function settleHiddenItems(tx: Tx, userId: string, removeAll: boolean): Pr
       .where(eq(t.items.id, item.id));
   }
   await removeItems(tx, doomed);
+  return new Set(hidden.map((h) => h.tripId));
 }
 
 export async function deleteAccount(ctx: ServiceContext, userId: string, opts: { removeHiddenItemsInSharedTrips: boolean }): Promise<AccountDeletion> {
@@ -104,14 +105,15 @@ export async function deleteAccount(ctx: ServiceContext, userId: string, opts: {
   const mirrors = await ctx.db.select({ tripId: t.calendarMirrors.tripId }).from(t.calendarMirrors).where(eq(t.calendarMirrors.userId, userId));
   for (const mirror of mirrors) await teardownMirror(ctx, mirror.tripId, userId);
 
-  return ctx.db.transaction(async (tx) => {
+  const settled = new Set<string>();
+  const outcome = await ctx.db.transaction(async (tx): Promise<AccountDeletion> => {
     const lateBlockers = await tripsBlockingDeletion(tx, userId);
     if (lateBlockers.length > 0) return { blockedBy: lateBlockers };
 
     const ownedNow = await tx.select({ id: t.trips.id }).from(t.trips).where(eq(t.trips.ownerId, userId));
     for (const trip of ownedNow) await deleteTripRows(tx, trip.id);
 
-    await settleHiddenItems(tx, userId, opts.removeHiddenItemsInSharedTrips);
+    for (const tripId of await settleHiddenItems(tx, userId, opts.removeHiddenItemsInSharedTrips)) settled.add(tripId);
     const visibleToUser = await tx
       .select({ id: t.items.id, ids: t.items.visibleToUserIds })
       .from(t.items)
@@ -139,4 +141,20 @@ export async function deleteAccount(ctx: ServiceContext, userId: string, opts: {
     await tx.delete(t.users).where(eq(t.users.id, userId));
     return { blockedBy: [] };
   });
+  for (const tripId of settled) {
+    for (const mirror of await syncTripMirrors(ctx, tripId)) {
+      if (mirror.status === "failed") console.error(`Calendar mirror for ${mirror.userId} on ${tripId} failed after an account deletion`);
+    }
+  }
+  return outcome;
+}
+
+export async function hasSharedSpecificItems(ctx: ServiceContext, userId: string): Promise<boolean> {
+  const [row] = await ctx.db
+    .select({ id: t.items.id })
+    .from(t.items)
+    .innerJoin(t.trips, eq(t.trips.id, t.items.tripId))
+    .where(and(eq(t.items.createdBy, userId), eq(t.items.visibility, "specific"), ne(t.trips.ownerId, userId)))
+    .limit(1);
+  return row !== undefined;
 }
