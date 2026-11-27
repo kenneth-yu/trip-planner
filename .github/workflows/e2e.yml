@@ -15,7 +15,7 @@ concurrency:
 jobs:
   phone:
     name: e2e phone
-    runs-on: [self-hosted, trip-planner]
+    runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 20
     services:
@@ -45,7 +45,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install chromium
+      - run: npx playwright install --with-deps chromium
       - name: Generate masked throwaway secrets
         run: |
           for name in E2E_SESSION_SECRET:hex E2E_AUTH_SECRET:hex E2E_TOKEN_ENCRYPTION_KEY:base64 E2E_DATA_ENCRYPTION_KEY:base64; do
