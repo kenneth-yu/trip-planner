@@ -9,6 +9,7 @@ export function TripNav({ tripId, canEdit }: { tripId: string; canEdit: boolean 
   const base = `/trips/${tripId}`;
   const links = [
     { href: base, label: "Day by day" },
+    ...(canEdit ? [{ href: `${base}/add`, label: "Add" }] : []),
     { href: `${base}/deadlines`, label: "Deadlines" },
     ...(canEdit ? [{ href: `${base}/inbox`, label: "Review inbox" }] : []),
     { href: `${base}/connect`, label: "Connect" },

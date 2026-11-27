@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { USERS } from "@/fixtures/december-trip";
@@ -46,7 +47,7 @@ describe("create trip", () => {
 
 describe("quick add submitted twice", () => {
   const input = { type: "plan", title: "Dinner", city: "Tokyo", startLocal: "2026-12-03T19:00", endLocal: "2026-12-03T20:00" };
-  const key = "7d0a3a56-3f0b-4f4e-9f57-5f7d0c9a0b11";
+  const key = randomUUID();
 
   it("creates one item when two identical submissions race", async () => {
     const { ctx, tripId, changed } = await testContext({ withItems: false });
@@ -70,7 +71,7 @@ describe("quick add submitted twice", () => {
   it("keeps different submissions, different people and no key separate", async () => {
     const { ctx, tripId } = await testContext({ withItems: false });
     await quickAddItem(ctx, tripId, kenny, input, {}, { idempotencyKey: key });
-    await quickAddItem(ctx, tripId, kenny, input, {}, { idempotencyKey: "9e5b3b0a-6a4c-4c53-8a5e-0b8a1f6d2c22" });
+    await quickAddItem(ctx, tripId, kenny, input, {}, { idempotencyKey: randomUUID() });
     await quickAddItem(ctx, tripId, jacob, input, {}, { idempotencyKey: key });
     await quickAddItem(ctx, tripId, kenny, input);
     await quickAddItem(ctx, tripId, kenny, input);

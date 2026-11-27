@@ -135,6 +135,7 @@ flowchart LR
 ```
 
 - A person typing into quick add is trusted and goes straight in. Everything else goes to the inbox.
+- The quick add form is `/trips/[id]/add`: the page renders `ItemForm` (client), which posts to the `addItem` server action; `parseItemForm` (domain) turns the fields into `ItemInput`, and `quickAddItem` (service) checks permissions and writes. The form's idempotency key makes a repeated submit return the same item. On blur, the member only `placeHint` action resolves a place through `resolvePlace` and `placeContextFor` so the form can say whose time a field is in.
 - Zones come from airports and cities, never from the source's claimed zone. Gmail events often carry the calendar owner's zone; the fixture's CX509 claims New York.
 - When a zone cannot be known, the proposal carries a `problem`, is marked needs review, and is never added in bulk.
 - Two kinds of disagreement are kept apart:

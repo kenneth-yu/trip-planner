@@ -19,7 +19,7 @@ export default async function ConnectPage({ params }: PageProps<"/trips/[tripId]
       <section>
         <h2 className={styles.sectionTitle}>AI assistants</h2>
         <p className={styles.muted}>
-          Let Claude or ChatGPT read this trip and suggest items from your email. Suggestions wait in the review inbox until someone adds them.
+          Let Claude or ChatGPT read this trip and suggest items from your email. You review everything before it is added.
         </p>
         <AssistantForm tripId={tripId} canSuggest={view.permissions.canEdit} />
         {tokens.length > 0 && (
