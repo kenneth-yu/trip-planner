@@ -51,6 +51,16 @@ export async function disableMirror(ctx: ServiceContext, tripId: string, userId:
   await ctx.db.update(t.calendarMirrors).set({ enabled: isActive(next) }).where(eq(t.calendarMirrors.id, mirror.id));
 }
 
+export async function teardownMirror(ctx: ServiceContext, tripId: string, userId: string): Promise<void> {
+  const [mirror] = await ctx.db.select().from(t.calendarMirrors).where(and(eq(t.calendarMirrors.tripId, tripId), eq(t.calendarMirrors.userId, userId)));
+  if (!mirror) return;
+  if (mirror.googleCalendarId) {
+    const google = await ctx.googleFor?.(userId);
+    if (google) await google.deleteCalendar(mirror.googleCalendarId);
+  }
+  await ctx.db.delete(t.calendarMirrors).where(eq(t.calendarMirrors.id, mirror.id));
+}
+
 export type MirrorOutcome =
   | { userId: string; status: "synced"; result: SyncResult }
   | { userId: string; status: "failed"; error: string };

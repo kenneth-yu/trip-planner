@@ -8,6 +8,7 @@ export const IMPORT_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
 
 export interface GoogleCalendarApi {
   createCalendar(summary: string, timeZone: string): Promise<{ id: string }>;
+  deleteCalendar(calendarId: string): Promise<void>;
   insertEvent(calendarId: string, event: MirrorEvent): Promise<{ id: string }>;
   updateEvent(calendarId: string, eventId: string, event: MirrorEvent): Promise<void>;
   deleteEvent(calendarId: string, eventId: string): Promise<void>;
@@ -39,6 +40,14 @@ export function googleCalendarRest(getAccessToken: () => Promise<string>, fetchI
   return {
     createCalendar: async (summary, timeZone) =>
       Created.parse(await call("POST", "/calendars", { summary, timeZone, description: "Kept in sync by Trip planner. Edit the trip in the app." })),
+    deleteCalendar: async (calendarId) => {
+      try {
+        await call("DELETE", `/calendars/${cal(calendarId)}`);
+      } catch (e) {
+        if (e instanceof GoogleApiError && (e.status === 404 || e.status === 410)) return;
+        throw e;
+      }
+    },
     insertEvent: async (calendarId, event) => Created.parse(await call("POST", `/calendars/${cal(calendarId)}/events`, event)),
     updateEvent: async (calendarId, eventId, event) => {
       await call("PUT", `/calendars/${cal(calendarId)}/events/${encodeURIComponent(eventId)}`, event);
@@ -74,6 +83,11 @@ export class FakeGoogleCalendar implements GoogleCalendarApi {
     this.calendars.set(id, { summary, timeZone, events: new Map() });
     this.calls.push(`createCalendar ${summary}`);
     return { id };
+  }
+  async deleteCalendar(calendarId: string) {
+    this.maybeFail();
+    this.calendars.delete(calendarId);
+    this.calls.push(`deleteCalendar ${calendarId}`);
   }
   async insertEvent(calendarId: string, event: MirrorEvent) {
     this.maybeFail();
