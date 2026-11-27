@@ -40,7 +40,7 @@ describe("trustProxy", () => {
   });
 
   it("refuses to run in production without an explicit TRUST_PROXY", () => {
-    expect(() => trustProxy({ NODE_ENV: "production" })).toThrow("Set TRUST_PROXY to 1 behind a proxy that appends the client address (Vercel), or 0 when clients connect directly.");
+    expect(() => trustProxy({ NODE_ENV: "production" })).toThrow("Set TRUST_PROXY to 1 behind a proxy that appends the client address (Vercel). 0 makes every client share one rate limit budget.");
     expect(() => trustProxy({ NODE_ENV: "production", TRUST_PROXY: "yes" })).toThrow("Set TRUST_PROXY");
   });
 
