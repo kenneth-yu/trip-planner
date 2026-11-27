@@ -54,8 +54,8 @@ function problems(source: Record<string, string | undefined>, deployment: Deploy
   if (appUrlRequired(source)) {
     need("APP_URL", z.url({ protocol: /^https$/ }), "must be set to the https address of the site on a production deployment, or on a preview that sends email links");
   }
-  if (source.VERCEL_ENV) {
-    need("DATABASE_URL", present, "is not set. A Vercel deployment never runs on the embedded database");
+  if (deployment !== "local") {
+    need("DATABASE_URL", present, "is not set. A production or preview deployment never runs on the embedded database");
   }
   if (source.REVIEW_SERVER === "1" && !isReviewServer(source)) {
     found.push("REVIEW_SERVER=1 is set on a deployment or with a database url. Remove REVIEW_SERVER; it is only for the local review server");
