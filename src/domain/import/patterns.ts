@@ -1,6 +1,7 @@
 import { DateTime } from "../time/luxon";
 import type { DeadlineKind, ItemPrivate, Money, Zone } from "../types";
-import { airportByCode, airportByName, airportsInCity, cityZone, zoneForPlaceName } from "../time/places";
+import { airportByCode, airportByName, airportsInCity, cityZone } from "../time/places";
+import { resolvePlace } from "../time/resolve-place";
 
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 const MONTH_RE = "(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\\.?";
@@ -49,7 +50,10 @@ export function inferDate(md: { month: number; day: number }, notAfter: DateTime
 
 export function readNamedZone(text: string): Zone | null {
   const m = /\(?\b([A-Z][A-Za-z]+(?:\s[A-Z][A-Za-z]+)?)\s+time\b\)?/.exec(text);
-  return m ? zoneForPlaceName(m[1]) : null;
+  if (!m) return null;
+  const asCountry = resolvePlace({ country: m[1] });
+  const r = asCountry.status === "sure" ? asCountry : resolvePlace({ city: m[1] });
+  return r.status === "sure" ? r.zone : null;
 }
 
 export interface ParsedDeadline {

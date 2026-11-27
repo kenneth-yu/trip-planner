@@ -1,7 +1,8 @@
 import { z } from "zod";
 import type { ItemPrivate, Traveler, Zone } from "../types";
 import { fromLocal } from "../time/format";
-import { airportZone, cityZone, findCityInText } from "../time/places";
+import { airportZone } from "../time/places";
+import { placeZone, type PlaceContext, type PlaceQuery } from "../time/resolve-place";
 import { DEFAULT_CHECK_IN, DEFAULT_CHECK_OUT } from "./calendar-event";
 import type { ProposedItem } from "./proposal";
 
@@ -37,6 +38,7 @@ const common = {
     )
     .optional(),
   source: z.string().max(500).optional().describe("Where this came from, e.g. the email subject"),
+  country: z.string().optional().describe("Country, used for the time zone when the city has no airport (Kyoto, Japan)"),
 };
 
 export const FlightInput = z.object({
@@ -89,22 +91,32 @@ export const TransferInput = z.object({
 
 export const ItemInput = z.discriminatedUnion("type", [FlightInput, StayInput, PlanInput, TransferInput]);
 export type ItemInput = z.infer<typeof ItemInput>;
+export type PlanItemInput = z.infer<typeof PlanInput>;
+
+export function placeQueries(raw: unknown): PlaceQuery[] {
+  const parsed = ItemInput.safeParse(raw);
+  if (!parsed.success) return [];
+  const input = parsed.data;
+  switch (input.type) {
+    case "flight":
+      return [];
+    case "stay":
+      return [{ city: input.city, address: input.address, country: input.country }];
+    case "plan":
+      return [{ city: input.city, address: input.address ?? input.place, country: input.country }];
+    case "transfer":
+      return [
+        { city: input.fromCity, country: input.country },
+        { city: input.toCity, country: input.country },
+      ];
+  }
+}
 
 export class InputProblem extends Error {
   constructor(message: string) {
     super(message);
     this.name = "InputProblem";
   }
-}
-
-function zoneForPlace(city: string | undefined, address: string | undefined, what: string): { zone: Zone; city: string } {
-  if (city) {
-    const zone = cityZone(city);
-    if (zone) return { zone, city };
-  }
-  const found = findCityInText([address, city].filter(Boolean).join(", "));
-  if (found) return found;
-  throw new InputProblem(`We could not tell which city ${what} is in. Add the city.`);
 }
 
 function resolveTravelers(names: string[] | undefined, travelers: Pick<Traveler, "id" | "name">[]): string[] {
@@ -117,7 +129,12 @@ function resolveTravelers(names: string[] | undefined, travelers: Pick<Traveler,
   });
 }
 
-export function inputToProposal(raw: unknown, travelers: Pick<Traveler, "id" | "name">[]): ProposedItem {
+export function inputToProposal(raw: unknown, travelers: Pick<Traveler, "id" | "name">[], places: PlaceContext): ProposedItem {
+  const proposal = buildProposal(raw, travelers, places);
+  return proposal.problems.length ? { ...proposal, status: "needs_review" } : proposal;
+}
+
+function buildProposal(raw: unknown, travelers: Pick<Traveler, "id" | "name">[], places: PlaceContext): ProposedItem {
   const input = ItemInput.parse(raw);
   const travelerIds = resolveTravelers(input.travelers, travelers);
   const shared: Omit<ItemPrivate, "travelerId"> = {
@@ -131,6 +148,11 @@ export function inputToProposal(raw: unknown, travelers: Pick<Traveler, "id" | "
     ? [{ travelerId: travelerIds.length === 1 ? travelerIds[0] : null, ...shared }]
     : [];
   const problems: string[] = [];
+  const placed = (query: PlaceQuery, localDate: string) => {
+    const p = placeZone(query, localDate.slice(0, 10), places);
+    if (p.problem) problems.push(p.problem);
+    return p;
+  };
   const base = {
     travelerIds,
     notes: [input.notes, input.source && `Source: ${input.source}`].filter(Boolean).join("\n"),
@@ -178,7 +200,7 @@ export function inputToProposal(raw: unknown, travelers: Pick<Traveler, "id" | "
       };
     }
     case "stay": {
-      const place = zoneForPlace(input.city, input.address, input.name);
+      const place = placed({ city: input.city, address: input.address, country: input.country }, input.checkInDate);
       const start = fromLocal(`${input.checkInDate}T${input.checkInTime ?? DEFAULT_CHECK_IN}`, place.zone);
       const end = fromLocal(`${input.checkOutDate}T${input.checkOutTime ?? DEFAULT_CHECK_OUT}`, place.zone);
       if (end.at <= start.at) throw new InputProblem("Check out is before check in.");
@@ -197,7 +219,7 @@ export function inputToProposal(raw: unknown, travelers: Pick<Traveler, "id" | "
       };
     }
     case "plan": {
-      const place = zoneForPlace(input.city, input.address ?? input.place, input.title);
+      const place = placed({ city: input.city, address: input.address ?? input.place, country: input.country }, input.startLocal);
       const start = fromLocal(input.startLocal, place.zone);
       const end = fromLocal(input.endLocal, place.zone);
       if (end.at < start.at) throw new InputProblem("The plan ends before it starts.");
@@ -215,15 +237,15 @@ export function inputToProposal(raw: unknown, travelers: Pick<Traveler, "id" | "
       };
     }
     case "transfer": {
-      const from = zoneForPlace(input.fromCity, undefined, "the start");
-      const to = zoneForPlace(input.toCity, undefined, "the end");
+      const from = placed({ city: input.fromCity, country: input.country }, input.startLocal);
+      const to = placed({ city: input.toCity, country: input.country }, input.endLocal);
       const start = fromLocal(input.startLocal, from.zone);
       const end = fromLocal(input.endLocal, to.zone);
       if (end.at < start.at) throw new InputProblem("The transfer ends before it starts.");
       return {
         ...base,
         type: "transfer",
-        title: input.title ?? `${from.city} to ${to.city}`,
+        title: input.title ?? `${input.fromCity} to ${input.toCity}`,
         start,
         end,
         startIsEstimated: false,

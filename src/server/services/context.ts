@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Db } from "../db/client";
 import type { GoogleCalendarApi } from "../google/calendar-api";
+import type { Geocoder } from "../places/geocoder";
 
 export interface ServiceContext {
   db: Db;
@@ -8,6 +9,7 @@ export interface ServiceContext {
   newId: () => string;
   onTripChanged: (tripId: string) => void | Promise<void>;
   googleFor?: (userId: string) => Promise<GoogleCalendarApi | null>;
+  geocoder?: Geocoder;
   appUrl: string;
 }
 

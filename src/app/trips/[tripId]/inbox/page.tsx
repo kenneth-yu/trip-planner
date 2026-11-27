@@ -22,7 +22,7 @@ export default async function InboxPage({ params }: PageProps<"/trips/[tripId]/i
   if (!entries.length) return <p className={styles.muted}>Nothing waiting. Items from calendars and assistants show up here first.</p>;
   const clean = entries.filter((e) => e.clean).length;
   return (
-    <>
+    <div className={styles.narrow}>
       {clean > 0 && (
         <form action={addAllClean} className={styles.row} style={{ marginBottom: 16 }}>
           <input type="hidden" name="tripId" value={tripId} />
@@ -65,6 +65,6 @@ export default async function InboxPage({ params }: PageProps<"/trips/[tripId]/i
           );
         })}
       </ul>
-    </>
+    </div>
   );
 }

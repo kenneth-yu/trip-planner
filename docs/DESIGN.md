@@ -33,6 +33,7 @@ Every element must have a reason to exist. When writing a component, be able to 
 * **Let type do the work.** Separate things with size, weight and space before reaching for borders and boxes. Lists are rows divided by a fine rule, not stacks of cards.
 * **Pick a typeface for numbers.** The app is mostly times. Choose one with clear, distinct figures and tabular figures for aligned columns. One family, two weights, about four sizes.
 * **Design with the real trip.** Awkward real cases (a flight that lands "before" it left) only show up with real data.
+* **Check every screen at every size.** `npm run db:seed` adds the December trip, an empty trip, a sparse weekend and a packed week with four travelers. A screen is done when it reads well on all four.
 
 ## Visual system
 
@@ -69,6 +70,7 @@ Each component lists what it shows and why.
 * Time on the left (local, large enough to scan), title, and place underneath in secondary text.
 * Home time after the local time in small secondary text, only when it differs from local. The day name is added only when the home date is different.
 * Tap to expand: address, confirmation code (if allowed), phone, notes, source.
+* When the app is not sure where something is, the row says "Check where this is" in the warning color, and the details say why and what to add.
 * Why: the time is what people scan for; everything else is on demand.
 
 ### Flight card
@@ -83,9 +85,14 @@ Each component lists what it shows and why.
 * On the day you land, when it is a different date from departure: "5:25am  Landed from New York". Small, secondary.
 * Why: each day reads on its own without scrolling back.
 
-### Time zone divider (timeline)
-* A thin vertical rule at a flight's arrival with the new city and the change: "Tokyo  +14h".
-* Why: shows exactly when the clocks change, without a legend.
+### Trip grid (timeline)
+* One column per day, rows labeled in plain words: Sleeping in, Travel, Plans, Not sure yet.
+* City blocks carry their own name and nights, so no legend is needed. The clock change rides on each landing: "Land in Tokyo, 5:25am, clocks +14h".
+* Each travel item and plan sits in its own soft, rounded bubble. A missing transfer gets a softly red bubble.
+* Each row has a faint neutral tint, and soft day lines run the full height, so rows and days are easy to follow. Weekends are slightly darker. The tints are near-neutral so they never read as city colors.
+* Days are at least about 7rem wide and at most 12rem. Long trips scroll sideways with the row names pinned on the left; short trips stay compact instead of stretching.
+* A row with nothing in it for the whole trip is not drawn.
+* Why: people read a trip by day. Every label fits in its own cell and nothing floats.
 
 ### Deadline line
 * One sentence: "Hotel Resol Ueno becomes non refundable in 2 days" with the exact time beneath: "Sat 11:59pm Tokyo (9:59am Sat New York)".

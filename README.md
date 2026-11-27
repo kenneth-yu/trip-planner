@@ -24,7 +24,7 @@ npm run db:seed
 npm run dev
 ```
 
-Open http://localhost:3000 and continue as Kenneth.
+Open http://localhost:3000 and continue as Kenneth. The seed adds four trips so you can see the UI at every size: the real December trip, an empty trip, a sparse Chicago weekend and a packed Tokyo and Kyoto week with four travelers. Running the seed again skips trips that are already there.
 
 Stop the dev server before running `db:seed` again. The embedded database allows one process at a time.
 

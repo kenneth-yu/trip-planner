@@ -264,6 +264,41 @@ sequenceDiagram
 
 The scope `calendar.app.created` lets the app manage only calendars it created. It cannot read or change anything else in the person's Google Calendar.
 
+## Screens and layout
+
+Phone first, one question per screen. From 1000px wide, the trip page combines three answers side by side.
+
+```mermaid
+flowchart TB
+  subgraph Desktop["Trip page, 1000px and wider"]
+    direction TB
+    H["Trip name<br/>New York → Tokyo → Hong Kong → Shenzhen → Hong Kong → Tokyo → New York<br/>Dec 1 to 15 · You leave in 5 days · with Jacob"]
+    T["Trip grid: one column per day<br/>Sleeping in · Travel · Plans · Not sure yet"]
+    subgraph Cols[" "]
+      direction LR
+      A["Left: new items to look over,<br/>decide in the next few days, later,<br/>worth double-checking"]
+      D["Right: day by day"]
+    end
+    H --> T --> Cols
+  end
+  subgraph Phone["Phone"]
+    direction TB
+    P1[Day by day] --- P2["Timeline tab<br/>(the grid, scrolls sideways)"] --- P3[Deadlines] --- P4[Review inbox] --- P5[Connect]
+  end
+```
+
+- `buildTripGrid(view)` in `src/domain/timeline` builds the grid from a `TripView`, so it obeys the same visibility rules as everything else. Hidden items show only as Busy.
+- Every column header and block links to that day in the list.
+- Each fact appears once. Deadlines live in the left column, exact times in the day list, and the grid shows the shape of the trip.
+- Consecutive free days in the same place merge into one row in the day list ("Mon Dec 7 to Wed Dec 9, Free days").
+- Deliberately left out: a row of big-number tiles (DESIGN.md lists those as a pattern to avoid) and visa or entry advice (CHECKS.md says not to generate it).
+
+### How the overview evolved
+
+1. A Gantt-style chart with lanes on real elapsed time. Accurate, but it read like a database.
+2. A single journey line on real elapsed time. Friendlier, but labels floated at many heights and short things were slivers.
+3. The trip grid, one column per day. People plan trips by day, so the overview now does too.
+
 ## Data model (stored)
 
 ```mermaid
@@ -295,6 +330,7 @@ erDiagram
 | Google mirror is one way, app to Google, one calendar per member | One source of truth. Per member, because visibility differs per member | Two way sync is not planned: edits belong in the app |
 | Mirror scope `calendar.app.created` | Least privilege: no access to the person's other calendars | n/a |
 | Mirrored events have no reminders and do not include codes or seats by default | v1 has no notifications; a Google calendar can be shared beyond the app's permissions | Per member setting `includeSensitive` exists and is off |
+| Places resolve offline first (airports, city-timezones, countries-and-timezones), then optionally by address lookup (OpenStreetMap, cached, `ADDRESS_LOOKUP=openstreetmap`); unclear results are saved as flags on the item and shown as checks | Times must be right without asking for offsets; when unsure, say so rather than guess | Off by default because it sends booking addresses to OpenStreetMap |
 | PGlite for dev and tests, Postgres in production | Same SQL and migrations; nobody installs a database to run tests | Never for prod: PGlite is single process |
 | Signed cookie session with a dev sign in | Lets the app run and be tested now | Replace with Auth.js (Google, Apple, email link) per CLAUDE.md before anyone but the builders uses it |
 

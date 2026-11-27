@@ -1,13 +1,39 @@
 import styles from "../../ui/page.module.css";
 import { loadTripPage } from "@/server/web";
+import { buildTripGrid, tripSpan } from "@/domain/timeline/trip-grid";
 import { TripNav } from "./nav";
+
+function listOf(names: string[]): string {
+  return names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
 
 export default async function TripLayout({ children, params }: LayoutProps<"/trips/[tripId]">) {
   const { tripId } = await params;
-  const { view } = await loadTripPage(tripId);
+  const { view, ctx, user } = await loadTripPage(tripId);
+  const nowMs = ctx.now().getTime();
+  const span = tripSpan(view, nowMs);
+  const route = buildTripGrid(view, nowMs)?.route ?? [];
+  const others = view.travelers.filter((t) => t.name !== user.name).map((t) => t.name.split(" ")[0]);
   return (
-    <main className={styles.page}>
-      <h1 className={styles.title}>{view.trip.name}</h1>
+    <main className={styles.trip}>
+      <h1 className={styles.hello}>{view.trip.name}</h1>
+      {route.length > 1 && (
+        <p className={styles.route}>
+          {route.map((city, i) => (
+            <span key={`${city}-${i}`} style={{ padding: 0, color: "inherit" }}>
+              {i > 0 && <span>→</span>}
+              {city}
+            </span>
+          ))}
+        </p>
+      )}
+      {span && (
+        <p className={styles.span}>
+          {span.dates}
+          {span.countdown && ` · ${span.countdown}`}
+          {others.length > 0 && ` · with ${listOf(others)}`}
+        </p>
+      )}
       <TripNav tripId={tripId} canEdit={view.permissions.canEdit} />
       {children}
     </main>

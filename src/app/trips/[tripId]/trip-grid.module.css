@@ -1,0 +1,182 @@
+.scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.grid {
+  display: grid;
+  justify-content: start;
+  row-gap: 6px;
+  font-size: var(--size-small);
+  line-height: 1.3;
+}
+
+.column {
+  grid-row: 1 / -1;
+  border-left: 1px solid var(--rule);
+}
+
+.weekend {
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+
+.band {
+  grid-column: 1 / -1;
+  border-radius: 12px;
+}
+
+.bandSleep {
+  background: var(--row-sleep);
+}
+
+.bandTravel {
+  background: var(--row-travel);
+}
+
+.bandPlans {
+  background: var(--row-plans);
+}
+
+.bandUnsure {
+  background: var(--row-unsure);
+}
+
+.today {
+  box-shadow: inset 0 3px 0 var(--warning);
+}
+
+.rowLabel,
+.corner {
+  grid-column: 1;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+
+.corner {
+  background: var(--ground);
+}
+
+.rowLabel {
+  color: var(--text);
+  font-weight: 700;
+  padding: 14px 10px 14px 12px;
+  border-radius: 12px 0 0 12px;
+  box-shadow: 8px 0 8px -8px color-mix(in srgb, var(--text) 25%, transparent);
+}
+
+.head {
+  grid-row: 1;
+  padding: 4px 8px 10px;
+  text-decoration: none;
+  color: var(--muted);
+  position: relative;
+}
+
+.head b {
+  display: block;
+  font-size: 1.375rem;
+  line-height: 1.1;
+  color: var(--text);
+}
+
+.month {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.cell {
+  padding: 8px 5px;
+  position: relative;
+  color: var(--text);
+}
+
+.entry {
+  display: block;
+  padding: 7px 9px;
+  overflow-wrap: anywhere;
+  border-radius: 10px;
+  background: var(--bubble);
+  border: 1px solid var(--bubble-edge);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.entry + .entry {
+  margin-top: 6px;
+}
+
+.entry small {
+  display: block;
+  color: var(--muted);
+}
+
+.missing {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 10%, var(--bubble));
+  border-color: color-mix(in srgb, var(--warning) 35%, transparent);
+}
+
+.sleep {
+  padding: 8px 3px;
+  position: relative;
+}
+
+.block {
+  display: block;
+  height: 100%;
+  min-height: 52px;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: var(--city);
+  color: var(--on-city);
+  text-decoration: none;
+  overflow: hidden;
+}
+
+.block b {
+  display: block;
+  font-size: var(--size-body);
+}
+
+.block span {
+  display: block;
+  opacity: 0.9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.unsure {
+  padding: 8px 3px;
+}
+
+.unsureBlock {
+  display: block;
+  background: color-mix(in srgb, var(--warning) 8%, var(--bubble));
+  border: 1.5px dashed var(--warning);
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: var(--warning);
+  text-decoration: none;
+}
+
+.city1 {
+  --city: var(--city-1);
+}
+
+.city2 {
+  --city: var(--city-2);
+}
+
+.city3 {
+  --city: var(--city-3);
+}
+
+.city4 {
+  --city: var(--city-4);
+}
+
+.city5 {
+  --city: var(--city-5);
+}

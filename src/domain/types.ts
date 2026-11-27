@@ -92,6 +92,7 @@ export interface Item {
   showAsBusy: boolean;
   status: ItemStatus;
   notes: string;
+  flags: string[];
   private: ItemPrivate[];
   deadlines: Deadline[];
   createdBy: string;

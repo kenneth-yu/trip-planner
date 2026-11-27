@@ -20,7 +20,6 @@ const RawAirport = z.object({
 
 const byIata = new Map<string, Airport>();
 const byCity = new Map<string, Airport[]>();
-const zonesByCountry = new Map<string, Set<Zone>>();
 
 for (const a of z.array(RawAirport).parse(rawAirports)) {
   if (!a.iata || !a.tz || !a.city || a.tz === "\\N") continue;
@@ -35,9 +34,6 @@ for (const a of z.array(RawAirport).parse(rawAirports)) {
   byIata.set(airport.iata, airport);
   const cityKey = normalize(airport.city);
   byCity.set(cityKey, [...(byCity.get(cityKey) ?? []), airport]);
-  const countryZones = zonesByCountry.get(normalize(airport.country)) ?? new Set<Zone>();
-  countryZones.add(airport.zone);
-  zonesByCountry.set(normalize(airport.country), countryZones);
 }
 
 function normalize(s: string): string {
@@ -57,15 +53,6 @@ export function cityZone(city: string): Zone | null {
   if (!list?.length) return null;
   const zones = new Set(list.map((a) => a.zone));
   return zones.size === 1 ? list[0].zone : null;
-}
-
-export function countryZone(country: string): Zone | null {
-  const zones = zonesByCountry.get(normalize(country));
-  return zones && zones.size === 1 ? [...zones][0] : null;
-}
-
-export function isKnownCity(city: string): boolean {
-  return byCity.has(normalize(city));
 }
 
 export function airportsInCity(city: string): Airport[] {
@@ -92,18 +79,3 @@ export function airportByName(fragment: string): Airport | null {
   return matches.length === 1 ? matches[0] : null;
 }
 
-export function findCityInText(text: string): { city: string; zone: Zone } | null {
-  const lower = ` ${normalize(text).replace(/[^a-z\s'-]/g, " ").replace(/\s+/g, " ")} `;
-  let best: { city: string; zone: Zone } | null = null;
-  for (const [key, list] of byCity) {
-    if (key.length < 4 || !lower.includes(` ${key} `)) continue;
-    const zone = cityZone(key);
-    if (!zone) continue;
-    if (!best || key.length > best.city.length) best = { city: list[0].city, zone };
-  }
-  return best;
-}
-
-export function zoneForPlaceName(name: string): Zone | null {
-  return cityZone(name) ?? countryZone(name);
-}

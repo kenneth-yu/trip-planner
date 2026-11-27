@@ -91,6 +91,7 @@ export const items = pgTable(
     showAsBusy: boolean("show_as_busy").notNull().default(false),
     status: text("status", { enum: ["confirmed", "needs_review"] }).notNull().default("confirmed"),
     notes: text("notes").notNull().default(""),
+    flags: jsonb("flags").$type<string[]>().notNull().default([]),
     createdBy: uuid("created_by").notNull().references(() => users.id),
     updatedBy: uuid("updated_by").notNull().references(() => users.id),
     createdAt: created(),
@@ -221,3 +222,9 @@ export const mirrorEvents = pgTable(
   },
   (t) => [primaryKey({ columns: [t.mirrorId, t.key] })],
 );
+
+export const geocodeCache = pgTable("geocode_cache", {
+  key: text("key").primaryKey(),
+  hit: jsonb("hit").$type<{ lat: number; lng: number; label: string } | null>(),
+  createdAt: created(),
+});

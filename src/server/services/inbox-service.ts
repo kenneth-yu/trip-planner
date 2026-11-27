@@ -2,6 +2,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import * as t from "../db/schema";
 import { saveItem, touchTrip, type DbOrTx } from "../repo/trip-repo";
 import type { ServiceContext } from "./context";
+import { placeContextFor } from "./place-service";
 import { logActivity, NotFound, proposalToItem, requireAggregate } from "./trip-service";
 import { assertCanEditItem, assertCanEditTrip, canSeeItem, permissionsFor, projectTrip } from "@/domain/visibility/project";
 import { isClean, planCalendarImport, planProposals, type InboxEntryDraft } from "@/domain/import/pipeline";
@@ -61,10 +62,12 @@ export async function importCalendarEvents(
   assertCanEditTrip(agg, requester);
   const view = projectTrip(agg, requester);
   const me = agg.travelers.find((x) => requester.kind === "member" && x.userId === requester.userId);
+  const places = await placeContextFor(ctx, view.items, requester.homeZone, events.map((e) => ({ address: e.location || undefined })));
   const drafts = planCalendarImport(events, view.items, {
     calendarTravelers: opts.calendarTravelers ?? {},
     defaultTravelerIds: opts.travelerIds ?? (me ? [me.id] : agg.travelers.map((x) => x.id)),
     homeZone: requester.homeZone,
+    geocode: places.geocode,
   });
   return insertBatch(ctx, tripId, requester, opts, drafts);
 }

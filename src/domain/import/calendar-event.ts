@@ -1,7 +1,8 @@
 import { DateTime } from "../time/luxon";
 import type { ItemPrivate, Zone, ZonedTime } from "../types";
 import { fromLocal, isValidZone } from "../time/format";
-import { airportZone, findCityInText, isKnownCity, cityZone } from "../time/places";
+import { airportZone } from "../time/places";
+import { placeZone, resolvePlace, type PlaceContext } from "../time/resolve-place";
 import {
   extractDeadlines,
   extractFlightNumber,
@@ -29,10 +30,8 @@ export interface CalendarEvent {
   end: CalendarEventTime;
 }
 
-export interface MapContext {
+export interface MapContext extends PlaceContext {
   travelerIds: string[];
-  zoneOnDate: (isoDate: string) => Zone | null;
-  homeZone: Zone;
 }
 
 export interface MappedEvent {
@@ -67,7 +66,7 @@ function privateFor(text: string, travelerIds: string[]): ItemPrivate[] {
 
 function splitCity(summary: string): { title: string; city: string | null } {
   const m = /^(.*?)\s*\(([^)]+)\)\s*$/.exec(summary);
-  if (m && isKnownCity(m[2]) && cityZone(m[2])) return { title: m[1], city: m[2] };
+  if (m && resolvePlace({ city: m[2] }).status !== "unknown") return { title: m[1], city: m[2] };
   return { title: summary, city: null };
 }
 
@@ -110,14 +109,11 @@ function mapAllDay(ev: AllDayEvent, ctx: MapContext): MappedEvent {
   const summary = ev.summary ?? "Untitled";
   const desc = ev.description ?? "";
   const { title, city: titleCity } = splitCity(summary);
-  const fromAddress = ev.location ? findCityInText(ev.location) : null;
-  const city = titleCity ?? fromAddress?.city ?? null;
   const problems: string[] = [];
-  let zone = city ? cityZone(city) : null;
-  if (!zone) {
-    zone = ctx.zoneOnDate(ev.start.date) ?? ctx.homeZone;
-    problems.push("Where is this? The time zone was taken from where you are that day.");
-  }
+  const placed = placeZone({ city: titleCity ?? undefined, address: ev.location || undefined }, ev.start.date, ctx);
+  if (placed.problem) problems.push(placed.problem);
+  const zone = placed.zone;
+  const city = placed.city ?? null;
   const nights = DateTime.fromISO(ev.end.date).diff(DateTime.fromISO(ev.start.date), "days").days;
   const isStay = nights >= 1;
   const times = extractStayTimes(desc);
@@ -149,16 +145,26 @@ function mapAllDay(ev: AllDayEvent, ctx: MapContext): MappedEvent {
 function mapTimed(ev: TimedEvent, ctx: MapContext): MappedEvent {
   const summary = ev.summary ?? "Untitled";
   const desc = ev.description ?? "";
-  const place = ev.location ? findCityInText(ev.location) : null;
   const problems: string[] = [];
-  let zone = place?.zone ?? null;
-  if (!zone) {
-    const tz = ev.start.timeZone;
-    if (tz && isValidZone(tz)) zone = tz;
-    else {
-      zone = ctx.homeZone;
-      problems.push("Where is this? No place or time zone came with it.");
+  const calendarZone = ev.start.timeZone && isValidZone(ev.start.timeZone) ? ev.start.timeZone : null;
+  const localDate = DateTime.fromISO(ev.start.dateTime, { setZone: true }).toISODate();
+  let zone: Zone;
+  let city: string | undefined;
+  if (ev.location) {
+    const r = resolvePlace({ address: ev.location }, { contextZone: ctx.zoneOnDate?.(localDate) ?? null, geocoded: ctx.geocode?.({ address: ev.location }) ?? null });
+    if (r.status === "unknown") {
+      zone = calendarZone ?? ctx.zoneOnDate?.(localDate) ?? ctx.homeZone;
+      problems.push(`${r.reason} We used ${calendarZone ? "the calendar event's time zone" : "the trip's local time"} until then.`);
+    } else {
+      zone = r.zone;
+      city = r.city ?? undefined;
+      if (r.status === "check") problems.push(r.reason);
     }
+  } else if (calendarZone) {
+    zone = calendarZone;
+  } else {
+    zone = ctx.zoneOnDate?.(localDate) ?? ctx.homeZone;
+    problems.push("Where is this? No place or time zone came with it.");
   }
   const start = instant(ev.start, zone);
   const end = instant(ev.end, zone);
@@ -172,7 +178,7 @@ function mapTimed(ev: TimedEvent, ctx: MapContext): MappedEvent {
       end,
       startIsEstimated: false,
       endIsEstimated: false,
-      location: ev.location ? { name, address: ev.location, city: place?.city } : null,
+      location: ev.location ? { name, address: ev.location, city } : null,
       travelerIds: ctx.travelerIds,
       private: privateFor(desc, ctx.travelerIds),
       deadlines: deadlines.map((d) => ({ kind: d.kind, at: fromLocal(d.local, d.zone), consequence: d.consequence, source: "parsed" as const })),

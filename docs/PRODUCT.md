@@ -48,14 +48,11 @@ Each screen answers one question. If something does not help answer it, it belon
 * Past days are folded by default
 * Free days say "Free day" and nothing else
 
-### Timeline
+### Timeline (trip grid)
 **Question:** where am I, and when?
-* The whole trip on one axis drawn to real elapsed time
-* Rows: stays (colored by city), flights and transfers, plans, gaps
-* Time zone dividers where the clocks change
-* Deadline markers and a line for now
-* Zoom from whole trip to one day
-* Best on desktop; on a phone it scrolls sideways
+* The whole trip as a calendar style grid, one column per day (see `TIME_RULES.md`, Timeline)
+* Rows: where you sleep (colored by city), travel, plans, and anything unclear
+* On desktop it sits at the top of the trip page; on a phone it is its own tab and scrolls sideways
 
 ### Deadlines
 **Question:** what do I have to decide, and by when?

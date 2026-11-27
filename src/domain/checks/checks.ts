@@ -14,7 +14,8 @@ export type CheckKind =
   | "late_arrival"
   | "plan_outside_places"
   | "tight_connection"
-  | "busy_overlap";
+  | "busy_overlap"
+  | "unsure_place";
 
 export interface Finding {
   key: string;
@@ -172,7 +173,7 @@ export function planOutsidePlaces(view: TripView): Finding[] {
   const out: Finding[] = [];
   for (const plan of of(view, "plan")) {
     const city = itemCity(plan);
-    if (!city) continue;
+    if (!city || plan.flags.length > 0) continue;
     const where = whereAt(instantMs(plan.start), view.items.filter((i) => i.id !== plan.id), view.homeZone);
     if (where.kind === "air" || !where.city || where.city === city) continue;
     const t = DateTime.fromMillis(instantMs(plan.start), { zone: where.zone });
@@ -224,6 +225,17 @@ export function busyOverlap(view: TripView): Finding[] {
   return out;
 }
 
+export function unsurePlace(view: TripView): Finding[] {
+  return view.items
+    .filter((i) => i.flags.length > 0)
+    .map((i) => ({
+      key: findingKey("unsure_place", [i]),
+      kind: "unsure_place" as const,
+      sentence: `${i.title.split(",")[0]}: ${i.flags.join(" ")}`,
+      itemIds: [i.id],
+    }));
+}
+
 export const CHECKS: ((view: TripView) => Finding[])[] = [
   overlappingStays,
   nowhereToSleep,
@@ -233,6 +245,7 @@ export const CHECKS: ((view: TripView) => Finding[])[] = [
   planOutsidePlaces,
   tightConnection,
   busyOverlap,
+  unsurePlace,
 ];
 
 export function runChecks(view: TripView, opts: { dismissedKeys?: Set<string>; extra?: Finding[] } = {}): Finding[] {

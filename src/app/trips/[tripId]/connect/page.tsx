@@ -15,7 +15,7 @@ export default async function ConnectPage({ params }: PageProps<"/trips/[tripId]
   const [mirror] = await ctx.db.select().from(t.calendarMirrors).where(and(eq(t.calendarMirrors.tripId, tripId), eq(t.calendarMirrors.userId, user.id)));
   const [google] = await ctx.db.select().from(t.googleConnections).where(eq(t.googleConnections.userId, user.id));
   return (
-    <>
+    <div className={styles.narrow}>
       <section>
         <h2 className={styles.sectionTitle}>AI assistants</h2>
         <p className={styles.muted}>
@@ -57,6 +57,6 @@ export default async function ConnectPage({ params }: PageProps<"/trips/[tripId]
         )}
         <MirrorForm tripId={tripId} connected={Boolean(google)} enabled={Boolean(mirror?.enabled)} />
       </section>
-    </>
+    </div>
   );
 }

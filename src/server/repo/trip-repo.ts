@@ -64,6 +64,7 @@ function rowToItem(r: typeof t.items.$inferSelect, privates: (typeof t.itemPriva
     showAsBusy: r.showAsBusy,
     status: r.status,
     notes: r.notes,
+    flags: r.flags,
     private: privates.map((p): ItemPrivate => ({ travelerId: p.travelerId, ...p.data })),
     deadlines: dls.map(
       (d): Deadline => ({
@@ -103,6 +104,7 @@ export async function saveItem(db: DbOrTx, item: Item): Promise<void> {
     showAsBusy: item.showAsBusy,
     status: item.status,
     notes: item.notes,
+    flags: item.flags,
     createdBy: item.createdBy,
     updatedBy: item.updatedBy,
     createdAt: new Date(item.createdAt),

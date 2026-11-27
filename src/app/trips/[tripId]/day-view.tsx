@@ -1,19 +1,15 @@
+import Link from "next/link";
 import styles from "./days.module.css";
 import type { Day, DayEntry } from "@/domain/time/days";
 import type { FlightCard } from "@/domain/time/flight-card";
 import type { TripView, VisibleItem } from "@/domain/visibility/project";
-import { itemCity } from "@/domain/time/days";
+import { stayCities } from "@/domain/timeline/trip-grid";
+import { groupFreeDays } from "@/domain/time/days";
 
 const CITY_CLASSES = [styles.city1, styles.city2, styles.city3, styles.city4, styles.city5];
 
 export function cityColors(view: TripView): Map<string, string> {
-  const map = new Map<string, string>();
-  for (const item of view.items) {
-    if (item.type !== "stay") continue;
-    const city = itemCity(item);
-    if (city && !map.has(city)) map.set(city, CITY_CLASSES[map.size % CITY_CLASSES.length]);
-  }
-  return map;
+  return new Map(stayCities(view).map((city, i) => [city, CITY_CLASSES[i % CITY_CLASSES.length]]));
 }
 
 function Flight({ card }: { card: FlightCard }) {
@@ -58,6 +54,7 @@ function Details({ item, canSeeSensitive, names }: { item: VisibleItem; canSeeSe
   }
   if (item.startIsEstimated || item.endIsEstimated) rows.push(["Times", "Estimated. Check the booking."]);
   if (item.status === "needs_review") rows.push(["Status", "Needs review"]);
+  for (const flag of item.flags) rows.push(["Check", flag]);
   if (item.notes) rows.push(["Notes", item.notes]);
   if (!rows.length) return null;
   return (
@@ -66,7 +63,7 @@ function Details({ item, canSeeSensitive, names }: { item: VisibleItem; canSeeSe
         {rows.map(([k, v], i) => (
           <div key={i} style={{ display: "contents" }}>
             <dt>{k}</dt>
-            <dd>{v}</dd>
+            <dd className={k === "Check" ? styles.check : undefined}>{v}</dd>
           </div>
         ))}
       </dl>
@@ -120,6 +117,7 @@ function Entry({ entry, view, colors, names }: { entry: DayEntry; view: TripView
           <span>
             {title}
             {place && entry.kind === "event" && <span className={styles.sub}>{place}</span>}
+            {item && item.flags.length > 0 && <span className={styles.flagged}>Check where this is</span>}
           </span>
         </summary>
         {detail}
@@ -131,17 +129,29 @@ function Entry({ entry, view, colors, names }: { entry: DayEntry; view: TripView
 export function DayView({ view, days, todayKey }: { view: TripView; days: Day[]; todayKey: string }) {
   const colors = cityColors(view);
   const names = new Map(view.travelers.map((t) => [t.id, t.name]));
-  if (!days.length) return <p className={styles.free}>Add your first flight or stay.</p>;
+  if (!days.length) {
+    return (
+      <div className={styles.empty}>
+        <p className={styles.emptyTitle}>Nothing here yet</p>
+        <p className={styles.free}>
+          Add your first flight or stay, or <Link href={`/trips/${view.trip.id}/connect`}>connect Claude or ChatGPT</Link> to bring in bookings from your email. You review everything before it is added.
+        </p>
+      </div>
+    );
+  }
   return (
     <>
-      {days.map((day) => (
-        <details key={day.key} className={styles.day} open={day.key >= todayKey}>
+      {groupFreeDays(days).map((day) => (
+        <details key={day.key} id={`day-${day.key}`} className={styles.day} open={day.keys[day.keys.length - 1] >= todayKey}>
           <summary>
             <span className={styles.date}>{day.header}</span>
             {day.place && <span className={styles.place}>{day.place}</span>}
           </summary>
+          {day.keys.slice(1).map((k) => (
+            <span key={k} id={`day-${k}`} />
+          ))}
           {day.isFree ? (
-            <p className={styles.free}>Free day</p>
+            <p className={styles.free}>{day.keys.length > 1 ? "Free days" : "Free day"}</p>
           ) : (
             <ul className={styles.entries}>
               {day.entries.map((e, i) => (

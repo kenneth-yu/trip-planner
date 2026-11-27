@@ -91,6 +91,7 @@ function projectItem(item: Item, requester: Requester, perms: Permissions): Visi
     visibleToUserIds: isCreator ? [...item.visibleToUserIds] : [],
     showAsBusy: item.showAsBusy,
     status: item.status,
+    flags: [...item.flags],
     notes: item.notes,
     private: perms.canSeeSensitive ? item.private.map((p) => structuredClone(p)) : [],
     deadlines: perms.canSeeDeadlines ? item.deadlines.map((d) => structuredClone(d)) : [],

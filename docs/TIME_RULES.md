@@ -51,14 +51,15 @@ Show:
   * prefix "Lands the next day." or "Lands the day before." when the dates differ
 * home time on the arrival only
 
-## Timeline
+## Timeline (trip grid)
 
-* The horizontal axis is real elapsed time (UTC). A 14 hour flight is 14 hours wide.
-* The primary hour labels are in the local zone of where you are at that point on the axis. They switch zones at each arrival.
-* A secondary row of smaller labels shows home time, only over stretches where home differs from local.
-* Inside a flight, no hour labels and no day lines. If the date changes in the air, a small "Dec 1 to Dec 2" label sits on the flight.
-* At each arrival, a time zone divider: city plus the change ("Tokyo  +14h", "Hong Kong  1h back").
-* Day lines at local midnight of where you are.
+Changed on Nov 26, 2026 at the trip owner's request: a real elapsed time axis made short things (flights, one night stays) unreadable. The overview is a calendar style grid instead.
+
+* One equal width column per calendar date where you are, the same dates as the day by day view.
+* Rows: where you sleep (city blocks spanning the nights there), travel (departures and landings on the day they happen, in local time, with the clock change on each landing: "5:25am, clocks +14h"), plans (time and title), and, only when something is unclear, a row for it.
+* A missing transfer between cities appears in the travel row on the day you move: "No way to Shenzhen booked".
+* Weekends are shaded. Today, during the trip, is marked.
+* Precise times, home time references and durations stay in the day by day view and on flight cards.
 
 ## Defaults for imported all day stays
 

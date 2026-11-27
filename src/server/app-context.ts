@@ -7,10 +7,18 @@ import { googleCalendarRest } from "./google/calendar-api";
 import { accessTokenSource, googleOAuthConfig } from "./google/oauth";
 import { defaultContext, type ServiceContext } from "./services/context";
 import { syncTripMirrors } from "./services/mirror-service";
+import { nominatimGeocoder, type Geocoder } from "./places/geocoder";
 
 export function appUrl(): string {
   return process.env.APP_URL ?? "http://localhost:3000";
 }
+
+function geocoderFromEnv(): Geocoder | undefined {
+  if (process.env.ADDRESS_LOOKUP !== "openstreetmap") return undefined;
+  return nominatimGeocoder({ userAgent: process.env.ADDRESS_LOOKUP_USER_AGENT ?? "trip-planner (self-hosted)" });
+}
+
+const geocoder = geocoderFromEnv();
 
 export async function requestContext(): Promise<ServiceContext> {
   const db = await getDb();
@@ -26,6 +34,7 @@ export async function requestContext(): Promise<ServiceContext> {
     },
     {
       appUrl: appUrl(),
+      geocoder,
       googleFor: async (userId) => {
         const cfg = googleOAuthConfig(appUrl());
         if (!cfg) return null;

@@ -95,6 +95,7 @@ function toItem(raw: unknown, i: number): Item {
     showAsBusy: false,
     status: f.status ?? "confirmed",
     notes: "",
+    flags: [],
     private: privates,
     deadlines,
     createdBy: USERS.kenny.id,

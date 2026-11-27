@@ -3,7 +3,8 @@ import * as t from "../db/schema";
 import { deleteItem, loadTripAggregate, saveItem, touchTrip, tripsForUser, type DbOrTx } from "../repo/trip-repo";
 import type { ServiceContext } from "./context";
 import { AccessDenied, assertCanEditItem, assertCanEditTrip, projectTrip, type TripView } from "@/domain/visibility/project";
-import { inputToProposal } from "@/domain/import/quick-add";
+import { inputToProposal, placeQueries } from "@/domain/import/quick-add";
+import { placeContextFor } from "./place-service";
 import type { ProposedItem } from "@/domain/import/proposal";
 import type { Item, Requester, TripAggregate, Visibility } from "@/domain/types";
 
@@ -66,6 +67,7 @@ export function proposalToItem(ctx: ServiceContext, tripId: string, actorId: str
     showAsBusy: sharing.showAsBusy ?? false,
     status: p.status,
     notes: p.notes,
+    flags: p.problems,
     private: p.private,
     deadlines: p.deadlines.map((d) => ({
       id: ctx.newId(),
@@ -105,10 +107,13 @@ function memberId(requester: Requester): string {
 
 export async function quickAddItem(ctx: ServiceContext, tripId: string, requester: Requester, input: unknown, sharing: ItemSharing = {}): Promise<Item> {
   const actorId = memberId(requester);
+  const before = await requireAggregate(ctx.db, tripId);
+  assertCanEditTrip(before, requester);
+  const places = await placeContextFor(ctx, projectTrip(before, requester).items, requester.homeZone, placeQueries(input));
   const item = await ctx.db.transaction(async (tx) => {
     const agg = await requireAggregate(tx, tripId);
     assertCanEditTrip(agg, requester);
-    const created = proposalToItem(ctx, tripId, actorId, inputToProposal(input, agg.travelers), sharing);
+    const created = proposalToItem(ctx, tripId, actorId, inputToProposal(input, agg.travelers, places), sharing);
     await saveItem(tx, created);
     await touchTrip(tx, tripId);
     await logActivity(tx, { tripId, actorId, action: "created", itemId: created.id, after: created });
@@ -130,7 +135,15 @@ export async function updateItem(ctx: ServiceContext, tripId: string, itemId: st
     if ((patch.visibility || patch.visibleToUserIds || patch.showAsBusy !== undefined) && before.createdBy !== actorId) {
       throw new AccessDenied("Only the person who added this can change who sees it.");
     }
-    const after: Item = { ...before, ...patch, updatedBy: actorId, updatedAt: ctx.now().toISOString() };
+    const reviewed = patch.status === "confirmed" || patch.location !== undefined || patch.start !== undefined || patch.end !== undefined;
+    const after: Item = {
+      ...before,
+      ...patch,
+      status: reviewed && patch.status !== "needs_review" ? "confirmed" : (patch.status ?? before.status),
+      flags: reviewed ? [] : before.flags,
+      updatedBy: actorId,
+      updatedAt: ctx.now().toISOString(),
+    };
     if (after.end.at < after.start.at) throw new Error("The end is before the start.");
     await saveItem(tx, after);
     await touchTrip(tx, tripId);

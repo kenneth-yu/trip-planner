@@ -145,3 +145,16 @@ describe("checks with the inbox", () => {
     expect(sentences).toContain("Two records for CX509 disagree on departure: 8:50am and 9:00am.");
   });
 });
+
+describe("seeding", () => {
+  it("adds every demo trip once and skips them on a second run", async () => {
+    const { createPgliteDb } = await import("../db/client");
+    const { seedEverything } = await import("../seed");
+    const db = await createPgliteDb();
+    const first = await seedEverything(db);
+    expect(first.created).toEqual(["Asia, December 2026", "Lisbon, someday", "Chicago weekend", "Tokyo and Kyoto with friends"]);
+    const second = await seedEverything(db);
+    expect(second.created).toEqual([]);
+    expect(second.skipped).toHaveLength(4);
+  });
+});

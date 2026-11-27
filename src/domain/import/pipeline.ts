@@ -5,6 +5,7 @@ import type { VisibleItem } from "../visibility/project";
 import { mapCalendarEvent, type CalendarEvent } from "./calendar-event";
 import { consolidate, matchRecords, type Match } from "./matching";
 import type { Difference, ProposedItem } from "./proposal";
+import type { PlaceContext } from "../time/resolve-place";
 
 export interface InboxEntryDraft {
   proposed: ProposedItem;
@@ -18,6 +19,7 @@ export interface ImportContext {
   calendarTravelers: Record<string, string[]>;
   defaultTravelerIds: string[];
   homeZone: Zone;
+  geocode?: PlaceContext["geocode"];
 }
 
 export function zoneOnDateFrom(items: VisibleItem[], homeZone: Zone) {
@@ -47,6 +49,7 @@ export function planCalendarImport(events: CalendarEvent[], existing: VisibleIte
       travelerIds: (ev.calendar && ctx.calendarTravelers[ev.calendar]) || ctx.defaultTravelerIds,
       zoneOnDate,
       homeZone: ctx.homeZone,
+      geocode: ctx.geocode,
     }),
   );
   return planProposals(

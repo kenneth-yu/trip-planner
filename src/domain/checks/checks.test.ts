@@ -75,3 +75,15 @@ describe("other checks", () => {
     expect(sentences(agg2)).toContain("Jantzen Tailor is in Hong Kong, but you are in Shenzhen at 5:00pm on Dec 7.");
   });
 });
+
+describe("flagged places", () => {
+  it("are reported once, by the place flag, not again as a plan outside the trip", () => {
+    const agg = buildFixtureTrip();
+    const jantzen = fixtureItem(agg, byTitle("Jantzen"));
+    jantzen.start = fromLocal("2026-12-07T17:00", "Asia/Hong_Kong");
+    jantzen.end = fromLocal("2026-12-07T18:00", "Asia/Hong_Kong");
+    jantzen.flags = ["We could not tell where this place is."];
+    const found = runChecks(projectTrip(agg, kenny)).filter((f) => f.itemIds.includes(jantzen.id));
+    expect(found.map((f) => f.kind)).toEqual(["unsure_place"]);
+  });
+});

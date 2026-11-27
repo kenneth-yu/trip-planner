@@ -5,12 +5,20 @@
   --rule: #e4e6e9;
   --warning: #b3261e;
   --link: #16181b;
-  --hatch: #d8dbdf;
-  --city-1: #1f6f8b;
-  --city-2: #a35a12;
-  --city-3: #4a7a2c;
-  --city-4: #7a3e8c;
-  --city-5: #8c6a00;
+  --hatch: #c9ccd2;
+  --soft: #f6f5f2;
+  --on-city: #ffffff;
+  --row-sleep: #f7f5f1;
+  --row-travel: #f2f5f8;
+  --row-plans: #f6f3f8;
+  --row-unsure: #fbf3f2;
+  --bubble: #ffffff;
+  --bubble-edge: #e6e3de;
+  --city-1: #c8432f;
+  --city-2: #0e7480;
+  --city-3: #6650b8;
+  --city-4: #a8661a;
+  --city-5: #2d64b8;
   --size-key: 1.75rem;
   --size-heading: 1.25rem;
   --size-body: 1.0625rem;
@@ -26,12 +34,20 @@
     --rule: #262a2f;
     --warning: #ff8a80;
     --link: #eceef0;
-    --hatch: #2c3136;
-    --city-1: #6cc3e0;
-    --city-2: #f0a65e;
-    --city-3: #9ccf7a;
-    --city-4: #d09ae0;
-    --city-5: #e3c45a;
+    --hatch: #3a3f46;
+    --soft: #181a1e;
+    --on-city: #ffffff;
+    --row-sleep: #17181b;
+    --row-travel: #15191d;
+    --row-plans: #19171c;
+    --row-unsure: #1d1616;
+    --bubble: #23262b;
+    --bubble-edge: #30343a;
+    --city-1: #c8432f;
+    --city-2: #0e7480;
+    --city-3: #6650b8;
+    --city-4: #a8661a;
+    --city-5: #2d64b8;
   }
 }
 

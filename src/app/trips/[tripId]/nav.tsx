@@ -9,6 +9,7 @@ export function TripNav({ tripId, canEdit }: { tripId: string; canEdit: boolean 
   const base = `/trips/${tripId}`;
   const links = [
     { href: base, label: "Day by day" },
+    { href: `${base}/timeline`, label: "Timeline", className: styles.timelineLink },
     { href: `${base}/deadlines`, label: "Deadlines" },
     ...(canEdit ? [{ href: `${base}/inbox`, label: "Review inbox" }] : []),
     { href: `${base}/connect`, label: "Connect" },
@@ -16,7 +17,7 @@ export function TripNav({ tripId, canEdit }: { tripId: string; canEdit: boolean 
   return (
     <nav className={styles.nav}>
       {links.map((l) => (
-        <Link key={l.href} href={l.href} aria-current={path === l.href ? "page" : undefined}>
+        <Link key={l.href} href={l.href} className={"className" in l ? l.className : undefined} aria-current={path === l.href ? "page" : undefined}>
           {l.label}
         </Link>
       ))}

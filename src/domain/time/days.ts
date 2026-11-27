@@ -3,7 +3,7 @@ import type { BusyBlock, TripView, VisibleItem } from "../visibility/project";
 import type { Zone } from "../types";
 import { buildFlightCard, flightCities, type FlightCard } from "./flight-card";
 import { formatClock, formatDayHeader, homeReference, instantMs, localDateKey, toLocal } from "./format";
-import { cityZone, findCityInText } from "./places";
+import { resolvePlace } from "./resolve-place";
 
 export interface Whereabouts {
   kind: "air" | "ground";
@@ -15,7 +15,9 @@ export function itemCity(item: VisibleItem): string | null {
   if (item.type === "flight") return flightCities(item).to;
   if (item.location?.city) return item.location.city;
   const text = [item.location?.address, item.location?.name].filter(Boolean).join(", ");
-  return text ? (findCityInText(text)?.city ?? null) : null;
+  if (!text) return null;
+  const r = resolvePlace({ address: text });
+  return r.status === "unknown" ? null : r.city;
 }
 
 function arrivals(items: VisibleItem[]) {
@@ -173,6 +175,25 @@ export function buildDays(view: TripView, opts: { travelerIds?: string[] } = {})
   return days;
 }
 
-export function zoneForCity(city: string): Zone | null {
-  return cityZone(city);
+export interface DayGroup {
+  key: string;
+  keys: string[];
+  header: string;
+  place: string | null;
+  entries: DayEntry[];
+  isFree: boolean;
+}
+
+export function groupFreeDays(days: Day[]): DayGroup[] {
+  const groups: DayGroup[] = [];
+  for (const day of days) {
+    const last = groups.at(-1);
+    if (day.isFree && last?.isFree && last.place === day.place) {
+      last.keys.push(day.key);
+      last.header = `${last.header.split(" to ")[0]} to ${day.header}`;
+      continue;
+    }
+    groups.push({ key: day.key, keys: [day.key], header: day.header, place: day.place, entries: day.entries, isFree: day.isFree });
+  }
+  return groups;
 }

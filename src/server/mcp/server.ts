@@ -6,10 +6,11 @@ import type { AssistantIdentity } from "../services/assistant-service";
 import { getTripView, listTrips, requireAggregate } from "../services/trip-service";
 import { disagreementFindings, importCalendarEvents, importProposals, listInbox } from "../services/inbox-service";
 import { describeInbox, describeTrip } from "./describe";
-import { ItemInput, inputToProposal, InputProblem } from "@/domain/import/quick-add";
+import { ItemInput, inputToProposal, InputProblem, placeQueries } from "@/domain/import/quick-add";
+import { placeContextFor } from "../services/place-service";
 import { buildDeadlineLines } from "@/domain/deadlines/deadlines";
 import { runChecks } from "@/domain/checks/checks";
-import { AccessDenied } from "@/domain/visibility/project";
+import { AccessDenied, projectTrip } from "@/domain/visibility/project";
 import type { ProposedItem } from "@/domain/import/proposal";
 import type { Requester } from "@/domain/types";
 
@@ -99,11 +100,15 @@ export function createMcpServer(ctx: ServiceContext, who: AssistantIdentity): Mc
         if (who.scope !== "propose") return failure("This assistant connection is read only.");
         allowedTrip(trip_id);
         const agg = await requireAggregate(ctx.db, trip_id);
+        const view = projectTrip(agg, requester);
+        const places = await placeContextFor(ctx, view.items, requester.homeZone, items.flatMap(placeQueries));
         const proposals: ProposedItem[] = [];
         const problems: string[] = [];
         items.forEach((input, i) => {
           try {
-            proposals.push(inputToProposal(input, agg.travelers));
+            const proposal = inputToProposal(input, agg.travelers, places);
+            proposals.push(proposal);
+            for (const flag of proposal.problems) problems.push(`Item ${i + 1} was sent with a note: ${flag}`);
           } catch (e) {
             if (!(e instanceof InputProblem)) throw e;
             problems.push(`Item ${i + 1}: ${e.message}`);

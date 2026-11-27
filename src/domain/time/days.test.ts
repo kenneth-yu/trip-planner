@@ -2,7 +2,7 @@ import { present } from "@/testing/present";
 import { describe, expect, it } from "vitest";
 import { buildFixtureTrip, USERS } from "@/fixtures/december-trip";
 import { projectTrip } from "../visibility/project";
-import { buildDays, whereAt } from "./days";
+import { buildDays, groupFreeDays, whereAt } from "./days";
 import { DateTime } from "./luxon";
 
 const view = projectTrip(buildFixtureTrip(), { kind: "member", userId: USERS.kenny.id, homeZone: "America/New_York" });
@@ -71,5 +71,20 @@ describe("whereAt", () => {
   });
   it("falls back to home before the trip", () => {
     expect(whereAt(at("2026-11-26T12:00", "America/New_York"), view.items, view.homeZone).zone).toBe("America/New_York");
+  });
+});
+
+describe("grouping free days", () => {
+  it("merges consecutive free days in the same place into one row", () => {
+    const groups = groupFreeDays(days).filter((g) => g.isFree).map((g) => [g.header, g.place, g.keys.length]);
+    expect(groups).toEqual([
+      ["Thu Dec 3 to Fri Dec 4", "Tokyo", 2],
+      ["Mon Dec 7 to Wed Dec 9", "Shenzhen", 3],
+      ["Fri Dec 11 to Sat Dec 12", "Hong Kong", 2],
+    ]);
+  });
+
+  it("keeps every date reachable by its key", () => {
+    expect(groupFreeDays(days).flatMap((g) => g.keys)).toEqual(days.map((d) => d.key));
   });
 });
