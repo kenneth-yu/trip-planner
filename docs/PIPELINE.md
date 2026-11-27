@@ -73,6 +73,29 @@ Main has a ruleset with no bypass: every change goes through a pull request (no 
 
 A job that its `if` skips (a draft, or a documentation-only change) reports "skipped", which counts as passing for a required check.
 
+### The merge gate
+
+Agents never merge by hand. They post verdicts and push; the `merge-gate` workflow does the rest. It runs when a ci, perf or security run finishes, on comments, when a pull request is opened, marked ready, pushed or relabelled, every 15 minutes, and on demand, one run at a time (`merge-gate` concurrency group, nothing cancelled). Each run goes through the open, non-draft pull requests from this repository and merges at most one.
+
+A pull request merges when all of this holds (the logic is `tools/merge-gate-lib.mjs`, tested in `src/tools/merge-gate.test.ts`; the reviewer mapping is data in `tools/merge-gate-config.json`):
+
+- The checks `static`, `test`, `postgres`, `prod-build` and `gitleaks` are green on the head. A check that was skipped counts as passing.
+- Every reviewer the changed paths call for has a fresh, positive verdict. QA on every code pull request; Security when it touches `src/server/**`, `src/proxy.ts`, `src/instrumentation.ts`, `src/app/api/**`, `src/app/**/actions.ts`, `drizzle/**`, the package files or the migrate and seed scripts; Product for `src/app/**`, services, MCP and domain; the UX lead for tsx, CSS, public files and the manifest; the Architect on the integration owned list. Test files do not call for Security, Product or UX. Documentation only pull requests need no review.
+- Verdicts come only from the repository owner's account (every agent posts as it), under the standard heading, with the first body line `Verdict: <word> at <sha>`: approve, approve with changes or send back for QA, Product, UX lead and Architect; clear, clear with fixes or blocked for Security. The sha is the commit reviewed. "With changes" and "with fixes" count once a reply naming the reviewer (`QA: Applied 1 and 2, Declined 3.`) follows the last code push. A verdict on an earlier commit is stale unless only verified merges of main follow it.
+- A pull request that changes the app has exactly one `Semver: major`, `Semver: minor` or `Semver: patch` line in its body (breaking is major, a feature is minor, a fix is patch).
+- No `hold` or `do-not-merge` label. A pull request that touches `.claude/` or `CLAUDE.md` is labelled `needs-owner` and never merges through the gate.
+- The gate read everything it needs. If a file list, comment list, check list or compare result is missing or truncated, it merges nothing and says so in its one comment.
+
+When a pull request passes but its branch is behind main, the gate updates the branch and starts the checks again, then merges on a later run. When it passes and is up to date, the gate merges with `--match-head-commit` and starts `ci` and `perf` on main (a merge made with the workflow token does not start push workflows). When it does not pass, the gate leaves one comment, edited in place, listing what is missing.
+
+At merge time the gate writes the validated level into the merge commit as a `Semver:` line and starts the `release` workflow for that commit. `release` reads that line only (never the pull request body, and not inside a code fence), releases only when the merge changed an app path, tags the next version from the latest tag at run time (it works the tag out again once if the tag already exists, and fails loudly after that) and creates a GitHub release titled with the pull request's title. It never commits to main. `deploy-prod` first sets a `deploy/approved` commit status on main's head, so the Vercel ignore script can tell an owner-requested production build from a merge. Production deploys only when the owner asks: the `deploy-prod` workflow (run by hand from main, with the confirmation text, in the `production` environment so a required reviewer can be added) calls the Vercel deploy hook.
+
+### Working rules
+
+1. Report only a change of state: a pull request opened, pushed, blocked, a verdict posted, or merged. Do not send "still waiting" or "nothing changed" reports, and do not relay another agent's report. Engineers put the details in a pull request comment and send the coordinator one line. Escalate only what needs a decision.
+2. Hot files: two packages in flight never share a hot file, such as `day-view.tsx`, `nav.tsx`, `rate-limit.ts` or `actions.ts`. If they have to, split the file first in a small refactor pull request. Every spec carries a "files touched" line, and the architect checks the overlap (`git diff --stat` per branch, or against the spec's list) before starting a package.
+3. Copy: the UX lead owns all user facing copy. Product reviews behaviour and scope only, never wording. If product thinks a line of copy is wrong, it tells the UX lead and does not propose replacement text.
+
 ## How conflicts are avoided
 
 - Each wave's packages own disjoint files. Shared hot files (database schema, migrations, domain types, navigation, package files, feature map, architecture doc) have one owner per wave or change only in an architect prep commit on main.

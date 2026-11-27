@@ -85,21 +85,20 @@ describe("an entry someone else already decided", () => {
     expect(texts).toContain(`You already added ${entry.proposed.title}.`);
   });
 
-  it("covers every row of the table through the real action", async () => {
-    const rows: { first: "add" | "discard"; tapped: "add" | "merge" | "discard"; text: RegExp; role: "status" | "alert" }[] = [
-      { first: "add", tapped: "discard", text: /^Jacob already added .*To remove it, open it on the trip and delete it\.$/, role: "alert" },
-      { first: "discard", tapped: "discard", text: /^Jacob already discarded /, role: "status" },
-      { first: "discard", tapped: "merge", text: /^Jacob discarded .*Add it again from its source/, role: "alert" },
-      { first: "add", tapped: "merge", text: /^Jacob added .* as its own item, so nothing was merged\./, role: "alert" },
-    ];
-    for (const row of rows) {
-      const { ctx, entry } = await oneEntry();
-      await (row.first === "add" ? approveEntry(ctx, TRIP_ID, entry.id, jacob) : discardEntry(ctx, TRIP_ID, entry.id, jacob));
-      const result = await decideEntry(form(entry.id, row.tapped));
-      expect(result.kind).toBe("done");
-      expect(result.kind === "done" ? result.outcome?.role : null).toBe(row.role);
-      expect(result.kind === "done" ? result.outcome?.text : "").toMatch(row.text);
-    }
+  const rows: { first: "add" | "discard"; tapped: "add" | "merge" | "discard"; text: RegExp; role: "status" | "alert" }[] = [
+    { first: "add", tapped: "discard", text: /^Jacob already added .*To remove it, open it on the trip and delete it\.$/, role: "alert" },
+    { first: "discard", tapped: "discard", text: /^Jacob already discarded /, role: "status" },
+    { first: "discard", tapped: "merge", text: /^Jacob discarded .*Add it again from its source/, role: "alert" },
+    { first: "add", tapped: "merge", text: /^Jacob added .* as its own item, so nothing was merged\./, role: "alert" },
+  ];
+
+  it.each(rows)("when Jacob already did $first, Kenneth's stale $tapped gets the $role line through the real action", async (row) => {
+    const { ctx, entry } = await oneEntry();
+    await (row.first === "add" ? approveEntry(ctx, TRIP_ID, entry.id, jacob) : discardEntry(ctx, TRIP_ID, entry.id, jacob));
+    const result = await decideEntry(form(entry.id, row.tapped));
+    expect(result.kind).toBe("done");
+    expect(result.kind === "done" ? result.outcome?.role : null).toBe(row.role);
+    expect(result.kind === "done" ? result.outcome?.text : "").toMatch(row.text);
   });
 
   it("names the decider only while they are a member", async () => {
