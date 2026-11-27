@@ -2,8 +2,8 @@
 set -u
 
 if [ "${VERCEL_ENV:-}" = "production" ]; then
-  echo "Building: production."
-  exit 1
+  echo "Skipping: production deploys happen only when the owner asks for a release, never on a merge to main."
+  exit 0
 fi
 
 case "${VERCEL_GIT_COMMIT_REF:-}" in

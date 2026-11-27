@@ -40,7 +40,7 @@ Rerun `npm run check`, commit and push, then post one PR comment (`gh pr comment
 
 ## Draft, ready and merge
 
-Open the PR as a draft while you are still building (`gh pr create --draft`); CI does not run on drafts. When you ask for reviews, mark it ready (`gh pr ready <n>`) so CI runs alongside the reviews. Never merge by hand: the merge gate workflow merges a PR once its required checks pass, its branch is up to date with main, and every required reviewer's latest verdict at the current head is positive. It keeps one comment on the PR listing what is still missing. Build against the package's UX spec and its security and QA pre-briefs in `.pipeline/specs/`, and say in the PR body how each item is covered.
+Open the PR as a draft while you are still building (`gh pr create --draft`); CI does not run on drafts. When you ask for reviews, mark it ready (`gh pr ready <n>`) so CI runs alongside the reviews. Never merge by hand: the merge gate workflow merges a PR once its required checks pass, its branch is up to date with main, and every required reviewer's latest verdict at the current head is positive. It keeps one comment on the PR listing what is still missing. Every PR that changes the app ends its body with one line `Semver: major`, `Semver: minor` or `Semver: patch`. You judge it: a breaking change is major, a new feature is minor, a fix is patch. Reviewers may challenge it. Nothing deploys to production on merge; the owner asks for production deploys. Your replies to reviews name the reviewer, for example `QA: Applied 1 and 2, Declined 3.`. Build against the package's UX spec and its security and QA pre-briefs in `.pipeline/specs/`, and say in the PR body how each item is covered.
 
 ## Self-healing
 

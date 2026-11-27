@@ -42,6 +42,7 @@ test("the strip stays visible while a day is read, and back and forward keep the
   const page = await pageSignedInAs("kenny", `/trips/${DECEMBER_TRIP}`);
   const strip = stripOf(page);
   const first = await strip.locator("[aria-current=date]").getAttribute("aria-label");
+  await chipFor(page, "2026-12-05").scrollIntoViewIfNeeded();
   const before = await page.evaluate(() => window.scrollY);
   await chipFor(page, "2026-12-05").click();
   await expect(page).toHaveURL(/day=2026-12-05/);
