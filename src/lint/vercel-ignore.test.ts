@@ -121,8 +121,9 @@ describe("Vercel ignore rule", () => {
     expect(run(repoWith([["docs/UX.md"]], false))).toBe("build");
   });
 
-  it("always builds production, and skips infra and owner branches whatever they change", () => {
-    expect(decide("docs/UX.md", { VERCEL_ENV: "production" })).toBe("build");
+  it("never builds production from a merge, and skips infra and owner branches whatever they change", () => {
+    expect(decide("src/app/page.tsx", { VERCEL_ENV: "production" })).toBe("skip");
+    expect(decide("docs/UX.md", { VERCEL_ENV: "production" })).toBe("skip");
     expect(decide("src/app/page.tsx", { VERCEL_GIT_COMMIT_REF: "infra/e2e" })).toBe("skip");
     expect(decide("src/app/page.tsx", { VERCEL_GIT_COMMIT_REF: "owner/roles" })).toBe("skip");
     expect(decide("src/app/page.tsx", { VERCEL_GIT_COMMIT_REF: "wp/10b-core-edit" })).toBe("build");
