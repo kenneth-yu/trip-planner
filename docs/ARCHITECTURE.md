@@ -281,6 +281,8 @@ erDiagram
 | Mirrored events have no reminders and do not include codes or seats by default | v1 has no notifications; a Google calendar can be shared beyond the app's permissions | Per member setting `includeSensitive` exists and is off |
 | Places resolve offline first (airports, city-timezones, countries-and-timezones), then optionally by address lookup (OpenStreetMap, cached, `ADDRESS_LOOKUP=openstreetmap`); unclear results are saved as flags on the item and shown as checks | Times must be right without asking for offsets; when unsure, say so rather than guess | Off by default because it sends booking addresses to OpenStreetMap |
 | PGlite for dev and tests, Postgres in production | Same SQL and migrations; nobody installs a database to run tests | Never for prod: PGlite is single process |
+| Every page renders per request: the root layout awaits `connection()` | A nonce based CSP needs the nonce in every script tag, which a page prerendered at build time (the framework's 404 among them) cannot have | A page needs to be static for speed and can be served without scripts |
+| `getDb` caches the opening promise, and forgets it if opening fails | One open per process, but a database outage or missing key at start must not keep every later request failing until a restart | n/a |
 | Signed cookie session with a dev sign in | Lets the app run and be tested now | Replace with Auth.js (Google, Apple, email link) per CLAUDE.md before anyone but the builders uses it |
 
 ## Open questions (need an answer from the trip owner)

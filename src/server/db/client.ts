@@ -44,7 +44,16 @@ async function openDb(): Promise<Db> {
   return db;
 }
 
+async function openDbOrForget(): Promise<Db> {
+  try {
+    return await openDb();
+  } catch (e) {
+    globalThis.__tripDb = undefined;
+    throw e;
+  }
+}
+
 export function getDb(): Promise<Db> {
-  globalThis.__tripDb ??= openDb();
+  globalThis.__tripDb ??= openDbOrForget();
   return globalThis.__tripDb;
 }
