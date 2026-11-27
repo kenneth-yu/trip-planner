@@ -6,6 +6,7 @@ import { loadTripPage } from "@/server/web";
 import { changeRole, createInvite, hiddenItemCount, removeMember, revokeInvite } from "@/server/services/sharing-service";
 import { findCoTraveler, RateLimited, spendInviteBudget } from "@/server/services/member-service";
 import { InputProblem } from "@/domain/import/quick-add";
+import { firstName } from "@/domain/people/first-name";
 import { InvalidTransition } from "@/domain/state/machine";
 
 export interface CreatedInviteState {
@@ -32,7 +33,7 @@ export async function createInviteAction(_prev: CreatedInviteState, form: FormDa
     const person = personId === null ? null : await findCoTraveler(ctx, tripId, requester, personId);
     const { inviteId, url } = await createInvite(ctx, tripId, requester, { role, travelerId: traveler === NEW_TRAVELER ? undefined : traveler });
     revalidatePath(`/trips/${tripId}/share`);
-    return { inviteId, travelerId: traveler === NEW_TRAVELER ? null : traveler, url, role, forName: person ? person.name.split(" ")[0] : null, error: null };
+    return { inviteId, travelerId: traveler === NEW_TRAVELER ? null : traveler, url, role, forName: person ? firstName(person.name) : null, error: null };
   } catch (e) {
     if (e instanceof InputProblem || e instanceof RateLimited) return { inviteId: null, travelerId: null, url: null, role: null, forName: null, error: e.message };
     throw e;

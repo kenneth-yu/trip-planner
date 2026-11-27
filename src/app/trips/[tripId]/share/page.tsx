@@ -6,7 +6,7 @@ import { loadTripPage } from "@/server/web";
 import { listInvites, listMembers, listUnlinkedTravelers } from "@/server/services/sharing-service";
 import { DateTime } from "@/domain/time/luxon";
 import { roleName } from "../../../invite/role-words";
-import { listCoTravelers, RateLimited } from "@/server/services/member-service";
+import { listCoTravelers } from "@/server/services/member-service";
 import { InviteForm, RemoveControl, RoleControl } from "./forms";
 import { PastPeople } from "./past-people";
 import { revokeInviteAction } from "./actions";
@@ -17,20 +17,12 @@ export default async function SharePage({ params }: PageProps<"/trips/[tripId]/s
   const { tripId } = await params;
   const { ctx, requester, view } = await loadTripPage(tripId);
   if (!view.permissions.canManageSharing) notFound();
-  async function visiblePastPeople() {
-    try {
-      return await listCoTravelers(ctx, tripId, requester);
-    } catch (e) {
-      if (e instanceof RateLimited) return [];
-      throw e;
-    }
-  }
   const [members, invites, travelers] = await Promise.all([
     listMembers(ctx, tripId, requester),
     listInvites(ctx, tripId, requester),
     listUnlinkedTravelers(ctx, tripId, requester),
   ]);
-  const pastPeople = await visiblePastPeople();
+  const pastPeople = await listCoTravelers(ctx, tripId, requester);
   const day = (d: Date) => DateTime.fromJSDate(d, { zone: view.homeZone }).toFormat("LLL d");
   const ordered = [...members].sort((a, b) => Number(b.role === "owner") - Number(a.role === "owner"));
   return (

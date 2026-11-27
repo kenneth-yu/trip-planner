@@ -7,7 +7,8 @@ import { AccessDenied } from "@/domain/visibility/project";
 import * as t from "../db/schema";
 import { RATE_RULES } from "../security/rate-limit";
 import { jacob, kenny, testContext } from "./../testing";
-import { findCoTraveler, listCoTravelers, RateLimited } from "./member-service";
+import { firstName } from "@/domain/people/first-name";
+import { findCoTraveler, listCoTravelers, RateLimited, spendInviteBudget } from "./member-service";
 import { createInvite } from "./sharing-service";
 import { createTrip } from "./trip-service";
 import type { Requester } from "@/domain/types";
@@ -43,7 +44,8 @@ describe("people from your trips", () => {
   it("lists Jacob from the December trip on a new trip, with a name and an id and nothing else", async () => {
     const { ctx, lisbon: tripId } = await lisbon();
     const people = await listCoTravelers(ctx, tripId, kenny);
-    expect(people).toEqual([{ id: USERS.jacob.id, name: USERS.jacob.name }]);
+    expect(people).toEqual([{ id: expect.stringMatching(/^[0-9a-f]{64}$/), name: USERS.jacob.name }]);
+    expect(JSON.stringify(people)).not.toContain(USERS.jacob.id);
     expect(JSON.stringify(people)).not.toContain("@");
   });
 
@@ -54,7 +56,7 @@ describe("people from your trips", () => {
 
   it("never lists the owner themselves", async () => {
     const { ctx, lisbon: tripId } = await lisbon();
-    expect((await listCoTravelers(ctx, tripId, kenny)).map((p) => p.id)).not.toContain(USERS.kenny.id);
+    expect((await listCoTravelers(ctx, tripId, kenny)).map((p) => p.name)).not.toContain(USERS.kenny.name);
   });
 
   it("does not list strangers who share no trip with the owner", async () => {
@@ -82,7 +84,7 @@ describe("people from your trips", () => {
     const sam = await person(db, "Sam Park");
     await join(db, left, USERS.kenny.id);
     await join(db, left, sam);
-    expect((await listCoTravelers(ctx, tripId, kenny)).filter((p) => p.id === USERS.jacob.id)).toHaveLength(1);
+    expect((await listCoTravelers(ctx, tripId, kenny)).filter((p) => p.name === USERS.jacob.name)).toHaveLength(1);
     expect((await listCoTravelers(ctx, tripId, kenny)).map((p) => p.name)).toContain("Sam Park");
     await db.delete(t.memberships).where(and(eq(t.memberships.tripId, left), eq(t.memberships.userId, USERS.kenny.id)));
     expect((await listCoTravelers(ctx, tripId, kenny)).map((p) => p.name)).not.toContain("Sam Park");
@@ -128,11 +130,17 @@ describe("people from your trips", () => {
     expect(messages.size).toBe(1);
   });
 
-  it("is rate limited per person", async () => {
-    const { ctx, lisbon: tripId } = await lisbon();
-    for (let i = 0; i < RATE_RULES.inviteCreate.limit; i++) await listCoTravelers(ctx, tripId, kenny);
-    await expect(listCoTravelers(ctx, tripId, kenny)).rejects.toThrow(RateLimited);
-    await expect(listCoTravelers(ctx, TRIP_ID, jacob)).rejects.toThrow(AccessDenied);
+  it("reading the list never spends the create budget", async () => {
+    const { ctx, db, lisbon: tripId } = await lisbon();
+    for (let i = 0; i < RATE_RULES.inviteCreate.limit * 2; i++) await listCoTravelers(ctx, tripId, kenny);
+    expect(await db.select().from(t.rateLimits)).toEqual([]);
+    for (let i = 0; i < RATE_RULES.inviteCreate.limit; i++) await spendInviteBudget(ctx, USERS.kenny.id);
+    await expect(spendInviteBudget(ctx, USERS.kenny.id)).rejects.toThrow(RateLimited);
+  });
+
+  it("gives the same first name to the sort and to the link line, even with stray spaces", async () => {
+    expect(firstName("  Jacob   Feldman ")).toBe("Jacob");
+    expect(firstName("Sam")).toBe("Sam");
   });
 });
 
@@ -140,9 +148,10 @@ describe("picking a person to invite", () => {
   it("finds someone on the list and refuses a forged, unknown or malformed id with the same text", async () => {
     const { ctx, db, lisbon: tripId } = await lisbon();
     const stranger = await person(db, "Stella Stranger");
-    expect(await findCoTraveler(ctx, tripId, kenny, USERS.jacob.id)).toEqual({ id: USERS.jacob.id, name: USERS.jacob.name });
+    const [listed] = await listCoTravelers(ctx, tripId, kenny);
+    expect(await findCoTraveler(ctx, tripId, kenny, present(listed).id)).toEqual(listed);
     const texts = new Set<string>();
-    for (const id of [stranger, "00000000-0000-4000-8100-0000000000fe", "not an id", USERS.kenny.id]) {
+    for (const id of [stranger, USERS.jacob.id, "00000000-0000-4000-8100-0000000000fe", "not an id", USERS.kenny.id, "0".repeat(64)]) {
       try {
         await findCoTraveler(ctx, tripId, kenny, id);
         texts.add("accepted");
@@ -158,7 +167,8 @@ describe("picking a person to invite", () => {
     const { ctx, db, lisbon: tripId } = await lisbon();
     const members = (await db.select().from(t.memberships)).length;
     const travelers = (await db.select().from(t.travelers)).length;
-    await findCoTraveler(ctx, tripId, kenny, USERS.jacob.id);
+    const [listed] = await listCoTravelers(ctx, tripId, kenny);
+    await findCoTraveler(ctx, tripId, kenny, present(listed).id);
     const picked = await createInvite(ctx, tripId, kenny, { role: "viewer" });
     const plain = await createInvite(ctx, tripId, kenny, { role: "viewer" });
     const rows = await db.select().from(t.invites).where(eq(t.invites.tripId, tripId));

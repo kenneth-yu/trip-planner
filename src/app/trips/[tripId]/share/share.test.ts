@@ -9,6 +9,7 @@ import { jacob, kenny, testContext } from "@/server/testing";
 import * as t from "@/server/db/schema";
 import { createTrip, getTripView } from "@/server/services/trip-service";
 import { acceptInvite, listInvites } from "@/server/services/sharing-service";
+import { listCoTravelers } from "@/server/services/member-service";
 import type { ServiceContext } from "@/server/services/context";
 import SharePage from "./page";
 import { changeRoleAction, createInviteAction, previewRemoval, removeMemberAction, revokeInviteAction, type CreatedInviteState } from "./actions";
@@ -111,10 +112,14 @@ describe("the share actions", () => {
     expect(result).toEqual({ inviteId: null, travelerId: null, url: null, role: null, forName: null, error: "Pick someone from the list." });
   });
 
+  async function listedId(trip: string): Promise<string> {
+    return present((await listCoTravelers(present(world.ctx), trip, kenny))[0]).id;
+  }
+
   it("makes a link for a person from the list, names them, and refuses an id off the list like a bad id", async () => {
     const empty = { inviteId: null, travelerId: null, url: null, role: null, forName: null, error: null };
     const trip = await createTrip(present(world.ctx), { id: USERS.kenny.id, name: USERS.kenny.name }, "Lisbon, someday");
-    const picked = await createInviteAction(empty, form({ tripId: trip, role: "editor", traveler: "new", personId: USERS.jacob.id }));
+    const picked = await createInviteAction(empty, form({ tripId: trip, role: "editor", traveler: "new", personId: await listedId(trip) }));
     expect(picked).toMatchObject({ forName: "Jacob", role: "editor", error: null });
     const forged = await createInviteAction(empty, form({ tripId: trip, role: "editor", traveler: "new", personId: "00000000-0000-4000-8100-0000000000fe" }));
     const garbage = await createInviteAction(empty, form({ tripId: trip, role: "editor", traveler: "new", personId: "nonsense" }));

@@ -8,6 +8,7 @@ import { RATE_RULES, consumeRateLimit } from "../security/rate-limit";
 import type { ServiceContext } from "./context";
 import { requireAggregate } from "./trip-service";
 import { InputProblem } from "@/domain/import/quick-add";
+import { firstName } from "@/domain/people/first-name";
 import { AccessDenied, permissionsFor } from "@/domain/visibility/project";
 import type { Requester, Role } from "@/domain/types";
 
@@ -48,12 +49,12 @@ function usableName(name: string, email: string): boolean {
   return name.trim() !== "" && !name.includes("@") && name.toLowerCase() !== local;
 }
 
-function firstNameKey(name: string): string {
-  return (name.trim().split(/\s+/)[0] ?? "").toLocaleLowerCase("en-US");
-}
-
 function tieBreak(id: string): string {
   return createHmac("sha256", appSecret()).update(`co-traveler-order:${id}`).digest("hex");
+}
+
+function personToken(ownerId: string, userId: string): string {
+  return createHmac("sha256", appSecret()).update(`co-traveler-token:${ownerId}:${userId}`).digest("hex");
 }
 
 function compareText(a: string, b: string): number {
@@ -78,8 +79,8 @@ async function coTravelersOf(ctx: ServiceContext, tripId: string, me: string): P
     .where(and(eq(mine.userId, me), ne(t.memberships.userId, me), notInArray(t.users.id, onThisTrip)));
   return rows
     .filter((r) => usableName(r.name, r.email))
-    .map((r) => ({ id: r.id, name: r.name, order: tieBreak(r.id) }))
-    .sort((a, b) => compareText(firstNameKey(a.name), firstNameKey(b.name)) || compareText(a.name, b.name) || a.order.localeCompare(b.order))
+    .map((r) => ({ id: personToken(me, r.id), name: r.name, order: tieBreak(r.id) }))
+    .sort((a, b) => compareText(firstName(a.name), firstName(b.name)) || compareText(a.name, b.name) || a.order.localeCompare(b.order))
     .map(({ id, name }) => ({ id, name }));
 }
 
@@ -89,12 +90,11 @@ export async function spendInviteBudget(ctx: ServiceContext, userId: string): Pr
 
 export async function listCoTravelers(ctx: ServiceContext, tripId: string, requester: Requester): Promise<CoTraveler[]> {
   const me = await requireOwnerMember(ctx, tripId, requester);
-  await spendInviteBudget(ctx, me);
   return coTravelersOf(ctx, tripId, me);
 }
 
 export async function findCoTraveler(ctx: ServiceContext, tripId: string, requester: Requester, personId: unknown): Promise<CoTraveler> {
-  const parsed = z.string().uuid().safeParse(personId);
+  const parsed = z.string().regex(/^[0-9a-f]{64}$/).safeParse(personId);
   const me = await requireOwnerMember(ctx, tripId, requester);
   const found = parsed.success ? (await coTravelersOf(ctx, tripId, me)).find((p) => p.id === parsed.data) : undefined;
   if (!found) throw new InputProblem(NOT_ON_THE_LIST);

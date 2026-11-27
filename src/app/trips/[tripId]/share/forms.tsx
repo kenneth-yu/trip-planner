@@ -26,6 +26,8 @@ export function InviteForm({
   people?: ReactNode;
 }) {
   const [state, action, pending] = useActionState(createInviteAction, none);
+  const [role, setRole] = useState<"editor" | "viewer">("editor");
+  const [traveler, setTraveler] = useState("new");
   const [hidden, setHidden] = useState<CreatedInviteState | null>(null);
   const [membersSeen, setMembersSeen] = useState(memberIds.join());
   if (membersSeen !== memberIds.join()) {
@@ -105,11 +107,11 @@ export function InviteForm({
       <fieldset className={styles.group}>
         <legend>Role</legend>
         <label className={styles.option}>
-          <input type="radio" name="role" value="editor" defaultChecked />
+          <input type="radio" name="role" value="editor" checked={role === "editor"} onChange={() => setRole("editor")} />
           <span>Editor: can add and change things.</span>
         </label>
         <label className={styles.option}>
-          <input type="radio" name="role" value="viewer" />
+          <input type="radio" name="role" value="viewer" checked={role === "viewer"} onChange={() => setRole("viewer")} />
           <span>Viewer: can look, cannot change anything.</span>
         </label>
       </fieldset>
@@ -118,12 +120,12 @@ export function InviteForm({
           <legend>This is</legend>
           {travelers.map((x) => (
             <label key={x.id} className={styles.option}>
-              <input type="radio" name="traveler" value={x.id} />
+              <input type="radio" name="traveler" value={x.id} checked={traveler === x.id} onChange={() => setTraveler(x.id)} />
               <span>{x.name}</span>
             </label>
           ))}
           <label className={styles.option}>
-            <input type="radio" name="traveler" value="new" defaultChecked />
+            <input type="radio" name="traveler" value="new" checked={traveler === "new"} onChange={() => setTraveler("new")} />
             <span>Someone new</span>
           </label>
         </fieldset>
