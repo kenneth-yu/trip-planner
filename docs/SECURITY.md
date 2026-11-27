@@ -22,7 +22,7 @@ This app holds personal data that can hurt people if it leaks: who is travelling
 3. **Secrets are hashed or encrypted.** Tokens are 32 random bytes, shown once, stored as SHA-256 hashes, compared in constant time. Secrets that must be read back (Google refresh tokens) use AES-256-GCM with a key from the environment. Sensitive booking fields, activity snapshots and imported records are encrypted at rest too, and imported free text goes only into the sealed private notes.
 4. **No personal data in logs, errors or URLs.** Log ids and outcomes, not names, addresses, codes or raw imports. Error messages to users say what to do, never echo stored data. Personal data never goes in query strings. Assistant links carry a token, never personal data.
 5. **Every input is parsed.** HTTP bodies, server action form data, assistant tool input, calendar events, emails, OAuth responses and files are parsed with zod (or the import pipeline) before use. Unknown fields are dropped.
-6. **Outbound calls are explicit and minimal.** The app sends data to: Google (only the calendar it created, only the fields the mirror needs, no codes or seats by default) and, only when `ADDRESS_LOOKUP` is set, OpenStreetMap (an address string, no names or dates). Any new outbound call needs a line in this file.
+6. **Outbound calls are explicit and minimal.** The app sends data to: Google (only the calendar it created, only the fields the mirror needs, no codes or seats by default); Google and Apple sign in (their OAuth endpoints, identity scopes only, never calendar access; provider tokens are not stored); only when `EMAIL_API_KEY` is set, the email API (`api.resend.com`: to, from, subject and the sign in link, nothing else); and, only when `ADDRESS_LOOKUP` is set, OpenStreetMap (an address string, no names or dates). Any new outbound call needs a line in this file.
 7. **Sessions and cookies.** HttpOnly, Secure in production, SameSite=Lax, signed, expiring. Sign out clears them. Sign in never asks for calendar access.
 8. **Abuse resistance.** Rate limit sign in, invite acceptance, view link access and the assistant endpoint. View link pages are `noindex` and send `Referrer-Policy: no-referrer`. Security headers on every response (CSP, HSTS, X-Content-Type-Options, frame-ancestors).
 9. **Deletion is real.** Deleting a trip removes its items, private fields, imports, activity, mirrors (and their Google events) and tokens. A user can delete their account and export their data.
@@ -39,7 +39,8 @@ This app holds personal data that can hurt people if it leaks: who is travelling
 | A leaked assistant link | Hashed, revocable, trip scoped, read or propose only, proposals need human approval | `server.test.ts` |
 | Stolen database | Tokens hashed; Google tokens, booking fields, activity and imports encrypted | `auth.test.ts`, `encryption.test.ts`, `import-secrets.test.ts` |
 | An AI assistant is tricked into proposing bad data | Proposals only reach the inbox; a person approves | `server.test.ts`, `services.test.ts` |
-| Brute forcing tokens or links | 256 bit tokens; rate limits planned | `auth.test.ts` |
+| Brute forcing tokens or links | 256 bit tokens; rate limits planned (sign in, email links: WP-02) | `auth.test.ts`, `adapter.test.ts` |
+| Open redirect after sign in | Every `next` goes through `safeNextPath` | `next-path.test.ts`, `web.test.ts`, `dev-routes.test.ts` |
 | A Google calendar shared onward exposes codes | Mirror leaves codes out by default | `calendar-mirror.test.ts` |
 | Personal data in logs | Rule 4; reviewed on every PR | security review |
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createAdapter, generateSessionToken, lookupSession } from "./adapter";
-import { sessionMachine } from "@/domain/state/session.machine";
+import { machine } from "@/domain/state/session.machine";
+import { transition } from "@/domain/state/machine";
 import { testContext } from "../testing";
 import { present } from "@/testing/present";
 import { USERS } from "@/fixtures/december-trip";
@@ -15,24 +16,25 @@ describe("session machine matches the stored session", () => {
     const token = generateSessionToken();
     const observed = async () => ((await lookupSession(db, token, clock)) ? "Active" : "SignedOut");
 
-    let state: string = sessionMachine.initial;
+    let state = machine.initial;
     expect(await observed()).toBe(state);
 
-    state = sessionMachine.states.SignedOut.on.signIn;
+    state = transition(machine, state, "signIn");
     await present(adapter.createSession)({ sessionToken: token, userId: USERS.kenny.id, expires: new Date(clock.getTime() + 30 * DAY) });
     expect(await observed()).toBe(state);
 
-    state = sessionMachine.states.Active.on.roll;
+    state = transition(machine, state, "roll");
     clock = new Date(clock.getTime() + 2 * DAY);
     expect(await observed()).toBe(state);
 
-    state = sessionMachine.states.Active.on.expire;
+    state = transition(machine, state, "expire");
     clock = new Date(clock.getTime() + 31 * DAY);
     expect(await observed()).toBe(state);
 
+    state = transition(machine, state, "signIn");
     await present(adapter.createSession)({ sessionToken: token, userId: USERS.kenny.id, expires: new Date(clock.getTime() + 30 * DAY) });
-    expect(await observed()).toBe("Active");
-    state = sessionMachine.states.Active.on.signOut;
+    expect(await observed()).toBe(state);
+    state = transition(machine, state, "signOut");
     await present(adapter.deleteSession)(token);
     expect(await observed()).toBe(state);
   });

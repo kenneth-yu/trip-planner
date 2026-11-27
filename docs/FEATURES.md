@@ -10,6 +10,14 @@ Every path a person or an assistant can take through the app, where it lives, an
 | Member | On desktop, see what to decide and what to check beside the day list | `/trips/[id]` (1000px and wider) | `loadAttention` | `deadlines.test.ts`, `checks.test.ts` |
 | Member | See deadlines and problems | `/trips/[id]/deadlines` | `buildDeadlineLines`, `runChecks`, `disagreementFindings` | `deadlines.test.ts`, `checks.test.ts`, `services.test.ts` |
 | Editor | Add a flight, stay, plan or transfer in local time, with place hints and a next day arrival; a repeated submit adds it once; lands on the item's day marked Added | `/trips/[id]/add`, Add in the trip nav | `parseItemForm`, `quickAddItem`, `placeHint` | `item-form.test.ts`, `create-trip.test.ts`, `quick-add.test.ts`, `services.test.ts`, `nav.test.ts` |
+| Anyone | Sign in with Google (verified email links to an existing person) | `/sign-in`, `/api/auth/*` | `buildAuthConfig`, `createAdapter` | `flow.test.ts`, `adapter.test.ts`, `providers.test.ts` |
+| Anyone | Sign in with Apple, when `AUTH_APPLE_ID` and `AUTH_APPLE_SECRET` are set | `/sign-in` | `buildAuthConfig` | `providers.test.ts`, `flow.test.ts` |
+| Anyone | Sign in with an emailed link (15 minutes, works once), when `EMAIL_API_KEY` and `EMAIL_FROM` are set or in local dev | `/sign-in` | `httpEmailSender`, `createAdapter` | `flow.test.ts`, `email.test.ts`, `adapter.test.ts` |
+| Anyone | A signed out deep link returns to its page after sign in; `next` never leaves the site | `/sign-in?next=` | `safeNextPath`, `requireUser` | `next-path.test.ts`, `web.test.ts` |
+| Signed in person | Stay signed in while using the app: the cookie lasts 400 days, the stored session rolls on a 30 day window | every page | `lookupSession` | `adapter.test.ts`, `session-machine.test.ts`, `auth.test.ts` |
+| Signed in person | Sign out (session row and cookie deleted) | home, Sign out | `signOutAction` | `flow.test.ts`, `home.test.ts` |
+| Signed in person | Opening a trip that is not theirs, or does not exist, shows the same "This trip is not on your account." page | `/not-on-your-account` | `loadTripPage` | `web.test.ts` |
+| Developer | Demo accounts sign in, development and previews only (refused in production) | `/sign-in` "Demo accounts", `/api/dev/sign-in`, `/api/dev/outbox` | `devSignInEnabled` | `auth.test.ts`, `dev-routes.test.ts`, `home.test.ts` |
 | Signed in person | Create a trip | `/trips/new` | `createTrip` | `create-trip.test.ts` |
 | Editor | An empty trip offers Add flight or stay; viewers see a plain sentence | `/trips/[id]` | `DayView` | `empty-trip.test.ts` |
 | Editor | Review imported items: add, merge, discard, add all clean | `/trips/[id]/inbox` | `approveEntry`, `mergeEntry`, `discardEntry`, `approveAllClean` | `services.test.ts`, `pipeline.test.ts` |

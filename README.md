@@ -16,9 +16,13 @@ Fill in `.env.local`:
 | `SESSION_SECRET` | `openssl rand -hex 32` |
 | `TOKEN_ENCRYPTION_KEY` | `openssl rand -base64 32` |
 | `DATA_ENCRYPTION_KEY` | `openssl rand -base64 32`. Encrypts booking details, activity copies and imports at rest. The app will not start without it, and losing it makes that data unreadable |
-| `DEV_SIGN_IN` | `1` to show "Continue as Kenneth / Jacob" on the home page (never in production) |
+| `AUTH_SECRET` | `openssl rand -base64 32`. Signs Auth.js sign in state |
+| `APP_URL` | The address people open, `http://localhost:3000` locally. Emailed sign in links are built on it; required in production |
+| `DEV_SIGN_IN` | `1` to show "Demo accounts" (Kenneth, Jacob) on the sign in screen and the email link through a local outbox (never in production) |
 | `DATABASE_URL` | Postgres URL. Leave empty to use an embedded database in `.data/pglite` |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Only for the Google Calendar mirror |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Sign in with Google and the Google Calendar mirror |
+| `AUTH_APPLE_ID`, `AUTH_APPLE_SECRET` | Optional. Shows Sign in with Apple |
+| `EMAIL_API_KEY`, `EMAIL_FROM` | Optional. Sends email sign in links through the email API (Resend). Do not set in a deployed environment until sign in rate limits (WP-02) are on main |
 
 ```bash
 npm run db:seed
@@ -60,7 +64,7 @@ One time setup in Google Cloud Console:
 1. Create a project and enable the **Google Calendar API**.
 2. Under OAuth consent screen, choose External, keep it in **Testing**, and add each person's Google account as a test user. This avoids Google's verification review while only a few people use the app.
 3. Add the scope `https://www.googleapis.com/auth/calendar.app.created`.
-4. Create an OAuth client (Web application) with the redirect URI `<APP_URL>/api/google/callback`.
+4. Create an OAuth client (Web application) with the redirect URIs `<APP_URL>/api/google/callback` and `<APP_URL>/api/auth/callback/google`.
 5. Put the client id and secret in `.env.local`.
 
 Then on a trip: **Connect**, then **Mirror to Google Calendar**.

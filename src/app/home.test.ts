@@ -124,4 +124,10 @@ describe("home page content for a signed in person", () => {
     expect(html.indexOf("Japan and Hong Kong")).toBeLessThan(html.indexOf("Sign out"));
     expect(html).not.toContain("Continue as");
   });
+
+  it("offers New trip under a list of trips too", () => {
+    const html = renderToStaticMarkup(createElement(TripList, { trips: [{ id: "t1", name: "Japan and Hong Kong" }], signOut }));
+    expect(html).toContain('href="/trips/new"');
+    expect(html.indexOf("Japan and Hong Kong")).toBeLessThan(html.indexOf(">New trip<"));
+  });
 });

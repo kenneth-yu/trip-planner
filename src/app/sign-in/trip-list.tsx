@@ -22,6 +22,9 @@ export function TripList({ trips, signOut }: { trips: { id: string; name: string
               </li>
             ))}
           </ul>
+          <p className={styles.section}>
+            <Link href="/trips/new">New trip</Link>
+          </p>
         </>
       )}
       <form action={signOut} className={styles.section}>
