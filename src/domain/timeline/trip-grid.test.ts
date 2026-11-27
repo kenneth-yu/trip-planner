@@ -130,6 +130,14 @@ describe("up next", () => {
     ]);
   });
 
+  it("every entry names the item it opens", () => {
+    const ids = new Set(view.items.map((i) => i.id));
+    const entries = upNext(view, now, 10);
+    expect(entries.length).toBeGreaterThan(3);
+    for (const e of entries) expect(ids.has(e.itemId)).toBe(true);
+    expect(entries[0].itemId).toBe(present(view.items.find((i) => i.flight?.flightNumber === "NH159")).id);
+  });
+
   it("during the trip: what comes next from now", () => {
     const fri = DateTime.fromISO("2026-12-05T16:00", { zone: "Asia/Hong_Kong" }).toMillis();
     expect(upNext(view, fri).map((e) => `${e.time} ${e.title}`)).toEqual(["5:00pm Jantzen Tailor", "6:45pm Sun Kai Tat", "11:00am Check out: Stanford Hotel"]);

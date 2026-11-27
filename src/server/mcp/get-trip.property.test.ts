@@ -54,4 +54,18 @@ describe("MCP get_trip properties", () => {
       fcParams(25),
     );
   }, 60_000);
+
+  it("never returns item notes to a viewer's assistant", async () => {
+    const { ctx, db } = await testContext();
+    await db.insert(t.users).values(VIEWER);
+    await db.insert(t.memberships).values({ tripId: TRIP_ID, userId: VIEWER.id, role: "viewer" });
+    const agg = present(await loadTripAggregate(db, TRIP_ID));
+    const flight = present(agg.items.find((i) => i.type === "flight"));
+    await saveItem(db, { ...flight, notes: "Gate code NOTE_CANARY" });
+    const text = async (userId: string) => {
+      const result = await (await connect(ctx, userId)).callTool({ name: "get_trip", arguments: { trip_id: TRIP_ID } });
+      return TextContent.parse(result.content).map((c) => c.text).join("\n");
+    };
+    expect(await text(VIEWER.id)).not.toContain("NOTE_CANARY");
+  });
 });
