@@ -1,6 +1,7 @@
 import Link from "next/link";
 import styles from "../ui/page.module.css";
 import signInStyles from "./sign-in.module.css";
+import accountStyles from "../account/account.module.css";
 
 export function TripList({ trips, signOut }: { trips: { id: string; name: string; role: "owner" | "editor" | "viewer" }[]; signOut: () => Promise<void> }) {
   return (
@@ -32,8 +33,15 @@ export function TripList({ trips, signOut }: { trips: { id: string; name: string
           </p>
         </>
       )}
-      <form action={signOut} className={styles.section}>
-        <button type="submit">Sign out</button>
+      <p className={styles.section}>
+        <Link href="/account" className={accountStyles.link}>
+          Your account
+        </Link>
+      </p>
+      <form action={signOut}>
+        <button type="submit" className={accountStyles.signOut}>
+          Sign out
+        </button>
       </form>
     </main>
   );

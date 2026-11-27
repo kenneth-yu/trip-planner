@@ -18,6 +18,8 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "vercel-build": "npm run db:migrate && next build",
     "trip:import": "tsx scripts/import-trip.ts",
+    "perf": "vitest run --config vitest.perf.config.mts",
+    "perf:bundle": "tsx scripts/bundle-budget.ts",
     "e2e": "playwright test",
     "e2e:update": "playwright test --update-snapshots",
     "check": "npm run typecheck && npm run lint && npm test"
