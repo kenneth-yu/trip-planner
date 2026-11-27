@@ -1,0 +1,77 @@
+{
+  "requiredChecks": ["static", "test", "postgres", "prod-build", "gitleaks"],
+  "docsOnly": ["^docs/(?!STATECHARTS\\.md$|PIPELINE\\.md$|SECURITY\\.md$).+\\.md$", "^[^/]+\\.md$", "^\\.pipeline/"],
+  "holdLabels": ["hold", "do-not-merge"],
+  "ownerLabel": "needs-owner",
+  "ownerOnly": ["^\\.claude/", "^CLAUDE\\.md$"],
+  "semver": {
+    "paths": ["^src/", "^public/", "^drizzle/", "^package\\.json$", "^next\\.config\\."],
+    "exclude": ["\\.test\\.tsx?$", "^src/testing/", "^src/lint/", "^src/tools/"]
+  },
+  "reviewers": {
+    "qa": { "paths": [".*"], "exclude": [] },
+    "security": {
+      "paths": [
+        "^src/server/",
+        "^src/proxy\\.ts$",
+        "^src/instrumentation\\.ts$",
+        "^src/app/api/",
+        "^src/app/.*actions\\.ts$",
+        "^drizzle/",
+        "^package(-lock)?\\.json$",
+        "^scripts/(migrate|seed|import-trip)\\.ts$",
+        "^\\.github/",
+        "^tools/ci/",
+        "^tools/merge-gate",
+        "^next\\.config\\.",
+        "^vercel\\.json$",
+        "^docs/SECURITY\\.md$"
+      ],
+      "exclude": ["\\.test\\.tsx?$"]
+    },
+    "product": {
+      "paths": ["^src/app/", "^src/server/services/", "^src/server/mcp/", "^src/domain/"],
+      "exclude": ["\\.test\\.tsx?$", "^e2e/", "\\.css$"]
+    },
+    "ux": {
+      "paths": ["^src/app/.+\\.tsx$", "\\.css$", "^public/", "^src/app/manifest\\.ts$"],
+      "exclude": ["\\.test\\.tsx?$"]
+    },
+    "architect": {
+      "paths": [
+        "^\\.github/",
+        "^package(-lock)?\\.json$",
+        "^next\\.config\\.",
+        "^tsconfig\\.json$",
+        "^eslint\\.config\\.mjs$",
+        "^vitest\\.config\\.mts$",
+        "^vitest\\.perf\\.config\\.mts$",
+        "^playwright\\.config\\.ts$",
+        "^drizzle\\.config\\.",
+        "^vercel\\.json$",
+        "^drizzle/",
+        "^src/server/db/schema\\.ts$",
+        "^src/server/db/client\\.ts$",
+        "^src/server/env\\.ts$",
+        "^src/server/auth/config\\.ts$",
+        "^src/server/auth/session\\.ts$",
+        "^src/proxy\\.ts$",
+        "^src/instrumentation\\.ts$",
+        "^src/server/security/rate-limit\\.ts$",
+        "^src/app/layout\\.tsx$",
+        "^src/app/trips/\\[tripId\\]/layout\\.tsx$",
+        "^src/app/trips/\\[tripId\\]/nav\\.tsx$",
+        "^scripts/migrate\\.ts$",
+        "^scripts/seed\\.ts$",
+        "^tools/ci/",
+        "^tools/merge-gate",
+        "^\\.gitleaks\\.toml$",
+        "^\\.gitleaksignore$",
+        "^CLAUDE\\.md$",
+        "^\\.claude/",
+        "^docs/PIPELINE\\.md$"
+      ],
+      "exclude": []
+    }
+  }
+}
