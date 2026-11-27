@@ -33,7 +33,7 @@ When the architect asks, write `.pipeline/specs/WP-NN-qa.md` before the engineer
 
 ## Verdict line and severity
 
-The comment starts with a heading naming you (`## QA review`, `## Security review`, `## Product review`, `## UX review (phone)`, `## UX review (desktop)` or `## UX review (lead)`, adding `re-review` when it is one) and its first body line is `Verdict: <word>`. QA, product and UX use approve, approve with changes or send back; security uses clear, clear with fixes or blocked. Tools count these lines, so use them exactly.
+The comment starts with a heading naming you (`## QA review`, `## Security review`, `## Product review`, `## UX review (phone)`, `## UX review (desktop)` or `## UX review (lead)`, adding `re-review` when it is one) and its first body line is `Verdict: <word> at <sha>`, where `<sha>` is the PR head commit you reviewed (7 to 40 hex characters, from `gh pr view <n> --json headRefOid`). The merge gate refuses a verdict with no sha, or one naming a commit that is not in the PR, and a positive verdict counts only while every later commit is a verified merge of main. QA, product and UX use approve, approve with changes or send back; security uses clear, clear with fixes or blocked. Tools count these lines, so use them exactly.
 
 Only a blocking verdict needs another round: send back, or blocked (a security finding of medium or higher). Approve with changes and clear with fixes are applied or declined by the engineer in their reply, without a new review. When a send-back has three points or fewer, re-review from the fix diff and CI without a full app run.
 
