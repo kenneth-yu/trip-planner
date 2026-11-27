@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import styles from "../../ui/page.module.css";
 
-export function TripNav({ tripId, canEdit }: { tripId: string; canEdit: boolean }) {
+export function TripNav({ tripId, canEdit, canManageSharing }: { tripId: string; canEdit: boolean; canManageSharing: boolean }) {
   const path = usePathname();
   const base = `/trips/${tripId}`;
   const links = [
@@ -13,6 +13,7 @@ export function TripNav({ tripId, canEdit }: { tripId: string; canEdit: boolean 
     { href: `${base}/deadlines`, label: "Deadlines" },
     ...(canEdit ? [{ href: `${base}/inbox`, label: "Review inbox" }] : []),
     { href: `${base}/connect`, label: "Connect" },
+    ...(canManageSharing ? [{ href: `${base}/share`, label: "Share" }] : []),
   ];
   return (
     <nav className={styles.nav}>

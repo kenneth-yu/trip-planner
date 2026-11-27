@@ -1,0 +1,54 @@
+.group {
+  border: 0;
+  margin: 0 0 20px;
+  padding: 0;
+}
+
+.group legend {
+  font-weight: 700;
+  padding: 0;
+  margin-bottom: 6px;
+}
+
+.option {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 4px 0;
+}
+
+.link {
+  width: 100%;
+  font-size: var(--size-small);
+}
+
+.member {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.inline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.danger {
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
+.sentence:focus {
+  outline: none;
+}
