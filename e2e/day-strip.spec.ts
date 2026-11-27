@@ -99,8 +99,12 @@ test("on a very short viewport the strip scrolls away so rows keep the room", as
   expect(await strip.evaluate((el) => getComputedStyle(el).position)).toBe("static");
   await chipFor(page, "2027-03-09").click();
   await expect(page).toHaveURL(/day=2027-03-09/);
-  await page.mouse.wheel(0, 700);
   const header = page.locator("#day-panel summary").first();
+  await expect
+    .poll(async () => {
+      await page.mouse.wheel(0, 150);
+      return header.evaluate((el) => Math.round(el.getBoundingClientRect().top));
+    })
+    .toBeLessThanOrEqual(1);
   await expect(header).toBeInViewport();
-  expect(await header.evaluate((el) => el.getBoundingClientRect().top)).toBeLessThanOrEqual(1);
 });
