@@ -182,3 +182,95 @@ jobs:
       - name: Migrate an empty database with drizzle
         run: npx vitest run src/server/db/migrate.test.ts
       - run: npm test
+
+  prod-guard:
+    name: prod-guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-postgres
+          POSTGRES_DB: trip_prod_guard
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:ci-only-postgres@localhost:5432/trip_prod_guard
+      APP_URL: https://ci.example.test
+      TRUST_PROXY: "1"
+      SESSION_SECRET: ci-only-secret-ci-only-secret-0000000
+      AUTH_SECRET: ci-only-auth-secret-ci-only-auth-0000000
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Generate throwaway secrets and switch to production mode
+        run: |
+          for name in DATA_ENCRYPTION_KEY TOKEN_ENCRYPTION_KEY; do
+            value="$(openssl rand -base64 32)"
+            echo "::add-mask::$value"
+            echo "$name=$value" >> "$GITHUB_ENV"
+          done
+          echo "NODE_ENV=production" >> "$GITHUB_ENV"
+          echo "VERCEL_ENV=production" >> "$GITHUB_ENV"
+      - name: Migrate twice and find the tables
+        run: |
+          npx tsx scripts/migrate.ts
+          npx tsx scripts/migrate.ts
+          table="$(psql "$DATABASE_URL" -tAc "select to_regclass('public.users')")"
+          echo "users table: $table"
+          [ "$table" = "users" ] || { echo "::error::the users table does not exist after migrating"; exit 1; }
+      - run: npx next build
+      - name: Production serves no dev routes and sends security headers
+        run: |
+          npx next start -p 3100 > start.log 2>&1 &
+          for i in $(seq 1 30); do curl -s -o /dev/null localhost:3100/sign-in && break; sleep 1; done
+          for route in "/api/dev/sign-in?as=kenny" /api/dev/outbox; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "localhost:3100$route")
+            echo "$route answered $code"
+            [ "$code" = "404" ] || { echo "::error::$route answered $code, expected 404"; exit 1; }
+          done
+          for page in / /sign-in; do
+            headers=$(curl -s -D - -o /dev/null "localhost:3100$page" | tr 'A-Z' 'a-z' | tr -d '\r')
+            echo "$page headers:"
+            echo "$headers" | grep -E '^(content-security-policy|strict-transport-security|x-content-type-options|cross-origin-opener-policy|permissions-policy):' | cut -c1-160
+            for header in content-security-policy strict-transport-security x-content-type-options cross-origin-opener-policy permissions-policy; do
+              echo "$headers" | grep -q "^$header:" || { echo "::error::$page is missing $header"; exit 1; }
+            done
+            if echo "$headers" | grep -q "^x-powered-by:"; then echo "::error::$page sends x-powered-by"; exit 1; fi
+            csp=$(echo "$headers" | grep "^content-security-policy:")
+            echo "$csp" | grep -q "script-src 'self' 'nonce-" || { echo "::error::$page CSP has no script nonce"; exit 1; }
+            echo "$csp" | grep -q "'strict-dynamic'" || { echo "::error::$page CSP lacks strict-dynamic"; exit 1; }
+            echo "$csp" | grep -q "frame-ancestors 'none'" || { echo "::error::$page CSP lacks frame-ancestors none"; exit 1; }
+            if echo "$csp" | grep -o "script-src[^;]*" | grep -q "unsafe-"; then echo "::error::$page CSP allows unsafe script"; exit 1; fi
+          done
+          for pid in $(ss -ltnp | grep ':3100 ' | sed 's/.*pid=\([0-9]*\).*/\1/'); do kill "$pid"; done
+          exit 0
+      - name: Production refuses dev sign in
+        env:
+          DEV_SIGN_IN: "1"
+        run: |
+          npx next start -p 3101 > refuse.log 2>&1 &
+          for i in $(seq 1 30); do curl -s -o /dev/null localhost:3101/sign-in && break; sleep 1; done
+          code=$(curl -s -o /dev/null -w '%{http_code}' "localhost:3101/api/dev/sign-in?as=kenny")
+          echo "dev sign in answered $code"
+          [ "$code" = "500" ] || { echo "::error::dev sign in answered $code, expected 500"; exit 1; }
+          home=$(curl -s -o /dev/null -w '%{http_code}' localhost:3101/sign-in)
+          echo "sign in page answered $home"
+          [ "$home" = "500" ] || { echo "::error::the sign in page answered $home, expected 500 because startup refused"; exit 1; }
+          grep -q "instrumentation hook" refuse.log || { echo "::error::startup did not refuse in the instrumentation hook"; exit 1; }
+          grep -q "DEV_SIGN_IN" refuse.log || { echo "::error::the refusal did not name DEV_SIGN_IN"; exit 1; }
+          for pid in $(ss -ltnp | grep ':3101 ' | sed 's/.*pid=\([0-9]*\).*/\1/'); do kill "$pid"; done
+          exit 0
