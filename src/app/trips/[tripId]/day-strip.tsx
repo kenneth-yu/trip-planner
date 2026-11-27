@@ -12,25 +12,37 @@ export function DayStrip({ days, selectedKey }: { days: StripDay[]; selectedKey:
   const chosen = useRef<HTMLAnchorElement>(null);
   const strip = useRef<HTMLElement>(null);
   const tapped = useRef(false);
+  const pinnedHeight = () => {
+    const el = strip.current;
+    return el && getComputedStyle(el).position === "sticky" ? el.offsetHeight : 0;
+  };
   useEffect(() => {
-    chosen.current?.scrollIntoView({ block: "nearest", inline: "center" });
+    const el = strip.current;
+    if (el && chosen.current) el.scrollLeft = chosen.current.offsetLeft - (el.clientWidth - chosen.current.offsetWidth) / 2;
     const panel = document.getElementById(DAY_PANEL_ID);
-    if (!tapped.current || !panel || !strip.current) return;
+    if (!tapped.current || !panel) return;
     tapped.current = false;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    window.scrollTo({ top: panel.getBoundingClientRect().top + window.scrollY - strip.current.offsetHeight, behavior: reduced ? "auto" : "smooth" });
+    window.scrollTo({ top: panel.getBoundingClientRect().top + window.scrollY - pinnedHeight(), behavior: reduced ? "auto" : "smooth" });
   }, [selectedKey]);
   useEffect(() => {
     const el = strip.current;
-    const section = el?.parentElement;
-    if (!el || !section) return;
-    const publish = () => section.style.setProperty("--strip-height", `${el.offsetHeight}px`);
+    if (!el) return;
+    const root = document.documentElement;
+    const publish = () => {
+      const height = `${pinnedHeight()}px`;
+      root.style.setProperty("--strip-height", height);
+      root.style.scrollPaddingTop = height;
+    };
     publish();
     const observer = new ResizeObserver(publish);
     observer.observe(el);
+    window.addEventListener("resize", publish);
     return () => {
       observer.disconnect();
-      section.style.removeProperty("--strip-height");
+      window.removeEventListener("resize", publish);
+      root.style.removeProperty("--strip-height");
+      root.style.removeProperty("scroll-padding-top");
     };
   }, []);
   return (
@@ -43,8 +55,8 @@ export function DayStrip({ days, selectedKey }: { days: StripDay[]; selectedKey:
             ref={isChosen ? chosen : undefined}
             href={`?day=${d.key}`}
             scroll={false}
-            onClick={() => {
-              tapped.current = !isChosen;
+            onClick={(e) => {
+              tapped.current = !isChosen && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
             }}
             className={`${styles.chip} ${isChosen ? styles.chosen : ""} ${d.cityIndex !== null ? CITY[d.cityIndex % CITY.length] : ""}`}
             aria-current={isChosen ? "date" : undefined}

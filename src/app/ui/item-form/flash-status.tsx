@@ -69,10 +69,5 @@ export function FlashStatus({ kind, tripId, focusId }: { kind: FlashKind; tripId
     [],
   );
 
-  return (
-    <div ref={holder}>
-      {host &&
-createPortal(<StatusLine text={announced ? FLASH_TEXT[kind] : null} />, host)}
-    </div>
-  );
+  return <div ref={holder}>{host && createPortal(<StatusLine text={announced ? FLASH_TEXT[kind] : null} />, host)}</div>;
 }

@@ -147,3 +147,9 @@
 .city5 {
   --city: var(--city-5);
 }
+
+@media (max-height: 480px) {
+  .strip {
+    position: static;
+  }
+}

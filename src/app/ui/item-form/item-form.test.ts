@@ -77,6 +77,18 @@ describe("flash announcement", () => {
     expect(after.match(/role="status"/g)).toHaveLength(1);
     expect(after).toContain("Item deleted.");
   });
+
+  it("keeps the same element type and role when the text arrives, so React updates the node in place", () => {
+    const empty = StatusLine({ text: null });
+    const filled = StatusLine({ text: FLASH_TEXT.deleted });
+    expect(empty.type).toBe("p");
+    expect(filled.type).toBe(empty.type);
+    expect(filled.key).toBe(empty.key);
+    expect(filled.props.role).toBe("status");
+    expect(empty.props.role).toBe("status");
+    expect(empty.props.children).toBeNull();
+    expect(filled.props.children).toBe("Item deleted.");
+  });
 });
 
 describe("flash cookie", () => {
