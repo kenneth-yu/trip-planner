@@ -144,77 +144,21 @@ flowchart LR
 
 ## State charts
 
-### Inbox entry
+Every state chart is generated from the transition tables in `src/domain/state/*.machine.ts`, and written to [STATECHARTS.md](STATECHARTS.md) by `npm run docs:statecharts`. CI fails when that file is stale. Where a machine is enforced (table below), services get the next state only from `transition`, which throws `InvalidTransition` for an event the state does not allow.
 
-```mermaid
-stateDiagram-v2
-  [*] --> Pending: import / assistant proposal
-  Pending --> Pending: Add or Merge without a choice<br/>(NeedsDecision, nothing written)
-  Pending --> Approved: Add<br/>[every import difference chosen]
-  Pending --> Merged: Merge into item<br/>[every field difference has keep]
-  Pending --> Discarded: Discard
-  Approved --> [*]
-  Merged --> [*]
-  Discarded --> [*]
+| Machine | Status | Where it is enforced |
+|---|---|---|
+| `assistant-token` | Enforced | `assistant-service.ts`: revoking works only from Active, a second revoke throws `InvalidTransition` (the Disconnect action treats it as already disconnected), a revoked token never resolves |
+| `calendar-mirror` | Enforced | `mirror-service.ts`: the state is derived from the row (`enabled`, `lastError`, `lastSyncedAt`) and every change goes through `transition`. `TornDown` is never read back, because a member who left is stored as `enabled = false`, which reads as Off. `Connecting` is only seen between enabling and the first sync |
+| `inbox-entry` | Specification | `inbox-service.ts` claims an entry with one conditional `UPDATE ... WHERE state = 'pending'`, which has the same effect for Pending. Wired to the machine in WP-14 |
+| `item-visibility` | Specification | `projectTrip` reads `visibility`, `visibleToUserIds` and `showAsBusy`. Editing them goes through the machine in WP-10 |
+| `invite` | Specification | Invites are not built yet (WP-09) |
+| `view-link` | Specification | The view link is not built yet (WP-16) |
 
-  note right of Pending
-    Claimed with one conditional UPDATE
-    WHERE state = 'pending'.
-    The second of two concurrent decisions
-    finds nothing to claim and fails.
-  end note
-```
-
-"Add all without conflicts" applies Add only to entries with no match, no differences and no problems.
-
-### Item (as seen by one member)
-
-```mermaid
-stateDiagram-v2
-  direction LR
-  [*] --> Visible: visibility = everyone,<br/>or creator,<br/>or listed in specific
-  [*] --> Busy: hidden and showAsBusy
-  [*] --> Absent: hidden, not busy
-  Visible --> Busy: creator hides it, shows as busy
-  Visible --> Absent: creator hides it
-  Busy --> Visible: creator shares it
-  Absent --> Visible: creator shares it
-```
-
-Only the creator can move an item between these states. That includes the owner, who cannot see or edit an item someone else hid from them.
-
-### Google Calendar mirror (per member, per trip)
-
-```mermaid
-stateDiagram-v2
-  [*] --> Off
-  Off --> Connecting: Mirror to Google Calendar
-  Connecting --> Off: consent denied or scope missing
-  Connecting --> InSync: tokens stored, calendar created,<br/>first sync
-  InSync --> Syncing: trip changed (after response)<br/>or Sync now
-  Syncing --> InSync: all ops applied<br/>lastError cleared
-  Syncing --> Failed: Google error<br/>lastError recorded, applied ops kept
-  Failed --> Syncing: next change or Sync now<br/>(resumes from the event map, no duplicates)
-  InSync --> Off: Stop mirroring
-  Syncing --> TornDown: member left the trip<br/>(desired set is empty)
-  TornDown --> [*]: all events deleted, mirror disabled
-```
-
-Sync is a diff. `buildMirrorEvents(view)` gives the events the calendar should hold, and `planMirrorSync` compares them with `mirror_events`, the event map of what was last pushed and its hash. The result is the minimal set of creates, updates and deletes. If someone deletes an event in Google, it is recreated on the next change: Google is a copy, the app is the source.
-
-### Assistant connection
-
-```mermaid
-stateDiagram-v2
-  [*] --> Active: Make a link<br/>(token shown once, stored hashed)
-  Active --> Active: tool call<br/>(lastUsedAt updated)
-  Active --> Revoked: Disconnect
-  Revoked --> [*]
-  state Active {
-    [*] --> Propose: "Can suggest items" (editors)
-    [*] --> Read: "Read only" (any member)
-  }
-```
+- Inbox entry: the second of two concurrent decisions finds nothing to claim and fails. "Add all without conflicts" applies Add only to entries with no match, no differences and no problems.
+- Item visibility: the chart is the creator's setting, `visibility` (everyone, only me, specific people) plus `showAsBusy`. A hidden item is a Busy block for people who cannot see it when `showAsBusy` is on, and absent for them when it is off. Only the creator can change it, and that includes the owner, who cannot see or edit an item someone else hid from them.
+- Google Calendar mirror: sync is a diff. `buildMirrorEvents(view)` gives the events the calendar should hold, and `planMirrorSync` compares them with `mirror_events`, the event map of what was last pushed and its hash. The result is the minimal set of creates, updates and deletes. If someone deletes an event in Google, it is recreated on the next change: Google is a copy, the app is the source.
+- The session machine arrives with WP-01.
 
 ## Sequences
 
@@ -337,6 +281,8 @@ erDiagram
 | Mirrored events have no reminders and do not include codes or seats by default | v1 has no notifications; a Google calendar can be shared beyond the app's permissions | Per member setting `includeSensitive` exists and is off |
 | Places resolve offline first (airports, city-timezones, countries-and-timezones), then optionally by address lookup (OpenStreetMap, cached, `ADDRESS_LOOKUP=openstreetmap`); unclear results are saved as flags on the item and shown as checks | Times must be right without asking for offsets; when unsure, say so rather than guess | Off by default because it sends booking addresses to OpenStreetMap |
 | PGlite for dev and tests, Postgres in production | Same SQL and migrations; nobody installs a database to run tests | Never for prod: PGlite is single process |
+| Every page renders per request: the root layout awaits `connection()` | A nonce based CSP needs the nonce in every script tag, which a page prerendered at build time (the framework's 404 among them) cannot have | A page needs to be static for speed and can be served without scripts |
+| `getDb` caches the opening promise, and forgets it if opening fails | One open per process, but a database outage or missing key at start must not keep every later request failing until a restart | n/a |
 | Signed cookie session with a dev sign in | Lets the app run and be tested now | Replace with Auth.js (Google, Apple, email link) per CLAUDE.md before anyone but the builders uses it |
 
 ## Open questions (need an answer from the trip owner)
@@ -345,3 +291,24 @@ erDiagram
 2. **The Gmail "Queen beds" stay.** The fixture says it should merge into the Airbnb, but IMPORT.md's matching rules (similar name or address) do not match it. It is shown as a possible match for a person to merge. Confirm that is the intended behavior.
 3. **The $1,183.22 stay also overlaps the second Resol Ueno booking on Dec 13.** The fixture's expected checks do not list that overlap, but it is true, so the app reports it.
 4. **Whose seat is it?** When a shared calendar record has a seat but several travelers, the seat goes to the one traveler on that record who has no seat yet. Otherwise it stays unassigned. That is how NH159 resolves to 30K Kenny, 30C Jacob.
+
+## Encryption at rest
+
+`item_private.sealed`, `activity.sealed` and `imported_items.sealed` hold AES-256-GCM envelopes (`k1.iv.tag.body`) keyed by `DATA_ENCRYPTION_KEY`, with the purpose and row id as authenticated data. The key is checked when the database opens, so a missing or all-zero key stops the process at start with the setup message. Rows written by older code are sealed on start by `sealLegacyRows`.
+
+Imported free text is never copied into a plaintext column. A denylist of wordings ("confirmation code is", "Booking ID", hyphenated codes) will always miss one, so the design avoids the question:
+
+```mermaid
+flowchart LR
+  D["Event description"] --> E["extractPrivate: code, seat, price"]
+  D --> N["whole description"]
+  E --> P["item_private (sealed)"]
+  N --> P
+  D --> U["sentences it could not read"] --> S["imported_items.sealed"]
+  D --> C["deadline consequence: fixed text per kind"]
+```
+
+- The description becomes the private `notes` field, sealed with the other booking details. Only owners and editors see it ("From the booking" in the day details). `items.notes` stays empty for imports.
+- Deadline consequences from imports are the fixed text for the deadline kind, never a sentence from the description.
+- Sentences the parser could not read live in the sealed import payload and show only in the inbox.
+- Text a person types themselves (quick add notes, assistant `add_items` notes) stays in `items.notes`. The private fields exist for codes; putting one in a shared note is the person's choice.

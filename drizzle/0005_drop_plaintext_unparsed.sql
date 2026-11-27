@@ -1,0 +1,1 @@
+ALTER TABLE "imported_items" DROP COLUMN "unparsed";

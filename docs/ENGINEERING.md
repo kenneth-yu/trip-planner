@@ -90,7 +90,7 @@ Passing checks do not prove the product is right. Before calling UI or integrati
 
 ### 9. Behavior has a reviewable model
 
-Anything with states (inbox entries, mirrors, assistant connections, item visibility) has a state chart in `docs/ARCHITECTURE.md`. User-facing paths are listed in `docs/FEATURES.md`. Update both in the same change that alters behavior, so a reviewer can compare what was intended with what was built.
+Anything with states (inbox entries, mirrors, assistant connections, item visibility, invites, view links) is a machine in code: one `src/domain/state/<name>.machine.ts` with a transition table built by `defineMachine`. Services take the next state from `transition`, never by writing a state value directly. The charts in `docs/STATECHARTS.md` are generated from those tables by `npm run docs:statecharts` and CI fails when they drift, so the diagram cannot disagree with the code. User-facing paths are listed in `docs/FEATURES.md`. Update the machine, the regenerated chart and `docs/FEATURES.md` in the same change that alters behavior, so a reviewer can compare what was intended with what was built.
 
 ### 10. Turn repeated feedback into a check
 
@@ -123,7 +123,8 @@ People and agents copy what they see. Delete dead code, deprecated paths, scaffo
 | 5. Boundaries | `no-restricted-imports` per directory | `eslint.config.mjs` |
 | 6. Wrong thing impossible | Types and APIs in `src/domain` and `src/server/services` | code |
 | 7. Verified | 100+ tests, `npm run check` | CI on every push and pull request |
-| 1, 8 to 12 | Pull request checklist and review | `.github/pull_request_template.md` |
+| 9. Behavior has a model | State machines in `src/domain/state`, generated `docs/STATECHARTS.md`, `statecharts` CI job | `npm run docs:statecharts:check` |
+| 1, 8, 10 to 12 | Pull request checklist and review | `.github/pull_request_template.md` |
 
 ## Definition of done
 

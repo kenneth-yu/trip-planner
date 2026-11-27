@@ -114,8 +114,11 @@ export function buildMirrorEvents(view: TripView, opts: MirrorOptions): DesiredE
     };
     return { key, hash: stableHash(event), event };
   });
+  const seenBusy = new Set<string>();
   for (const b of view.busy) {
     const key = `busy:${b.start.at}:${b.end.at}`;
+    if (seenBusy.has(key)) continue;
+    seenBusy.add(key);
     const event: MirrorEvent = {
       summary: "Busy",
       description: "",

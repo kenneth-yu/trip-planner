@@ -93,7 +93,7 @@ export function matchRecords(existing: Mergeable, incoming: Mergeable): Match | 
   }
 }
 
-const PRIVATE_KEYS = ["confirmationCode", "bookingReference", "seat", "phone", "price", "bookingSite"] as const satisfies readonly (keyof ItemPrivate)[];
+const PRIVATE_KEYS = ["confirmationCode", "bookingReference", "seat", "phone", "price", "bookingSite", "notes"] as const satisfies readonly (keyof ItemPrivate)[];
 
 function fillField<K extends (typeof PRIVATE_KEYS)[number]>(target: ItemPrivate, source: ItemPrivate, key: K) {
   if (target[key] === undefined && source[key] !== undefined) target[key] = source[key];
