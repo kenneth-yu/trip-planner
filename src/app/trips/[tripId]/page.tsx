@@ -9,6 +9,7 @@ import { DayView } from "./day-view";
 import { AttentionPanel } from "./attention";
 import { TripGridView } from "./trip-grid";
 import { DayStrip } from "./day-strip";
+import { DAY_PANEL_ID } from "./day-panel";
 import { UpNext } from "./up-next";
 
 export default async function TripPage({ params, searchParams }: PageProps<"/trips/[tripId]">) {
@@ -55,7 +56,9 @@ export default async function TripPage({ params, searchParams }: PageProps<"/tri
       <div className={styles.phoneOnly}>
         <UpNext entries={upNext(view, nowMs)} attention={attention} checks={tripChecks} tripId={tripId} />
         {grid && <DayStrip days={dayStrip(grid)} selectedKey={everyDay ? null : selected} />}
-        <DayView view={view} days={days} todayKey={todayKey} only={everyDay || !selected ? undefined : selected} anchors={false} />
+        <div id={DAY_PANEL_ID}>
+          <DayView view={view} days={days} todayKey={todayKey} only={everyDay || !selected ? undefined : selected} anchors={false} />
+        </div>
         {days.length > 1 && (
           <p className={styles.muted}>
             <Link href={everyDay ? "?" : "?day=all"}>{everyDay ? "Show one day at a time" : "Show every day"}</Link>
