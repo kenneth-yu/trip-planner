@@ -4,8 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { loadTripPage } from "@/server/web";
-import { approveAllClean, approveEntry, decidedEntry, discardEntry, mergeEntry, NeedsDecision } from "@/server/services/inbox-service";
-import { addAllText, decidedOutcome, savedWithoutRemovedTraveler, type Outcome } from "./inbox/messages";
+import { approveAllClean, approveEntry, decidedEntry, discardEntry, EntryGone, mergeEntry, NeedsDecision, type Saved } from "@/server/services/inbox-service";
+import { addAllText, addedOutcome, decidedOutcome, discardedOutcome, ENTRY_GONE, mergedOutcome, savedWithoutRemovedTraveler, type Outcome } from "./inbox/messages";
 import { createAssistantToken, revokeAssistantToken } from "@/server/services/assistant-service";
 import { disableMirror, syncMirror } from "@/server/services/mirror-service";
 import { appUrl } from "@/server/app-context";
@@ -30,22 +30,29 @@ function choicesFrom(form: FormData, prefix: string): Choices {
 
 const Decide = z.object({ tripId: z.string().uuid(), entryId: z.string().uuid(), action: z.enum(["add", "merge", "discard"]) });
 
-export type DecideResult = { kind: "needs_choice"; message: string } | { kind: "done"; outcome: Outcome | null };
+export type DecideResult = { kind: "needs_choice"; message: string } | { kind: "done"; outcome: Outcome };
+
+function savedOutcome(saved: Saved, action: "add" | "merge"): Outcome {
+  if (saved.withoutRemovedTraveler) return savedWithoutRemovedTraveler(saved.proposed);
+  return action === "merge" && saved.intoTitle !== null ? mergedOutcome(saved.proposed, saved.intoTitle) : addedOutcome(saved.proposed);
+}
 
 export async function decideEntry(form: FormData): Promise<DecideResult> {
   const { tripId, entryId, action } = Decide.parse(Object.fromEntries(form));
   const { ctx, requester } = await loadTripPage(tripId);
   try {
-    const saved =
-      action === "add"
-        ? await approveEntry(ctx, tripId, entryId, requester, { choices: choicesFrom(form, "choice:") })
-        : action === "merge"
-          ? await mergeEntry(ctx, tripId, entryId, requester, { choices: choicesFrom(form, "choice:"), keep: choicesFrom(form, "keep:") })
-          : await discardEntry(ctx, tripId, entryId, requester).then(() => null);
+    let outcome: Outcome;
+    if (action === "discard") outcome = discardedOutcome(await discardEntry(ctx, tripId, entryId, requester));
+    else if (action === "merge") outcome = savedOutcome(await mergeEntry(ctx, tripId, entryId, requester, { choices: choicesFrom(form, "choice:"), keep: choicesFrom(form, "keep:") }), "merge");
+    else outcome = savedOutcome(await approveEntry(ctx, tripId, entryId, requester, { choices: choicesFrom(form, "choice:") }), "add");
     revalidatePath(`/trips/${tripId}`, "layout");
-    return { kind: "done", outcome: saved?.withoutRemovedTraveler ? savedWithoutRemovedTraveler(saved.proposed) : null };
+    return { kind: "done", outcome };
   } catch (e) {
     if (e instanceof NeedsDecision) return { kind: "needs_choice", message: e.message };
+    if (e instanceof EntryGone) {
+      revalidatePath(`/trips/${tripId}`, "layout");
+      return { kind: "done", outcome: ENTRY_GONE };
+    }
     if (!(e instanceof InvalidTransition)) throw e;
     const decided = await decidedEntry(ctx, tripId, entryId, requester);
     if (!decided) throw e;

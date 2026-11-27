@@ -111,6 +111,28 @@ describe("an entry someone else already decided", () => {
   });
 });
 
+describe("a normal decision", () => {
+  it("announces Added, Merged and Discarded", async () => {
+    const { ctx, entry } = await oneEntry();
+    const title = entry.proposed.title;
+    expect(await decideEntry(form(entry.id, "add"))).toEqual({ kind: "done", outcome: { text: `Added ${title}.`, role: "status" } });
+    await importCalendarEvents(ctx, TRIP_ID, kenny, [events[2]], { source: "ics", label: "again" });
+    const [again] = await listInbox(ctx, TRIP_ID, kenny);
+    const into = present(again.match).title;
+    expect(await decideEntry(form(again.id, "merge"))).toEqual({ kind: "done", outcome: { text: `Merged ${title} into ${into}.`, role: "status" } });
+    await importCalendarEvents(ctx, TRIP_ID, kenny, [events[6]], { source: "ics", label: "third" });
+    const [third] = await listInbox(ctx, TRIP_ID, kenny);
+    expect(await decideEntry(form(third.id, "discard"))).toEqual({ kind: "done", outcome: { text: `Discarded ${third.proposed.title}.`, role: "status" } });
+  });
+
+  it("an entry that no longer exists says so instead of failing", async () => {
+    await oneEntry();
+    const gone = await decideEntry(form("00000000-0000-4000-8000-000000000000", "add"));
+    expect(gone).toEqual({ kind: "done", outcome: { text: "That item is no longer in the inbox.", role: "status" } });
+    expect(await decideEntry(form("00000000-0000-4000-8000-000000000000", "discard"))).toEqual(gone);
+  });
+});
+
 describe("Add all without conflicts", () => {
   it("reports what it added and skips an entry another person decided meanwhile", async () => {
     const env = await testContext({ withItems: false });
@@ -162,10 +184,10 @@ describe("an entry that names a removed traveler", () => {
     expect(present((await getTripView(ctx, TRIP_ID, kenny)).items[0]).travelerIds).toEqual([]);
   });
 
-  it("an entry whose travelers all remain is unchanged and says nothing extra", async () => {
+  it("an entry whose travelers all remain gets the plain Added line", async () => {
     const { entry } = await oneEntry({ travelerIds: [TRAVELERS.kenny] });
     expect(entry.namesRemovedTraveler).toBe(false);
-    expect(await decideEntry(form(entry.id, "add"))).toEqual({ kind: "done", outcome: null });
+    expect(await decideEntry(form(entry.id, "add"))).toEqual({ kind: "done", outcome: { text: `Added ${entry.proposed.title}.`, role: "status" } });
   });
 
   it("Merge also leaves the removed traveler off", async () => {

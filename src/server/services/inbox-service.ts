@@ -24,6 +24,13 @@ export class NeedsDecision extends Error {
   }
 }
 
+export class EntryGone extends NotFound {
+  constructor() {
+    super("That item is no longer in the inbox.");
+    this.name = "EntryGone";
+  }
+}
+
 export interface BatchInput {
   source: ImportSource;
   label: string;
@@ -144,7 +151,7 @@ async function loadEntry(db: DbOrTx, tripId: string, entryId: string, event: Inb
     .select()
     .from(t.importedItems)
     .where(and(eq(t.importedItems.id, entryId), eq(t.importedItems.tripId, tripId)));
-  if (!row) throw new NotFound("That inbox item is gone.");
+  if (!row) throw new EntryGone();
   transition(inboxEntry, STATE_OF_STORED[row.state], event);
   return { ...row, proposed: openImport(row).proposed };
 }
@@ -158,7 +165,7 @@ async function claimEntry(db: DbOrTx, entryId: string, event: InboxEntryEvent, d
     .returning({ id: t.importedItems.id });
   if (claimed.length) return;
   const [current] = await db.select({ state: t.importedItems.state }).from(t.importedItems).where(eq(t.importedItems.id, entryId));
-  if (!current) throw new NotFound("That inbox item is gone.");
+  if (!current) throw new EntryGone();
   throw new InvalidTransition(inboxEntry.name, STATE_OF_STORED[current.state], event);
 }
 
@@ -183,6 +190,7 @@ export interface Saved {
   itemId: string;
   withoutRemovedTraveler: boolean;
   proposed: ProposedItem;
+  intoTitle: string | null;
 }
 
 function onlyKnownTravelers<T extends { travelerIds: string[]; private: ItemPrivate[] }>(record: T, known: Set<string>): { record: T; dropped: boolean } {
@@ -207,7 +215,7 @@ export async function approveEntry(ctx: ServiceContext, tripId: string, entryId:
     await saveItem(tx, item);
     await touchTrip(tx, tripId);
     await insertActivity(tx, { tripId, actorId: requester.userId, action: "created", itemId: item.id, via: `import:${row.batchId}`, after: item });
-    return { itemId: item.id, withoutRemovedTraveler: dropped, proposed: row.proposed };
+    return { itemId: item.id, withoutRemovedTraveler: dropped, proposed: row.proposed, intoTitle: null };
   });
   await ctx.onTripChanged(tripId);
   return saved;
@@ -249,18 +257,19 @@ export async function mergeEntry(
     await saveItem(tx, after);
     await touchTrip(tx, tripId);
     await insertActivity(tx, { tripId, actorId: requester.userId, action: "merged", itemId: target.id, via: `import:${row.batchId}`, before: target, after });
-    return { itemId: target.id, withoutRemovedTraveler: dropped, proposed: row.proposed };
+    return { itemId: target.id, withoutRemovedTraveler: dropped, proposed: row.proposed, intoTitle: target.title };
   });
   await ctx.onTripChanged(tripId);
   return saved;
 }
 
-export async function discardEntry(ctx: ServiceContext, tripId: string, entryId: string, requester: Requester) {
+export async function discardEntry(ctx: ServiceContext, tripId: string, entryId: string, requester: Requester): Promise<ProposedItem> {
   if (requester.kind !== "member") throw new NotFound();
   const agg = await requireAggregate(ctx.db, tripId);
   assertCanEditTrip(agg, requester);
-  await loadEntry(ctx.db, tripId, entryId, "discard");
+  const row = await loadEntry(ctx.db, tripId, entryId, "discard");
   await claimEntry(ctx.db, entryId, "discard", { decidedBy: requester.userId, decidedAt: ctx.now() });
+  return row.proposed;
 }
 
 export interface AddAllResult {

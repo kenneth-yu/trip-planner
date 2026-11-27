@@ -35,6 +35,20 @@ export function decidedOutcome(tapped: Tapped, entry: DecidedEntry): Outcome {
     : { text: `${who} added ${label} as its own item, so nothing was merged. Check the trip for a duplicate.`, role: "alert" };
 }
 
+export function addedOutcome(p: Pick<ProposedItem, "type" | "title" | "flight">): Outcome {
+  return { text: `Added ${entryLabel(p)}.`, role: "status" };
+}
+
+export function mergedOutcome(p: Pick<ProposedItem, "type" | "title" | "flight">, intoTitle: string): Outcome {
+  return { text: `Merged ${entryLabel(p)} into ${intoTitle}.`, role: "status" };
+}
+
+export function discardedOutcome(p: Pick<ProposedItem, "type" | "title" | "flight">): Outcome {
+  return { text: `Discarded ${entryLabel(p)}.`, role: "status" };
+}
+
+export const ENTRY_GONE: Outcome = { text: "That item is no longer in the inbox.", role: "status" };
+
 export function savedWithoutRemovedTraveler(p: Pick<ProposedItem, "type" | "title" | "flight">): Outcome {
   return { text: `Added ${entryLabel(p)} without the removed traveler.`, role: "status" };
 }

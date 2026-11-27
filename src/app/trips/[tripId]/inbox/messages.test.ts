@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ProposedItem } from "@/domain/import/proposal";
 import type { DecidedEntry } from "@/server/services/inbox-service";
-import { addAllText, decidedOutcome, entryLabel, savedWithoutRemovedTraveler, type Tapped } from "./messages";
+import { addAllText, addedOutcome, decidedOutcome, discardedOutcome, ENTRY_GONE, mergedOutcome, entryLabel, savedWithoutRemovedTraveler, type Tapped } from "./messages";
 
 const flight = {
   type: "flight",
@@ -50,6 +50,13 @@ describe("labels", () => {
     expect(entryLabel(flight)).toBe("CX509 to Hong Kong");
     expect(entryLabel({ type: "plan", title: "Dim sum" })).toBe("Dim sum");
     expect(entryLabel({ type: "flight", title: "XX1", flight: { flightNumber: "XX1", fromAirport: "QQQ", toAirport: "QQQ" } })).toBe("XX1");
+  });
+
+  it("announces a plain decision", () => {
+    expect(addedOutcome(flight).text).toBe("Added CX509 to Hong Kong.");
+    expect(mergedOutcome(flight, "CX509").text).toBe("Merged CX509 to Hong Kong into CX509.");
+    expect(discardedOutcome(flight).text).toBe("Discarded CX509 to Hong Kong.");
+    expect(ENTRY_GONE).toEqual({ text: "That item is no longer in the inbox.", role: "status" });
   });
 
   it("says what happened to a removed traveler without naming them", () => {
