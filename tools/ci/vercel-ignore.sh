@@ -8,21 +8,43 @@ fi
 
 case "${VERCEL_GIT_COMMIT_REF:-}" in
   infra/* | owner/*)
-    echo "Skipping: ${VERCEL_GIT_COMMIT_REF} branches change no user-visible code."
+    echo "Skipping: infra and owner branches change tooling, roles and docs, never user-visible code. They are checked in CI and get no preview."
     exit 0
     ;;
 esac
 
-if ! git rev-parse --verify --quiet HEAD^ >/dev/null; then
-  echo "Building: no parent commit to compare with."
+base=""
+previous="${VERCEL_GIT_PREVIOUS_SHA:-}"
+if [ -n "$previous" ] && git cat-file -e "${previous}^{commit}" 2>/dev/null; then
+  base="$previous"
+elif git rev-parse --verify --quiet HEAD^ >/dev/null; then
+  base="HEAD^"
+else
+  echo "Building: no earlier commit to compare with."
   exit 1
 fi
 
-if git diff --quiet HEAD^ HEAD -- src public next.config.ts package.json package-lock.json drizzle vercel.json \
-  ':(exclude)src/**/*.test.ts' ':(exclude)src/**/*.test.tsx' ':(exclude)src/testing/**' ':(exclude)src/lint/**'; then
-  echo "Skipping: this commit changes only tests, docs, CI or tooling."
-  exit 0
+if ! changed="$(git diff --name-only --no-renames "$base" HEAD)"; then
+  echo "Building: could not list the changed files."
+  exit 1
 fi
 
-echo "Building: this commit changes user-visible code."
-exit 1
+skippable() {
+  case "$1" in
+    tools/ci/vercel-ignore.sh) return 1 ;;
+    *.md | docs/* | e2e/* | tools/* | .github/* | .claude/* | .pipeline/*) return 0 ;;
+    *.test.ts | *.test.tsx | *.spec.ts | src/testing/* | src/lint/* | src/tools/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+while IFS= read -r path; do
+  [ -z "$path" ] && continue
+  if ! skippable "$path"; then
+    echo "Building: ${path} can change the deployed app."
+    exit 1
+  fi
+done <<< "$changed"
+
+echo "Skipping: the changes since ${base} touch only tests, docs, CI, tooling and agent files."
+exit 0

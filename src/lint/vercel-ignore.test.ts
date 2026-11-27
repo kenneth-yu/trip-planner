@@ -1,55 +1,131 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const SCRIPT = path.join(import.meta.dirname, "..", "..", "tools", "ci", "vercel-ignore.sh");
 
-function repoWith(changed: string): string {
+interface Repo {
+  dir: string;
+  shas: string[];
+}
+
+function repoWith(commits: string[][], withStart = true): Repo {
   const dir = mkdtempSync(path.join(tmpdir(), "vercel-ignore-"));
-  const git = (...args: string[]) => execFileSync("git", args, { cwd: dir, stdio: "pipe" });
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: dir, stdio: "pipe", encoding: "utf8" }).trim();
   git("init", "-q");
   git("config", "user.email", "test@example.invalid");
   git("config", "user.name", "Test");
-  writeFileSync(path.join(dir, "README.md"), "start\n");
-  git("add", ".");
-  git("commit", "-qm", "start");
-  mkdirSync(path.dirname(path.join(dir, changed)), { recursive: true });
-  writeFileSync(path.join(dir, changed), "change\n");
-  git("add", ".");
-  git("commit", "-qm", "change");
-  return dir;
+  const shas: string[] = [];
+  const all = withStart ? [["README.md"], ...commits] : commits;
+  for (const [index, changes] of all.entries()) {
+    for (const change of changes) {
+      const target = path.join(dir, change.replace(/^-/, ""));
+      if (change.startsWith("-")) rmSync(target);
+      else {
+        mkdirSync(path.dirname(target), { recursive: true });
+        writeFileSync(target, `change ${index}\n`);
+      }
+    }
+    git("add", "-A");
+    git("commit", "-qm", `commit ${index}`);
+    shas.push(git("rev-parse", "HEAD"));
+  }
+  return { dir, shas };
 }
 
-function decide(changed: string, env: Record<string, string> = {}): "build" | "skip" {
-  const result = spawnSync("bash", [SCRIPT], { cwd: repoWith(changed), env: { ...process.env, VERCEL_ENV: "", VERCEL_GIT_COMMIT_REF: "", ...env }, encoding: "utf8" });
+function run(repo: Repo, env: Record<string, string> = {}): "build" | "skip" {
+  const result = spawnSync("bash", [SCRIPT], {
+    cwd: repo.dir,
+    env: { ...process.env, VERCEL_ENV: "", VERCEL_GIT_COMMIT_REF: "", VERCEL_GIT_PREVIOUS_SHA: "", ...env },
+    encoding: "utf8",
+  });
   if (result.status === 0) return "skip";
   if (result.status === 1) return "build";
   throw new Error(`vercel-ignore.sh exited ${result.status}: ${result.stderr}`);
 }
 
+function decide(changed: string, env: Record<string, string> = {}): "build" | "skip" {
+  return run(repoWith([[changed]]), env);
+}
+
 describe("Vercel ignore rule", () => {
-  it("builds a commit that changes app code, public files or dependencies", () => {
-    expect(decide("src/app/page.tsx")).toBe("build");
-    expect(decide("src/server/services/trip-service.ts")).toBe("build");
-    expect(decide("public/icon.svg")).toBe("build");
-    expect(decide("package-lock.json")).toBe("build");
-    expect(decide("drizzle/0008_x.sql")).toBe("build");
+  it.each([
+    "src/app/page.tsx",
+    "src/server/services/trip-service.ts",
+    "src/proxy.ts",
+    "src/instrumentation.ts",
+    "src/app/globals.css",
+    "src/app/trips/trip.module.css",
+    "public/icon.svg",
+    "package.json",
+    "package-lock.json",
+    "next.config.ts",
+    "vercel.json",
+    "tsconfig.json",
+    "scripts/migrate.ts",
+    "drizzle/0008_x.sql",
+    "tools/ci/vercel-ignore.sh",
+    "a-new-top-level-file.ts",
+  ])("builds a commit that changes only %s", (file) => {
+    expect(decide(file)).toBe("build");
   });
 
-  it("skips a commit that changes only tests, e2e, docs, CI or tooling", () => {
-    expect(decide("src/server/auth/auth.test.ts")).toBe("skip");
-    expect(decide("e2e/sign-in.spec.ts")).toBe("skip");
-    expect(decide("docs/UX.md")).toBe("skip");
-    expect(decide(".github/workflows/ci.yml")).toBe("skip");
-    expect(decide("tools/ci/x.sh")).toBe("skip");
+  it.each([
+    "src/server/auth/auth.test.ts",
+    "src/app/page.test.tsx",
+    "src/foo.test.ts",
+    "e2e/sign-in.spec.ts",
+    "src/testing/present.ts",
+    "src/lint/vercel-ignore.test.ts",
+    "docs/UX.md",
+    "README.md",
+    ".github/workflows/ci.yml",
+    ".claude/agents/qa.md",
+    ".pipeline/status.md",
+    "tools/ci/other.sh",
+    "tools/merge-gate.mjs",
+  ])("skips a commit that changes only %s", (file) => {
+    expect(decide(file)).toBe("skip");
   });
 
-  it("always builds production and always skips infra and owner branches", () => {
+  it("builds a commit that mixes a test file with an app file", () => {
+    expect(run(repoWith([["src/app/q.test.ts", "src/app/page.tsx"]]))).toBe("build");
+  });
+
+  it("builds a commit that deletes an app file and skips one that deletes a test", () => {
+    expect(run(repoWith([["src/app/page.tsx"], ["-src/app/page.tsx"]]))).toBe("build");
+    expect(run(repoWith([["src/app/a.test.ts"], ["-src/app/a.test.ts"]]))).toBe("skip");
+  });
+
+  it("builds a two commit push whose head commit is test only, using the previous sha", () => {
+    const repo = repoWith([["src/app/page.tsx"], ["src/app/q.test.ts"]]);
+    expect(run(repo)).toBe("skip");
+    expect(run(repo, { VERCEL_GIT_PREVIOUS_SHA: repo.shas[0] })).toBe("build");
+  });
+
+  it("skips a two commit push that changes only tests and docs", () => {
+    const repo = repoWith([["src/app/q.test.ts"], ["docs/UX.md"]]);
+    expect(run(repo, { VERCEL_GIT_PREVIOUS_SHA: repo.shas[0] })).toBe("skip");
+  });
+
+  it("falls back to the parent commit when the previous sha is not in the clone", () => {
+    const repo = repoWith([["src/app/page.tsx"]]);
+    expect(run(repo, { VERCEL_GIT_PREVIOUS_SHA: "0123456789abcdef0123456789abcdef01234567" })).toBe("build");
+    const docs = repoWith([["docs/UX.md"]]);
+    expect(run(docs, { VERCEL_GIT_PREVIOUS_SHA: "0123456789abcdef0123456789abcdef01234567" })).toBe("skip");
+  });
+
+  it("builds when there is no earlier commit to compare with", () => {
+    expect(run(repoWith([["docs/UX.md"]], false))).toBe("build");
+  });
+
+  it("always builds production, and skips infra and owner branches whatever they change", () => {
     expect(decide("docs/UX.md", { VERCEL_ENV: "production" })).toBe("build");
     expect(decide("src/app/page.tsx", { VERCEL_GIT_COMMIT_REF: "infra/e2e" })).toBe("skip");
     expect(decide("src/app/page.tsx", { VERCEL_GIT_COMMIT_REF: "owner/roles" })).toBe("skip");
     expect(decide("src/app/page.tsx", { VERCEL_GIT_COMMIT_REF: "wp/10b-core-edit" })).toBe("build");
+    expect(decide("docs/UX.md", { VERCEL_GIT_COMMIT_REF: "wp/10b-core-edit" })).toBe("skip");
   });
 });
