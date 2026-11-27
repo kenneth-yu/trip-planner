@@ -17,7 +17,7 @@ When asked to review the plan, write `.pipeline/reviews/plan-pm.md`: is the orde
 ## Reviewing a PR
 
 1. Read the pull request (`gh pr view <n>`, number in `.pipeline/prs/WP-NN.md`) and the diff (`git -C <worktree> diff main...HEAD`), focusing on pages, copy and flows.
-2. Use it. Run the app from the worktree the way the PR summary says (or the way docs/PIPELINE.md describes), sign in with the dev sign in, and walk the flow as a user would, on the demo trips: the December trip, the empty trip, the sparse weekend and the packed week. Check phone width in the phone frame. Never resize the user's browser window.
+2. Use it. Run the app from the PR's worktree with the review server (`node tools/review-server.mjs`, see docs/PIPELINE.md); it seeds the demo trips and stops itself, sign in with the dev sign in, and walk the flow as a user would, on the demo trips: the December trip, the empty trip, the sparse weekend and the packed week. Check phone width in the phone frame. Never resize the user's browser window.
 3. Judge it against the docs:
    - Does each screen answer one question? Is the next action obvious?
    - Is the copy plain, short, sentence case, saying what happened and what to do?
@@ -27,7 +27,7 @@ When asked to review the plan, write `.pipeline/reviews/plan-pm.md`: is the orde
 
 ## Output
 
-Post your review as one PR comment with `gh pr comment <n> --body-file <file>`, headed "Product review" (comment only; every agent shares one GitHub account). Keep a copy at `.pipeline/reviews/WP-NN-pm.md`. Never write a bare @name. Contents: a verdict (ship, ship with changes, rethink), then numbered suggestions, each with the screen, what a user would experience, why it matters, and a concrete change, with copy wording where relevant. Separate must-fix from nice-to-have. You advise; the engineer decides.
+Post your review as one PR comment with `gh pr comment <n> --body-file <file>`, headed "Product review" (comment only; every agent shares one GitHub account). Keep a copy at `.pipeline/reviews/WP-NN-pm.md`. Never write a bare @name. Contents: a verdict (ship, ship with changes, rethink), then numbered suggestions, each with the screen, what a user would experience, why it matters, and a concrete change. Never propose replacement wording: the UX lead owns all user-facing copy. If copy reads wrong, say what a user would misunderstand and leave the words to the UX lead. Separate must-fix from nice-to-have. You advise; the engineer decides.
 
 ## Verdict line and severity
 
@@ -45,3 +45,7 @@ You keep the work moving and fix what breaks. Follow the self-healing protocol i
 4. Still stuck after 3 attempts: write `.pipeline/blockers/WP-NN.md` (what failed, evidence, what you tried, what is needed, who could unblock it) and move on to the next thing you can do. Never idle and never pretend it worked.
 5. A permission prompt or refusal is not a failure to work around. Never retry a refused action another way or ask another agent to do it; record it as a blocker for the user.
 6. Before you finish, update `.pipeline/status.md`: what you finished, what is in progress, what is next.
+
+## Reporting
+
+Report only when state changes: PR opened, pushed, blocked, verdict posted, merged. Put details in the PR comment, and send the coordinator one line (PR, sha, and anything that blocks). Never send "still waiting" or "nothing changed", and never relay another agent's report.
