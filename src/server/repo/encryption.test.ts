@@ -14,7 +14,11 @@ import { listActivity } from "./activity-repo";
 import { loadTripAggregate } from "./trip-repo";
 
 const events: CalendarEvent[] = fixture.calendarEvents;
-const SECRETS = ["PLACEHOLDER_A", "PLACEHOLDER_B", "30K", "30C", "QX7Y2Z", "555-0100", "412.50", "DEMO-REF-9"];
+const SECRETS = ["PLACEHOLDER_A", "PLACEHOLDER_B", "30K", "30C", "QX7Y2Z", "555-0100", "412.50", "DEMO-REF-9", "ZZTOP99", "12A", "212 555 0100"];
+
+function withoutCiphertext(key: string, value: unknown): unknown {
+  return key === "sealed" ? "ciphertext" : value;
+}
 
 async function storedText(db: Db): Promise<string> {
   const [privates, activity, imported] = await Promise.all([
@@ -22,7 +26,21 @@ async function storedText(db: Db): Promise<string> {
     db.select().from(t.activity),
     db.select().from(t.importedItems),
   ]);
-  return JSON.stringify({ privates, activity, imported });
+  return JSON.stringify({ privates, activity, imported }, withoutCiphertext);
+}
+
+async function everyTableText(db: Db): Promise<string> {
+  const tables = await Promise.all([
+    db.select().from(t.items),
+    db.select().from(t.deadlines),
+    db.select().from(t.itemPrivate),
+    db.select().from(t.importBatches),
+    db.select().from(t.importedItems),
+    db.select().from(t.activity),
+    db.select().from(t.checkDismissals),
+    db.select().from(t.mirrorEvents),
+  ]);
+  return JSON.stringify(tables, withoutCiphertext);
 }
 
 async function exercise() {
@@ -53,6 +71,22 @@ async function exercise() {
   await importCalendarEvents(ctx, TRIP_ID, kenny, [events[2]], { source: "ics", label: "file" });
   const [second] = await listInbox(ctx, TRIP_ID, kenny);
   await approveEntry(ctx, TRIP_ID, present(second).id, kenny);
+  await importCalendarEvents(
+    ctx,
+    TRIP_ID,
+    jacob,
+    [{ ...events[0], description: "Free cancellation until sometime. Confirmation: ZZTOP99 seat 12A. Call +1 212 555 0100." }],
+    { source: "google_calendar", label: "Jacob" },
+  );
+  const first = present((await listInbox(ctx, TRIP_ID, kenny)).find((e) => e.proposed.notes.includes("Confirmation")));
+  await approveEntry(ctx, TRIP_ID, first.id, kenny);
+  await importCalendarEvents(
+    ctx,
+    TRIP_ID,
+    jacob,
+    [{ ...events[0], description: "Free cancellation until sometime. Confirmation: ZZTOP99 seat 12A." }],
+    { source: "google_calendar", label: "Jacob again" },
+  );
   return { ...env, nh159 };
 }
 
@@ -75,6 +109,23 @@ describe("sensitive data is sealed at rest", () => {
       expect([row.raw, row.proposed]).toEqual([null, null]);
       expect(row.sealed).toMatch(/^k1\./);
     }
+  });
+
+  it("no secret appears in any table, including items.notes and the inbox sidecar columns", async () => {
+    const { db } = await exercise();
+    const text = await everyTableText(db);
+    for (const secret of SECRETS) expect(text, secret).not.toContain(secret);
+    const pending = await db.select().from(t.importedItems).where(eq(t.importedItems.state, "pending"));
+    expect(pending.length).toBeGreaterThan(0);
+    expect(JSON.stringify(pending.map((r) => r.unparsed))).toContain("Free cancellation until sometime");
+  });
+
+  it("an approved import keeps the readable part of the description and moves the secrets to private details", async () => {
+    const { ctx } = await exercise();
+    const view = await getTripView(ctx, TRIP_ID, kenny);
+    const item = present(view.items.find((i) => i.notes.includes("Free cancellation until sometime")));
+    expect(item.notes).not.toMatch(/ZZTOP99|12A/);
+    expect(item.private.map((p) => [p.confirmationCode, p.seat])).toContainEqual(["ZZTOP99", "12A"]);
   });
 
   it("round trips: the aggregate returns the same private fields that were stored", async () => {
@@ -102,8 +153,8 @@ describe("sensitive data is sealed at rest", () => {
     expect(merged.before).toMatchObject({ title: "NH159" });
     expect(log.map((a) => a.action)).toContain("created");
     await importCalendarEvents(ctx, TRIP_ID, kenny, [events[3]], { source: "ics", label: "file" });
-    const [entry] = await listInbox(ctx, TRIP_ID, kenny);
-    expect(present(entry).proposed.title).toBe("Head spa, Belle Cheveu Hiroo");
+    const entry = present((await listInbox(ctx, TRIP_ID, kenny)).find((e) => e.proposed.title === "Head spa, Belle Cheveu Hiroo"));
+    expect(entry.proposed.type).toBe("plan");
   });
 
   it("a sealed value cannot be moved to another row", async () => {

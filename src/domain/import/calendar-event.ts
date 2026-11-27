@@ -10,6 +10,7 @@ import {
   extractPrivate,
   extractRoute,
   extractStayTimes,
+  redactPrivate,
 } from "./patterns";
 import type { ProposedItem } from "./proposal";
 
@@ -97,7 +98,7 @@ function mapFlight(ev: TimedEvent, flightNumber: string, ctx: MapContext): Mappe
       travelerIds: ctx.travelerIds,
       private: privateFor(desc, ctx.travelerIds),
       deadlines: deadlines.map((d) => ({ kind: d.kind, at: fromLocal(d.local, d.zone), consequence: d.consequence, source: "parsed" as const })),
-      notes: desc,
+      notes: redactPrivate(desc),
       status: problems.length || !desc ? "needs_review" : "confirmed",
       problems,
     },
@@ -134,7 +135,7 @@ function mapAllDay(ev: AllDayEvent, ctx: MapContext): MappedEvent {
       travelerIds: ctx.travelerIds,
       private: privateFor(desc, ctx.travelerIds),
       deadlines: deadlines.map((d) => ({ kind: d.kind, at: fromLocal(d.local, d.zone), consequence: d.consequence, source: "parsed" as const })),
-      notes: desc,
+      notes: redactPrivate(desc),
       status: problems.length || !desc ? "needs_review" : "confirmed",
       problems,
     },
@@ -182,7 +183,7 @@ function mapTimed(ev: TimedEvent, ctx: MapContext): MappedEvent {
       travelerIds: ctx.travelerIds,
       private: privateFor(desc, ctx.travelerIds),
       deadlines: deadlines.map((d) => ({ kind: d.kind, at: fromLocal(d.local, d.zone), consequence: d.consequence, source: "parsed" as const })),
-      notes: desc,
+      notes: redactPrivate(desc),
       status: problems.length ? "needs_review" : "confirmed",
       problems,
     },
