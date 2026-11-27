@@ -79,3 +79,17 @@ test("every field on the edit page has a label that attaches to its input", asyn
   await expect(kenny.getByLabel("Booking reference")).toBeVisible();
   await expect(kenny.getByLabel("Kenneth")).toBeVisible();
 });
+
+test("on a 1280 wide screen the Deleted line is in view without scrolling", async ({ pageSignedInAs }) => {
+  const kenny = await pageSignedInAs("kenny", `/trips/${DECEMBER_TRIP}`);
+  await addPlan(kenny, DECEMBER_TRIP, { title: "Duplicate dinner", date: "2026-12-03", starts: "19:00", ends: "20:00" });
+  await kenny.setViewportSize({ width: 1280, height: 800 });
+  await kenny.locator('a[href*="/items/"]:visible', { hasText: "Duplicate dinner" }).first().click();
+  await expect(kenny).toHaveURL(/\/items\//);
+  await kenny.getByRole("button", { name: "Delete" }).click();
+  await kenny.getByRole("button", { name: "Delete" }).click();
+  const status = kenny.getByRole("status").filter({ hasText: "Item deleted." });
+  await expect(status).toHaveCount(1);
+  await expect(status).toBeInViewport({ ratio: 1 });
+  expect((await status.boundingBox())?.y ?? 9999).toBeLessThan(400);
+});
