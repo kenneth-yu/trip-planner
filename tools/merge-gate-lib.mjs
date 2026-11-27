@@ -14,9 +14,11 @@ export const REQUIRED_CHECKS = [
 
 const INTEGRATION_PATHS = [
   /^drizzle\//,
+  /^drizzle\.config\./,
   /(^|\/)schema\.ts$/,
   /(^|\/)nav\.tsx$/,
   /(^|\/)layout\.tsx$/,
+  /^src\/proxy\.ts$/,
   /(^|\/)package(-lock)?\.json$/,
   /^next\.config\./,
   /^eslint\.config\./,
@@ -24,21 +26,26 @@ const INTEGRATION_PATHS = [
   /^playwright\.config\./,
   /^\.github\//,
   /^\.claude\//,
+  /^\.gitleaks(ignore|\.toml)$/,
   /^CLAUDE\.md$/,
   /^docs\/PIPELINE\.md$/,
   /^tsconfig\.json$/,
   /^vercel\.json$/,
   /^scripts\/build/,
+  /^tools\/merge-gate/,
 ];
+
+const VOCABULARY = {
+  approve: { positive: "approve", conditional: "approve with changes", negative: "send back" },
+  clear: { positive: "clear", conditional: "clear with fixes", negative: "blocked" },
+};
 
 const REVIEWERS = [
-  { key: "qa", label: "QA", heading: /^#+\s*QA review/i },
-  { key: "security", label: "Security", heading: /^#+\s*Security review/i },
-  { key: "product", label: "Product", heading: /^#+\s*Product review/i },
-  { key: "ux", label: "UX lead", heading: /^#+\s*UX review\s*\(lead\)/i },
+  { key: "qa", label: "QA", heading: /^##\s+QA review(\s+re-review)?(\s*\(.*\))?\s*$/i, words: VOCABULARY.approve },
+  { key: "security", label: "Security", heading: /^##\s+Security review(\s+re-review)?(\s*\(.*\))?\s*$/i, words: VOCABULARY.clear },
+  { key: "product", label: "Product", heading: /^##\s+Product review(\s+re-review)?(\s*\(.*\))?\s*$/i, words: VOCABULARY.approve },
+  { key: "ux", label: "UX lead", heading: /^##\s+UX review\s*\(lead\)(\s+re-review)?(\s*\(.*\))?\s*$/i, words: VOCABULARY.approve },
 ];
-
-const MERGE_OF_MAIN = /^Merge (branch|remote-tracking branch|pull request)/i;
 
 export function isIntegrationPath(path) {
   return INTEGRATION_PATHS.some((pattern) => pattern.test(path));
@@ -48,48 +55,68 @@ export function touchesUserInterface(paths) {
   return paths.some((path) => path.startsWith("src/app/") || path.endsWith(".css"));
 }
 
-function firstLine(body) {
-  return body.split("\n").find((line) => line.trim().length > 0) ?? "";
+function lines(body) {
+  return body.split("\n").map((line) => line.trim());
 }
 
 export function parseVerdict(body) {
-  const reviewer = REVIEWERS.find((r) => r.heading.test(firstLine(body)));
+  const [heading, ...rest] = lines(body).filter((line) => line.length > 0);
+  const reviewer = REVIEWERS.find((r) => heading && r.heading.test(heading));
   if (!reviewer) return null;
-  const match = body.match(/verdict:?\**\s*([^\n]*)/i);
-  const text = (match ? match[1] : "").replace(/\*/g, "").toLowerCase();
+  const first = (rest[0] ?? "").replace(/\*/g, "").trim().toLowerCase();
+  const match = first.match(/^verdict:\s*(.*)$/);
+  const text = match ? match[1] : "";
+  const word = [reviewer.words.conditional, reviewer.words.negative, reviewer.words.positive].find((w) => text === w || text.startsWith(`${w} `) || text.startsWith(`${w}.`) || text.startsWith(`${w}(`) || text.startsWith(`${w},`));
   let outcome = "unknown";
-  if (/(send back|not ready|blocked|rethink|reject)/.test(text)) outcome = "negative";
-  else if (/(with changes|with fixes|ready with|clear with|approve with)/.test(text)) outcome = "conditional";
-  else if (/^(approve|approved|clear|ready|ship)/.test(text.trim())) outcome = "positive";
-  return { reviewer: reviewer.key, label: reviewer.label, outcome, text: text.trim() };
+  if (word === reviewer.words.positive) outcome = "positive";
+  else if (word === reviewer.words.conditional) outcome = "conditional";
+  else if (word === reviewer.words.negative) outcome = "negative";
+  return { reviewer: reviewer.key, label: reviewer.label, outcome, text: text.replace(/[^\x20-\x7e]/g, "").slice(0, 80) };
 }
 
-function checkName(entry) {
-  return entry.name ?? entry.context ?? "";
+export function isReply(body) {
+  if (parseVerdict(body)) return false;
+  return lines(body).some((line) => {
+    const plain = line.replace(/^[-*\d.)\s]+/, "").replace(/\*/g, "");
+    return /^(applied|declined)\b/i.test(plain) || /:\s*(applied|declined)\b/i.test(plain);
+  });
 }
 
-function checkGreen(entry) {
-  return (entry.conclusion ?? entry.state ?? "").toUpperCase() === "SUCCESS";
-}
-
-function reasonsForChecks(rollup) {
-  const byName = new Map(rollup.map((entry) => [checkName(entry), entry]));
+function reasonsForChecks(checkRuns) {
+  const latest = new Map();
+  for (const run of checkRuns) {
+    if (run.appSlug !== "github-actions") continue;
+    const seen = latest.get(run.name);
+    if (!seen || run.id > seen.id) latest.set(run.name, run);
+  }
   const reasons = [];
   for (const name of REQUIRED_CHECKS) {
-    const entry = byName.get(name);
-    if (!entry) reasons.push(`Required check "${name}" has not reported on the head.`);
-    else if (!checkGreen(entry)) reasons.push(`Required check "${name}" is not green (${(entry.conclusion ?? entry.state ?? entry.status ?? "pending").toLowerCase()}).`);
+    const run = latest.get(name);
+    if (!run) reasons.push(`Required check "${name}" has not reported on the head.`);
+    else if (run.status !== "completed" || run.conclusion !== "success") reasons.push(`Required check "${name}" is not green (${run.status === "completed" ? run.conclusion : run.status}).`);
   }
   return reasons;
 }
 
+function effectiveDates(commits) {
+  let newest = Number.NEGATIVE_INFINITY;
+  return commits.map((commit) => {
+    newest = Math.max(newest, Date.parse(commit.committedAt));
+    return { commit, at: newest };
+  });
+}
+
 function reasonsForVerdicts(input, paths) {
   const required = REVIEWERS.filter((r) => r.key !== "ux" || touchesUserInterface(paths));
-  const comments = [...input.comments].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
-  const headCommit = input.commits[input.commits.length - 1];
+  const trusted = input.comments
+    .filter((c) => c.author === input.reviewerLogin && c.authorType !== "Bot")
+    .map((c) => ({ ...c, time: Date.parse(c.updatedAt) }))
+    .sort((a, b) => a.time - b.time);
+  const code = effectiveDates(input.commits).filter(({ commit }) => !(commit.parents.length === 2 && input.mainAncestors.has(commit.parents[1])));
+  const lastCodeAt = code.reduce((newest, { at }) => Math.max(newest, at), Number.NEGATIVE_INFINITY);
   const reasons = [];
   for (const reviewer of required) {
-    const verdicts = comments.map((c) => ({ comment: c, verdict: parseVerdict(c.body) })).filter((x) => x.verdict && x.verdict.reviewer === reviewer.key);
+    const verdicts = trusted.map((comment) => ({ comment, verdict: parseVerdict(comment.body) })).filter((x) => x.verdict && x.verdict.reviewer === reviewer.key);
     const latest = verdicts[verdicts.length - 1];
     if (!latest) {
       reasons.push(`No ${reviewer.label} review verdict on the pull request.`);
@@ -100,30 +127,31 @@ function reasonsForVerdicts(input, paths) {
       reasons.push(`The latest ${reviewer.label} verdict is not positive ("${verdict.text || "no verdict line"}").`);
       continue;
     }
+    let standsAt = comment.time;
     if (verdict.outcome === "conditional") {
-      const answered = comments.some((c) => Date.parse(c.createdAt) > Date.parse(comment.createdAt) && !parseVerdict(c.body) && /\b(applied|declined)\b/i.test(c.body));
-      if (!answered) {
+      const reply = trusted.find((c) => c.time > comment.time && isReply(c.body));
+      if (!reply) {
         reasons.push(`The latest ${reviewer.label} verdict asks for changes ("${verdict.text}") and no Applied/Declined reply follows it.`);
         continue;
       }
+      standsAt = reply.time;
     }
-    const later = input.commits.filter((c) => Date.parse(c.committedDate) > Date.parse(comment.createdAt));
-    const fromDiff = /from the diff/i.test(comment.body);
-    const onlyMerges = later.every((c) => MERGE_OF_MAIN.test(c.messageHeadline));
-    if (headCommit && later.length > 0 && !fromDiff && !onlyMerges) {
-      reasons.push(`The ${reviewer.label} verdict is older than the head: ${later.length} commit(s) landed after it.`);
+    if (lastCodeAt > standsAt) {
+      reasons.push(`The ${reviewer.label} verdict is older than the head: code was pushed after ${verdict.outcome === "conditional" ? "the Applied/Declined reply" : "it"}.`);
     }
   }
   return reasons;
 }
 
 export function evaluate(input) {
-  const paths = input.files.map((f) => f.path);
+  const paths = input.files.flatMap((f) => [f.filename, f.previousFilename].filter((p) => typeof p === "string"));
   const reasons = [];
-  reasons.push(...reasonsForChecks(input.statusCheckRollup));
-  if (input.behindBy > 0) reasons.push(`The branch is ${input.behindBy} commit(s) behind main. Merge origin/main into it.`);
+  reasons.push(...reasonsForChecks(input.checkRuns));
+  if (!Number.isInteger(input.behindBy)) reasons.push("Could not tell whether the branch is behind main.");
+  else if (input.behindBy > 0) reasons.push(`The branch is ${input.behindBy} commit(s) behind main. Merge origin/main into it.`);
+  if (input.files.length !== input.changedFiles) reasons.push(`Only ${input.files.length} of ${input.changedFiles} changed files could be read, so integration paths cannot be ruled out.`);
   reasons.push(...reasonsForVerdicts(input, paths));
-  const owned = paths.filter(isIntegrationPath);
+  const owned = [...new Set(paths.filter(isIntegrationPath))];
   if (owned.length > 0) reasons.push(`The pull request touches integration-owned paths: ${owned.join(", ")}. The architect merges it.`);
   return { ok: reasons.length === 0, reasons };
 }
