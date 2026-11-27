@@ -144,77 +144,13 @@ flowchart LR
 
 ## State charts
 
-### Inbox entry
+Every state chart is generated from the transition tables the services use, in `src/domain/state/*.machine.ts`, and written to [STATECHARTS.md](STATECHARTS.md) by `npm run docs:statecharts`. CI fails when that file is stale. Services get the next state only from `transition`, which throws `InvalidTransition` for an event the state does not allow.
 
-```mermaid
-stateDiagram-v2
-  [*] --> Pending: import / assistant proposal
-  Pending --> Pending: Add or Merge without a choice<br/>(NeedsDecision, nothing written)
-  Pending --> Approved: Add<br/>[every import difference chosen]
-  Pending --> Merged: Merge into item<br/>[every field difference has keep]
-  Pending --> Discarded: Discard
-  Approved --> [*]
-  Merged --> [*]
-  Discarded --> [*]
-
-  note right of Pending
-    Claimed with one conditional UPDATE
-    WHERE state = 'pending'.
-    The second of two concurrent decisions
-    finds nothing to claim and fails.
-  end note
-```
-
-"Add all without conflicts" applies Add only to entries with no match, no differences and no problems.
-
-### Item (as seen by one member)
-
-```mermaid
-stateDiagram-v2
-  direction LR
-  [*] --> Visible: visibility = everyone,<br/>or creator,<br/>or listed in specific
-  [*] --> Busy: hidden and showAsBusy
-  [*] --> Absent: hidden, not busy
-  Visible --> Busy: creator hides it, shows as busy
-  Visible --> Absent: creator hides it
-  Busy --> Visible: creator shares it
-  Absent --> Visible: creator shares it
-```
-
-Only the creator can move an item between these states. That includes the owner, who cannot see or edit an item someone else hid from them.
-
-### Google Calendar mirror (per member, per trip)
-
-```mermaid
-stateDiagram-v2
-  [*] --> Off
-  Off --> Connecting: Mirror to Google Calendar
-  Connecting --> Off: consent denied or scope missing
-  Connecting --> InSync: tokens stored, calendar created,<br/>first sync
-  InSync --> Syncing: trip changed (after response)<br/>or Sync now
-  Syncing --> InSync: all ops applied<br/>lastError cleared
-  Syncing --> Failed: Google error<br/>lastError recorded, applied ops kept
-  Failed --> Syncing: next change or Sync now<br/>(resumes from the event map, no duplicates)
-  InSync --> Off: Stop mirroring
-  Syncing --> TornDown: member left the trip<br/>(desired set is empty)
-  TornDown --> [*]: all events deleted, mirror disabled
-```
-
-Sync is a diff. `buildMirrorEvents(view)` gives the events the calendar should hold, and `planMirrorSync` compares them with `mirror_events`, the event map of what was last pushed and its hash. The result is the minimal set of creates, updates and deletes. If someone deletes an event in Google, it is recreated on the next change: Google is a copy, the app is the source.
-
-### Assistant connection
-
-```mermaid
-stateDiagram-v2
-  [*] --> Active: Make a link<br/>(token shown once, stored hashed)
-  Active --> Active: tool call<br/>(lastUsedAt updated)
-  Active --> Revoked: Disconnect
-  Revoked --> [*]
-  state Active {
-    [*] --> Propose: "Can suggest items" (editors)
-    [*] --> Read: "Read only" (any member)
-  }
-```
+- Inbox entry: claimed with one conditional `UPDATE ... WHERE state = 'pending'`, so the second of two concurrent decisions finds nothing to claim and fails. "Add all without conflicts" applies Add only to entries with no match, no differences and no problems.
+- Item as seen by one member: only the creator can move an item between these states. That includes the owner, who cannot see or edit an item someone else hid from them.
+- Google Calendar mirror: the state is derived from the row (`enabled`, `lastError`, `lastSyncedAt`). Sync is a diff. `buildMirrorEvents(view)` gives the events the calendar should hold, and `planMirrorSync` compares them with `mirror_events`, the event map of what was last pushed and its hash. The result is the minimal set of creates, updates and deletes. If someone deletes an event in Google, it is recreated on the next change: Google is a copy, the app is the source.
+- Assistant connection: revoking works only from Active, and a revoked token never resolves.
+- Invite and view link: tables only until WP-09 and WP-16 wire them. The session machine arrives with WP-01.
 
 ## Sequences
 

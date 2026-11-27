@@ -5,6 +5,18 @@ import type { ServiceContext } from "./context";
 import { requireAggregate } from "./trip-service";
 import { buildMirrorEvents, planMirrorSync } from "@/domain/mirror/calendar-mirror";
 import { projectTrip } from "@/domain/visibility/project";
+import { machine as mirrorMachine, type CalendarMirrorState } from "@/domain/state/calendar-mirror.machine";
+import { canTransition, transition } from "@/domain/state/machine";
+
+export function mirrorState(row: { enabled: boolean; lastError: string | null; lastSyncedAt: Date | null }): CalendarMirrorState {
+  if (!row.enabled) return "Off";
+  if (row.lastError) return "Failed";
+  return row.lastSyncedAt ? "InSync" : "Connecting";
+}
+
+function isActive(state: CalendarMirrorState): boolean {
+  return state !== "Off" && state !== "TornDown";
+}
 
 export interface SyncResult {
   created: number;
@@ -16,18 +28,26 @@ export interface SyncResult {
 export async function enableMirror(ctx: ServiceContext, tripId: string, userId: string, opts: { includeSensitive?: boolean } = {}) {
   const agg = await requireAggregate(ctx.db, tripId);
   if (!agg.memberships.some((m) => m.userId === userId)) throw new Error("Only trip members can mirror a trip.");
+  const [existing] = await ctx.db.select().from(t.calendarMirrors).where(and(eq(t.calendarMirrors.tripId, tripId), eq(t.calendarMirrors.userId, userId)));
+  const from = existing ? mirrorState(existing) : "Off";
+  const enabled = isActive(from === "Off" ? transition(mirrorMachine, from, "enable") : from);
   await ctx.db
     .insert(t.calendarMirrors)
-    .values({ id: ctx.newId(), tripId, userId, includeSensitive: opts.includeSensitive ?? false })
+    .values({ id: ctx.newId(), tripId, userId, includeSensitive: opts.includeSensitive ?? false, enabled })
     .onConflictDoUpdate({
       target: [t.calendarMirrors.tripId, t.calendarMirrors.userId],
-      set: { enabled: true, includeSensitive: opts.includeSensitive ?? false },
+      set: { enabled, includeSensitive: opts.includeSensitive ?? false },
     });
   return syncMirror(ctx, tripId, userId);
 }
 
 export async function disableMirror(ctx: ServiceContext, tripId: string, userId: string) {
-  await ctx.db.update(t.calendarMirrors).set({ enabled: false }).where(and(eq(t.calendarMirrors.tripId, tripId), eq(t.calendarMirrors.userId, userId)));
+  const [mirror] = await ctx.db.select().from(t.calendarMirrors).where(and(eq(t.calendarMirrors.tripId, tripId), eq(t.calendarMirrors.userId, userId)));
+  if (!mirror) return;
+  const from = mirrorState(mirror);
+  if (from === "Off") return;
+  const next = transition(mirrorMachine, from, "disable");
+  await ctx.db.update(t.calendarMirrors).set({ enabled: isActive(next) }).where(eq(t.calendarMirrors.id, mirror.id));
 }
 
 export type MirrorOutcome =
@@ -42,7 +62,8 @@ function errorText(e: unknown): string {
 
 export async function syncMirror(ctx: ServiceContext, tripId: string, userId: string, api?: GoogleCalendarApi): Promise<SyncResult> {
   const [mirror] = await ctx.db.select().from(t.calendarMirrors).where(and(eq(t.calendarMirrors.tripId, tripId), eq(t.calendarMirrors.userId, userId)));
-  if (!mirror?.enabled) throw new MirrorUnavailable("Calendar mirroring is off for this trip.");
+  if (!mirror || !canTransition(mirrorMachine, mirrorState(mirror), "sync")) throw new MirrorUnavailable("Calendar mirroring is off for this trip.");
+  const syncing = transition(mirrorMachine, mirrorState(mirror), "sync");
   try {
     const google = api ?? (await ctx.googleFor?.(userId)) ?? null;
     if (!google) throw new MirrorUnavailable("Connect Google Calendar first.");
@@ -79,12 +100,14 @@ export async function syncMirror(ctx: ServiceContext, tripId: string, userId: st
         result.deleted++;
       }
     }
+    const settled = transition(mirrorMachine, syncing, stillMember ? "synced" : "memberLeft");
     await ctx.db
       .update(t.calendarMirrors)
-      .set({ lastSyncedAt: ctx.now(), lastError: null, enabled: stillMember })
+      .set({ lastSyncedAt: ctx.now(), lastError: null, enabled: isActive(settled) })
       .where(eq(t.calendarMirrors.id, mirror.id));
     return result;
   } catch (e) {
+    transition(mirrorMachine, syncing, "failed");
     await ctx.db.update(t.calendarMirrors).set({ lastError: errorText(e) }).where(eq(t.calendarMirrors.id, mirror.id));
     throw e;
   }
