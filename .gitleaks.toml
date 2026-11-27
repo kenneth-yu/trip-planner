@@ -1,0 +1,4 @@
+title = "trip planner gitleaks config"
+
+[extend]
+useDefault = true

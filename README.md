@@ -15,6 +15,7 @@ Fill in `.env.local`:
 |---|---|
 | `SESSION_SECRET` | `openssl rand -hex 32` |
 | `TOKEN_ENCRYPTION_KEY` | `openssl rand -base64 32` |
+| `DATA_ENCRYPTION_KEY` | `openssl rand -base64 32`. Encrypts booking details, activity copies and imports at rest. The app will not start without it, and losing it makes that data unreadable |
 | `DEV_SIGN_IN` | `1` to show "Continue as Kenneth / Jacob" on the home page (never in production) |
 | `DATABASE_URL` | Postgres URL. Leave empty to use an embedded database in `.data/pglite` |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Only for the Google Calendar mirror |

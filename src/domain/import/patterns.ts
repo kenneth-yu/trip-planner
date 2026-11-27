@@ -86,7 +86,7 @@ export function extractDeadlines(
   const deadlines: ParsedDeadline[] = [];
   const unparsed: string[] = [];
   const list = sentences(text);
-  list.forEach((sentence, i) => {
+  list.forEach((sentence) => {
     for (const p of DEADLINE_PATTERNS) {
       const m = p.re.exec(sentence);
       if (!m) continue;
@@ -100,9 +100,7 @@ export function extractDeadlines(
       const clock = readClock(m[1]);
       let local = `${date}T${clock ?? "00:00"}`;
       if (!clock && p.whenNoTime === "end") local = DateTime.fromISO(date).plus({ days: 1 }).toFormat("yyyy-MM-dd'T'00:00");
-      const next = list[i + 1] ?? "";
-      const after = /^after that[,:]?\s*(.+?)\.?$/i.exec(next);
-      const consequence = after ? after[1].charAt(0).toUpperCase() + after[1].slice(1) : DEFAULT_CONSEQUENCE[p.kind];
+      const consequence = DEFAULT_CONSEQUENCE[p.kind];
       deadlines.push({ kind: p.kind, local, zone, consequence, sentence });
       break;
     }

@@ -83,12 +83,45 @@ describe("projectTrip: hidden items", () => {
   it("a busy item shows only as Busy, with no title, place, id or details", () => {
     const agg = tripWithViewer();
     agg.items.push(surprise({ showAsBusy: true }));
-    for (const r of [owner, viewer, link]) {
+    expect(projectTrip(agg, link).busy).toEqual([]);
+    for (const r of [owner, viewer]) {
       const view = projectTrip(agg, r);
       expect(view.busy).toHaveLength(1);
       expect(Object.keys(view.busy[0]).sort()).toEqual(["end", "key", "start"]);
       expect(json(view)).not.toMatch(/Sukiyabashi|Birthday|SECRET_DINNER|item-surprise/);
     }
+  });
+
+  it("identical hidden busy items collapse to one block, so their number stays private", () => {
+    const agg = tripWithViewer();
+    agg.items.push(surprise({ id: "item-a", showAsBusy: true }), surprise({ id: "item-b", showAsBusy: true }));
+    for (const r of [owner, viewer]) expect(projectTrip(agg, r).busy).toHaveLength(1);
+  });
+
+  it("overlapping, nested and touching hidden intervals become one block, so their number stays private", () => {
+    const at = (h: number) => fromLocal(`2026-12-03T${String(h).padStart(2, "0")}:00`, "America/New_York");
+    const hidden = (id: string, from: number, to: number) => surprise({ id, showAsBusy: true, start: at(from), end: at(to) });
+    const one = tripWithViewer();
+    one.items.push(hidden("item-x", 10, 15));
+    const many = tripWithViewer();
+    many.items.push(hidden("item-a", 10, 12), hidden("item-b", 11, 13), hidden("item-c", 11, 12), hidden("item-d", 13, 15));
+    const apart = tripWithViewer();
+    apart.items.push(hidden("item-e", 10, 11), hidden("item-f", 12, 13));
+    expect(projectTrip(many, owner).busy.map((b) => [b.start.at, b.end.at])).toEqual(projectTrip(one, owner).busy.map((b) => [b.start.at, b.end.at]));
+    expect(projectTrip(apart, owner).busy).toHaveLength(2);
+  });
+
+  it("a view link visitor gets no busy blocks at all", () => {
+    const agg = tripWithViewer();
+    agg.items.push(surprise({ showAsBusy: true }));
+    expect(projectTrip(agg, link).busy).toEqual([]);
+  });
+
+  it("a busy block is placed in the zone the viewer is in, not the hidden item's zone", () => {
+    const agg = tripWithViewer();
+    agg.items.push(surprise({ showAsBusy: true, start: fromLocal("2026-12-03T19:00", "Asia/Seoul"), end: fromLocal("2026-12-03T21:00", "Asia/Seoul") }));
+    const view = projectTrip(agg, owner);
+    expect(view.busy.map((b) => [b.start.zone, b.end.zone]).flat()).not.toContain("Asia/Seoul");
   });
 
   it("specific people: chosen members see it, others do not", () => {
@@ -136,6 +169,16 @@ describe("projectTrip: deadlines switches", () => {
     agg.shareLink = { enabled: true, showsDeadlines: true };
     expect(hasDeadlines(agg, link)).toBe(true);
     expect(hasDeadlines(agg, viewer)).toBe(false);
+  });
+
+  it("a link visitor who sees deadlines never receives the id of the person who confirmed one", () => {
+    const agg = tripWithViewer();
+    agg.shareLink = { enabled: true, showsDeadlines: true };
+    const confirmed = present(agg.items.flatMap((i) => i.deadlines).find((d) => d.confirmedBy === USERS.kenny.id));
+    const out = json(projectTrip(agg, link));
+    expect(out).not.toContain(USERS.kenny.id);
+    const view = projectTrip(agg, link);
+    expect(present(view.items.flatMap((i) => i.deadlines).find((d) => d.id === confirmed.id)).confirmed).toBe(true);
   });
 });
 
