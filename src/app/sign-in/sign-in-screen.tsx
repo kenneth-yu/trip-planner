@@ -11,6 +11,7 @@ const idle: EmailLinkState = { status: "idle" };
 
 const PROBLEM_COPY = {
   expired: "That link has expired or was already used. Request a new one.",
+  tooMany: "Too many sign in attempts. Wait a few minutes and try again.",
   failed: "We could not sign you in. Try again.",
 } as const;
 
@@ -45,7 +46,7 @@ export function SignInScreen({ providers, next, problem, demoAccounts }: SignInM
     );
   }
 
-  const message = state.status === "failed" ? "We could not send that. Try again in a minute." : problem ? PROBLEM_COPY[problem] : null;
+  const message = state.status === "failed" ? "We could not send that. Try again in a minute." : state.status === "limited" ? PROBLEM_COPY.tooMany : problem ? PROBLEM_COPY[problem] : null;
 
   return (
     <main className={pageStyles.page}>

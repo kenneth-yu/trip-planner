@@ -23,11 +23,8 @@ export const RATE_RULES: Record<RateRule["name"], RateRule> = {
   placeHint: { name: "placeHint", limit: 60, windowMs: MINUTE },
 };
 
-const SIGN_IN_FORM_PAGES = ["/", "/sign-in"];
-
 const REQUEST_RULES: ReadonlyArray<{ rule: RateRule["name"]; test: (method: string, path: string) => boolean }> = [
   { rule: "signIn", test: (_m, p) => ["/api/auth/signin", "/api/auth/callback", "/api/auth/email"].some((s) => p === s || p.startsWith(`${s}/`)) },
-  { rule: "signIn", test: (m, p) => m === "POST" && SIGN_IN_FORM_PAGES.includes(p) },
   { rule: "inviteAccept", test: (_m, p) => p.startsWith("/invite/") },
   { rule: "viewLink", test: (_m, p) => p.startsWith("/v/") },
   { rule: "feed", test: (_m, p) => p.startsWith("/api/feed/") },

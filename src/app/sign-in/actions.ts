@@ -5,8 +5,9 @@ import { z } from "zod";
 import { safeNextPath } from "@/domain/auth/next-path";
 import { signIn } from "@/server/auth/auth";
 import { enabledProviders } from "@/server/auth/providers";
+import { spendSignInAttempt } from "@/server/security/sign-in-limit";
 
-export type EmailLinkState = { status: "idle" } | { status: "sent"; email: string } | { status: "failed" };
+export type EmailLinkState = { status: "idle" } | { status: "sent"; email: string } | { status: "failed" } | { status: "limited" };
 
 const providerForm = z.object({ provider: z.enum(["google", "apple"]), next: z.string().optional() });
 const emailForm = z.object({ email: z.email(), next: z.string().optional() });
@@ -14,12 +15,18 @@ const emailForm = z.object({ email: z.email(), next: z.string().optional() });
 export async function continueWithProvider(formData: FormData): Promise<void> {
   const parsed = providerForm.safeParse({ provider: formData.get("provider"), next: formData.get("next") ?? undefined });
   if (!parsed.success || !enabledProviders(process.env).includes(parsed.data.provider)) redirect("/sign-in");
+  const attempt = await spendSignInAttempt();
+  if (attempt === "limited") redirect("/sign-in?error=TooMany");
+  if (attempt === "unavailable") redirect("/sign-in?error=Unavailable");
   await signIn(parsed.data.provider, { redirectTo: safeNextPath(parsed.data.next) });
 }
 
 export async function sendEmailLink(_previous: EmailLinkState, formData: FormData): Promise<EmailLinkState> {
   const parsed = emailForm.safeParse({ email: formData.get("email"), next: formData.get("next") ?? undefined });
   if (!parsed.success || !enabledProviders(process.env).includes("email")) return { status: "failed" };
+  const attempt = await spendSignInAttempt();
+  if (attempt === "limited") return { status: "limited" };
+  if (attempt === "unavailable") return { status: "failed" };
   try {
     const result = await signIn("email", { email: parsed.data.email, redirect: false, redirectTo: safeNextPath(parsed.data.next) });
     if (!new URL(result, "http://localhost").pathname.endsWith("/verify-request")) return { status: "failed" };
