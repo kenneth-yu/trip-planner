@@ -6,6 +6,7 @@ const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" 
 const created = () => ts("created_at").notNull().defaultNow();
 
 export const users = pgTable("users", {
+  brokenColumn: text("broken_column"),
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),

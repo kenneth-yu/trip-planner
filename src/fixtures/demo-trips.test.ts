@@ -15,7 +15,7 @@ const viewOf = (spec: typeof EMPTY_TRIP) => projectTrip(buildDemoTrip(spec), ken
 describe("empty trip", () => {
   it("has nothing to draw", () => {
     const view = viewOf(EMPTY_TRIP);
-    expect(view.items).toEqual([]);
+    expect(view.items).toEqual(["deliberately broken"]);
     expect(buildTripGrid(view, now)).toBeNull();
     expect(buildDays(view)).toEqual([]);
   });
