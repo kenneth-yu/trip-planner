@@ -13,7 +13,7 @@ import { applyDifference, mergeRecords, sharedDifferences, type Choices } from "
 import type { CalendarEvent } from "@/domain/import/calendar-event";
 import type { Difference, ImportSource, ProposedItem } from "@/domain/import/proposal";
 import type { Finding } from "@/domain/checks/checks";
-import type { Requester } from "@/domain/types";
+import type { ItemPrivate, Requester } from "@/domain/types";
 import { InvalidTransition, transition } from "@/domain/state/machine";
 import { machine as inboxEntry, type InboxEntryEvent, type InboxEntryState } from "@/domain/state/inbox-entry.machine";
 
@@ -100,6 +100,7 @@ export interface InboxEntry {
   differences: Difference[];
   unparsed: string[];
   clean: boolean;
+  namesRemovedTraveler: boolean;
   createdAt: string;
 }
 
@@ -112,6 +113,7 @@ export async function listInbox(ctx: ServiceContext, tripId: string, requester: 
     .innerJoin(t.importBatches, eq(t.importBatches.id, t.importedItems.batchId))
     .where(and(eq(t.importedItems.tripId, tripId), eq(t.importedItems.state, "pending")))
     .orderBy(asc(t.importedItems.createdAt));
+  const travelerIds = new Set(agg.travelers.map((x) => x.id));
   return rows.map(({ e, b }) => {
     const matched = e.matchItemId ? agg.items.find((i) => i.id === e.matchItemId) : undefined;
     const visibleMatch = matched && e.matchStrength && canSeeItem(matched, requester) ? { item: matched, strength: e.matchStrength } : undefined;
@@ -127,7 +129,8 @@ export async function listInbox(ctx: ServiceContext, tripId: string, requester: 
       unparsed: opened.unparsed,
       createdAt: e.createdAt.toISOString(),
     };
-    return { ...entry, clean: isClean(entry) };
+    const namesRemovedTraveler = opened.proposed.travelerIds.some((id) => !travelerIds.has(id));
+    return { ...entry, namesRemovedTraveler, clean: isClean(entry) && !namesRemovedTraveler };
   });
 }
 
@@ -176,23 +179,38 @@ export interface Decision {
   edits?: Partial<ProposedItem>;
 }
 
-export async function approveEntry(ctx: ServiceContext, tripId: string, entryId: string, requester: Requester, decision: Decision = {}) {
+export interface Saved {
+  itemId: string;
+  withoutRemovedTraveler: boolean;
+  proposed: ProposedItem;
+}
+
+function onlyKnownTravelers<T extends { travelerIds: string[]; private: ItemPrivate[] }>(record: T, known: Set<string>): { record: T; dropped: boolean } {
+  const travelerIds = record.travelerIds.filter((id) => known.has(id));
+  const owned = (p: ItemPrivate) => p.travelerId === null || known.has(p.travelerId);
+  const priv = record.private.map((p) => (owned(p) ? p : { ...p, travelerId: null, seat: undefined }));
+  const dropped = travelerIds.length !== record.travelerIds.length || priv.some((p, i) => p !== record.private[i]);
+  return { record: { ...record, travelerIds, private: priv }, dropped };
+}
+
+export async function approveEntry(ctx: ServiceContext, tripId: string, entryId: string, requester: Requester, decision: Decision = {}): Promise<Saved> {
   if (requester.kind !== "member") throw new NotFound();
-  const itemId = await ctx.db.transaction(async (tx) => {
+  const saved = await ctx.db.transaction(async (tx) => {
     const agg = await requireAggregate(tx, tripId);
     assertCanEditTrip(agg, requester);
     const row = await loadEntry(tx, tripId, entryId, "add");
     const resolved = resolveImportDifferences(row.proposed, row.differences, decision.choices ?? {});
-    const proposal = decision.edits ? { ...resolved, ...decision.edits, status: "confirmed" as const, problems: [] } : resolved;
+    const edited = decision.edits ? { ...resolved, ...decision.edits, status: "confirmed" as const, problems: [] } : resolved;
+    const { record: proposal, dropped } = onlyKnownTravelers(edited, new Set(agg.travelers.map((x) => x.id)));
     const item = proposalToItem(ctx, tripId, requester.userId, proposal);
     await claimEntry(tx, entryId, "add", { resultItemId: item.id, decidedBy: requester.userId, decidedAt: ctx.now() });
     await saveItem(tx, item);
     await touchTrip(tx, tripId);
     await insertActivity(tx, { tripId, actorId: requester.userId, action: "created", itemId: item.id, via: `import:${row.batchId}`, after: item });
-    return item.id;
+    return { itemId: item.id, withoutRemovedTraveler: dropped, proposed: row.proposed };
   });
   await ctx.onTripChanged(tripId);
-  return itemId;
+  return saved;
 }
 
 export async function mergeEntry(
@@ -201,16 +219,16 @@ export async function mergeEntry(
   entryId: string,
   requester: Requester,
   decision: Decision & { intoItemId?: string; keep?: Choices } = {},
-) {
+): Promise<Saved> {
   if (requester.kind !== "member") throw new NotFound();
-  const itemId = await ctx.db.transaction(async (tx) => {
+  const saved = await ctx.db.transaction(async (tx) => {
     const agg = await requireAggregate(tx, tripId);
     assertCanEditTrip(agg, requester);
     const row = await loadEntry(tx, tripId, entryId, "merge");
     const target = agg.items.find((i) => i.id === (decision.intoItemId ?? row.matchItemId));
     if (!target) throw new NotFound("There is nothing to merge this into.");
     assertCanEditItem(agg, requester, target);
-    const incoming = resolveImportDifferences(row.proposed, row.differences, decision.choices ?? {});
+    const { record: incoming, dropped } = onlyKnownTravelers(resolveImportDifferences(row.proposed, row.differences, decision.choices ?? {}), new Set(agg.travelers.map((x) => x.id)));
     const diffs = sharedDifferences(target, incoming);
     for (const d of diffs) {
       if (decision.keep?.[d.field] === undefined) throw new NeedsDecision(`Choose ${d.field}: ${d.values.join(" (current) or ")} (imported).`);
@@ -231,10 +249,10 @@ export async function mergeEntry(
     await saveItem(tx, after);
     await touchTrip(tx, tripId);
     await insertActivity(tx, { tripId, actorId: requester.userId, action: "merged", itemId: target.id, via: `import:${row.batchId}`, before: target, after });
-    return target.id;
+    return { itemId: target.id, withoutRemovedTraveler: dropped, proposed: row.proposed };
   });
   await ctx.onTripChanged(tripId);
-  return itemId;
+  return saved;
 }
 
 export async function discardEntry(ctx: ServiceContext, tripId: string, entryId: string, requester: Requester) {
@@ -245,18 +263,48 @@ export async function discardEntry(ctx: ServiceContext, tripId: string, entryId:
   await claimEntry(ctx.db, entryId, "discard", { decidedBy: requester.userId, decidedAt: ctx.now() });
 }
 
-export async function approveAllClean(ctx: ServiceContext, tripId: string, requester: Requester): Promise<number> {
+export interface AddAllResult {
+  added: number;
+  alreadyDecided: number;
+  needYou: number;
+}
+
+export async function approveAllClean(ctx: ServiceContext, tripId: string, requester: Requester): Promise<AddAllResult> {
   const clean = (await listInbox(ctx, tripId, requester)).filter((e) => e.clean);
-  let approved = 0;
+  const result: AddAllResult = { added: 0, alreadyDecided: 0, needYou: 0 };
   for (const e of clean) {
     try {
       await approveEntry(ctx, tripId, e.id, requester);
-      approved += 1;
+      result.added += 1;
     } catch (err) {
-      if (!(err instanceof InvalidTransition)) throw err;
+      if (err instanceof InvalidTransition || err instanceof NotFound) result.alreadyDecided += 1;
+      else if (err instanceof NeedsDecision) result.needYou += 1;
+      else throw err;
     }
   }
-  return approved;
+  return result;
+}
+
+export interface DecidedEntry {
+  state: "approved" | "merged" | "discarded";
+  by: string | null;
+  proposed: ProposedItem;
+}
+
+export async function decidedEntry(ctx: ServiceContext, tripId: string, entryId: string, requester: Requester): Promise<DecidedEntry | null> {
+  if (requester.kind !== "member") throw new NotFound();
+  assertCanEditTrip(await requireAggregate(ctx.db, tripId), requester);
+  const [row] = await ctx.db.select().from(t.importedItems).where(and(eq(t.importedItems.id, entryId), eq(t.importedItems.tripId, tripId)));
+  if (!row || row.state === "pending") return null;
+  const [member] = row.decidedBy
+    ? await ctx.db
+        .select({ name: t.users.name })
+        .from(t.memberships)
+        .innerJoin(t.users, eq(t.users.id, t.memberships.userId))
+        .where(and(eq(t.memberships.tripId, tripId), eq(t.memberships.userId, row.decidedBy)))
+    : [];
+  const by = row.decidedBy === requester.userId ? "You" : (member?.name.split(" ")[0] ?? null);
+  return { state: row.state, by, proposed: openImport(row).proposed };
 }
 
 export async function disagreementFindings(ctx: ServiceContext, tripId: string, requester: Requester): Promise<Finding[]> {

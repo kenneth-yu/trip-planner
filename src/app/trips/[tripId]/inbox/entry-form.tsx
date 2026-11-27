@@ -1,14 +1,24 @@
 "use client";
 
-import { useActionState } from "react";
+import { useState, useTransition } from "react";
 import styles from "../../../ui/page.module.css";
-import { decideEntry, type ActionState } from "../actions";
+import { decideEntry } from "../actions";
+import { useResults } from "./result";
 import type { InboxEntry } from "@/server/services/inbox-service";
 
 export function EntryForm({ tripId, entry }: { tripId: string; entry: InboxEntry }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(decideEntry, { message: null, error: false });
+  const { show } = useResults();
+  const [needs, setNeeds] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  function submit(form: FormData) {
+    start(async () => {
+      const result = await decideEntry(form);
+      setNeeds(result.kind === "needs_choice" ? result.message : null);
+      if (result.kind === "done") show(result.outcome);
+    });
+  }
   return (
-    <form action={action}>
+    <form action={submit}>
       <input type="hidden" name="tripId" value={tripId} />
       <input type="hidden" name="entryId" value={entry.id} />
       {entry.differences.map((d) => (
@@ -43,7 +53,7 @@ export function EntryForm({ tripId, entry }: { tripId: string; entry: InboxEntry
           Discard
         </button>
       </div>
-      {state.message && <p className={state.error ? styles.warning : styles.muted}>{state.message}</p>}
+      {needs && <p className={styles.warning}>{needs}</p>}
     </form>
   );
 }

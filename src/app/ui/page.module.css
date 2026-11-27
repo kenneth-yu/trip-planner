@@ -173,3 +173,11 @@
 
 
 }
+
+.resultLine {
+  margin: 0 0 12px;
+}
+
+.resultLine:empty {
+  margin: 0;
+}

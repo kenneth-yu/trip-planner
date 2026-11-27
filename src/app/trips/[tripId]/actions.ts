@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { loadTripPage } from "@/server/web";
-import { approveAllClean, approveEntry, discardEntry, mergeEntry, NeedsDecision } from "@/server/services/inbox-service";
+import { approveAllClean, approveEntry, decidedEntry, discardEntry, mergeEntry, NeedsDecision } from "@/server/services/inbox-service";
+import { addAllText, decidedOutcome, savedWithoutRemovedTraveler, type Outcome } from "./inbox/messages";
 import { createAssistantToken, revokeAssistantToken } from "@/server/services/assistant-service";
 import { disableMirror, syncMirror } from "@/server/services/mirror-service";
 import { appUrl } from "@/server/app-context";
@@ -29,26 +30,36 @@ function choicesFrom(form: FormData, prefix: string): Choices {
 
 const Decide = z.object({ tripId: z.string().uuid(), entryId: z.string().uuid(), action: z.enum(["add", "merge", "discard"]) });
 
-export async function decideEntry(_prev: ActionState, form: FormData): Promise<ActionState> {
+export type DecideResult = { kind: "needs_choice"; message: string } | { kind: "done"; outcome: Outcome | null };
+
+export async function decideEntry(form: FormData): Promise<DecideResult> {
   const { tripId, entryId, action } = Decide.parse(Object.fromEntries(form));
   const { ctx, requester } = await loadTripPage(tripId);
   try {
-    if (action === "add") await approveEntry(ctx, tripId, entryId, requester, { choices: choicesFrom(form, "choice:") });
-    if (action === "merge") await mergeEntry(ctx, tripId, entryId, requester, { choices: choicesFrom(form, "choice:"), keep: choicesFrom(form, "keep:") });
-    if (action === "discard") await discardEntry(ctx, tripId, entryId, requester);
+    const saved =
+      action === "add"
+        ? await approveEntry(ctx, tripId, entryId, requester, { choices: choicesFrom(form, "choice:") })
+        : action === "merge"
+          ? await mergeEntry(ctx, tripId, entryId, requester, { choices: choicesFrom(form, "choice:"), keep: choicesFrom(form, "keep:") })
+          : await discardEntry(ctx, tripId, entryId, requester).then(() => null);
+    revalidatePath(`/trips/${tripId}`, "layout");
+    return { kind: "done", outcome: saved?.withoutRemovedTraveler ? savedWithoutRemovedTraveler(saved.proposed) : null };
   } catch (e) {
-    if (e instanceof NeedsDecision) return { message: e.message, error: true };
-    throw e;
+    if (e instanceof NeedsDecision) return { kind: "needs_choice", message: e.message };
+    if (!(e instanceof InvalidTransition)) throw e;
+    const decided = await decidedEntry(ctx, tripId, entryId, requester);
+    if (!decided) throw e;
+    revalidatePath(`/trips/${tripId}`, "layout");
+    return { kind: "done", outcome: decidedOutcome(action, decided) };
   }
-  revalidatePath(`/trips/${tripId}`, "layout");
-  return { message: null, error: false };
 }
 
-export async function addAllClean(form: FormData) {
+export async function addAllClean(form: FormData): Promise<{ text: string }> {
   const tripId = z.string().uuid().parse(form.get("tripId"));
   const { ctx, requester } = await loadTripPage(tripId);
-  await approveAllClean(ctx, tripId, requester);
+  const result = await approveAllClean(ctx, tripId, requester);
   revalidatePath(`/trips/${tripId}`, "layout");
+  return { text: addAllText(result) };
 }
 
 export interface TokenState {
