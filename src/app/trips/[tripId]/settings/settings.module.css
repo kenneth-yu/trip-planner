@@ -64,7 +64,9 @@
 }
 
 .remove {
+  flex-basis: 100%;
   margin-top: 24px;
+  text-align: left;
 }
 
 .danger {

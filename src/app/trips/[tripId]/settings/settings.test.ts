@@ -170,4 +170,5 @@ describe("the traveler list", () => {
     expect(html).toContain("Add traveler");
     expect(html).not.toContain("Rename");
   });
+
 });

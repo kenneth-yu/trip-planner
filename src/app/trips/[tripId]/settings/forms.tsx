@@ -62,11 +62,16 @@ function useSubmit(run: (form: FormData) => Promise<SettingsResult>, onOk: (resu
 function NameField({ label, hint, defaultValue, error }: { label: string; hint?: string; defaultValue?: string; error: string | null }) {
   const id = useId();
   const noteId = `${id}-note`;
+  const hintId = `${id}-hint`;
   return (
     <div className={styles.field}>
       <label htmlFor={id}>{label}</label>
-      <input id={id} type="text" name="name" defaultValue={defaultValue} autoComplete="off" aria-describedby={hint || error ? noteId : undefined} aria-invalid={error ? true : undefined} />
-      {hint && <p className={styles.hint}>{hint}</p>}
+      <input id={id} type="text" name="name" defaultValue={defaultValue} autoComplete="off" aria-describedby={hint ? `${hintId} ${noteId}` : noteId} aria-invalid={error ? true : undefined} />
+      {hint && (
+        <p id={hintId} className={styles.hint}>
+          {hint}
+        </p>
+      )}
       <p id={noteId} role="alert" className={pageStyles.warning}>
         {error}
       </p>
@@ -160,7 +165,7 @@ function RemoveForm({ tripId, row, onDone, onCancel }: { tripId: string; row: Ro
       )}
       <div className={styles.buttons}>
         <button ref={keep} type="button" onClick={onCancel}>
-          Keep
+          {refusal ? "OK" : "Keep"}
         </button>
         {!refusal && (
           <button type="submit" className={`quiet ${styles.danger}`} disabled={pending}>
@@ -246,7 +251,7 @@ export function TravelerList({ tripId, travelers, linkable }: { tripId: string; 
                       </button>
                       {row.unlinked && linkable.length > 0 && (
                         <button type="button" className="quiet" onClick={() => setOpen({ id: row.id, mode: "link" })}>
-                          This is
+                          Link to an account
                         </button>
                       )}
                       {row.removable && (

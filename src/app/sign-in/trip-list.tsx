@@ -21,7 +21,7 @@ export function TripList({ trips, signOut }: { trips: { id: string; name: string
               <li key={t.id} className={signInStyles.tripRow}>
                 <Link href={`/trips/${t.id}`}>{t.name}</Link>
                 {t.role !== "viewer" && (
-                  <Link href={`/trips/${t.id}/settings`} className={signInStyles.settings}>
+                  <Link href={`/trips/${t.id}/settings`} className={signInStyles.settings} aria-label={`Settings for ${t.name}`}>
                     Settings
                   </Link>
                 )}

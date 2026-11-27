@@ -133,6 +133,7 @@ describe("home page content for a signed in person", () => {
   it.each([["owner", true], ["editor", true], ["viewer", false]] as const)("shows a Settings link to a %s: %s", (role, shown) => {
     const html = renderToStaticMarkup(createElement(TripList, { trips: [{ id: "t1", name: "Japan and Hong Kong", role }], signOut }));
     expect(html.includes('href="/trips/t1/settings"')).toBe(shown);
+    expect(html.includes('aria-label="Settings for Japan and Hong Kong"')).toBe(shown);
     expect(html).toContain('href="/trips/t1"');
   });
 
