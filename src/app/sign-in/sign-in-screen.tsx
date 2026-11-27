@@ -51,6 +51,7 @@ export function SignInScreen({ providers, next, problem, demoAccounts }: SignInM
     <main className={pageStyles.page}>
       <h1 className={pageStyles.title}>Sign in</h1>
       {isInvitePath(next) && <p className={pageStyles.muted}>Use the account your trip invite was sent to.</p>}
+      {next.startsWith("/trips/") && <p className={pageStyles.muted}>Sign in to see this trip.</p>}
       {message && (
         <p role="alert" className={pageStyles.warning}>
           {message}
@@ -75,7 +76,7 @@ export function SignInScreen({ providers, next, problem, demoAccounts }: SignInM
       )}
       {demoAccounts.length > 0 && (
         <section className={pageStyles.section}>
-          <p className={pageStyles.muted}>Demo accounts</p>
+          <p className={pageStyles.muted}>Demo accounts, for testing only</p>
           <ul className={pageStyles.list}>
             {demoAccounts.map((account) => (
               <li key={account.key}>

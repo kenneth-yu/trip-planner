@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { eq } from "drizzle-orm";
 import { getDb, type Db } from "../db/client";
 import * as t from "../db/schema";
-import { createAdapter, generateSessionToken, lookupSession, SESSION_MAX_AGE_SECONDS, type User } from "./adapter";
+import { createAdapter, generateSessionToken, lookupSession, SESSION_MAX_AGE_SECONDS, sessionCookieExpiry, type User } from "./adapter";
 import { sessionCookieName } from "./config";
 import type { Env } from "./providers";
 
@@ -44,7 +44,7 @@ export async function startDevSession(userId: string): Promise<boolean> {
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    expires,
+    expires: sessionCookieExpiry(new Date()),
   });
   return true;
 }

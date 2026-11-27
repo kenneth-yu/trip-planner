@@ -43,6 +43,7 @@ function providersFor(env: Env, sender: EmailSender | null, appOrigin: string): 
 
 export function buildAuthConfig(options: { db: Db; env: Env; sender: EmailSender | null; now?: () => Date }): AuthConfig {
   const { db, env, sender } = options;
+  if (env.NODE_ENV === "production" && !env.APP_URL) throw new Error("APP_URL must be set in production. Set it to the public address of this site.");
   const appOrigin = new URL(env.APP_URL ?? "http://localhost:3000").origin;
   const adapter = createAdapter(db, options.now);
   return {

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import styles from "../ui/page.module.css";
+import signInStyles from "./sign-in.module.css";
 
 export function TripList({ trips, signOut }: { trips: { id: string; name: string }[]; signOut: () => Promise<void> }) {
   return (
@@ -7,9 +8,9 @@ export function TripList({ trips, signOut }: { trips: { id: string; name: string
       {trips.length === 0 ? (
         <>
           <h1 className={styles.title}>No trips yet</h1>
-          <p>
-            <Link href="/trips/new">New trip</Link>
-          </p>
+          <Link href="/trips/new" className={signInStyles.primary}>
+            New trip
+          </Link>
         </>
       ) : (
         <>

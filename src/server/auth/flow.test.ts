@@ -227,6 +227,13 @@ describe("oauth sign in decisions through the Auth.js callback", () => {
   });
 });
 
+describe("production configuration", () => {
+  it("refuses to build without APP_URL, so a link can never point at localhost", async () => {
+    const { db } = await testContext({ withItems: false });
+    expect(() => buildAuthConfig({ db, env: { NODE_ENV: "production" }, sender: null })).toThrow(/APP_URL/);
+  });
+});
+
 describe("redirect callback", () => {
   it("keeps same origin paths and sends everything else home", async () => {
     const { db } = await testContext({ withItems: false });

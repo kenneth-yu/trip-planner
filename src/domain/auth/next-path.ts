@@ -1,5 +1,6 @@
 const PLACEHOLDER_ORIGIN = "https://placeholder.invalid";
 const MAX_LENGTH = 2048;
+const SINGLE_LEADING_SLASH = /^\/(?![/\\])/;
 
 function decodesToUnsafe(value: string): boolean {
   let current = value;
@@ -24,7 +25,9 @@ export function safeNextPath(next: string | null | undefined): string {
   if (decodesToUnsafe(next)) return "/";
   const parsed = new URL(next, PLACEHOLDER_ORIGIN);
   if (parsed.origin !== PLACEHOLDER_ORIGIN) return "/";
-  return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  const normalised = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  if (!SINGLE_LEADING_SLASH.test(normalised) || decodesToUnsafe(normalised)) return "/";
+  return normalised;
 }
 
 export function signInPath(next: string | null | undefined): string {

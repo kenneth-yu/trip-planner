@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import fc from "fast-check";
 import { isInvitePath, safeNextPath, signInPath } from "./next-path";
 
 describe("safeNextPath", () => {
@@ -31,6 +32,17 @@ describe("safeNextPath", () => {
     "%2F%2Fevil.com",
     "/%E0%A4%A",
     `/${"a".repeat(3000)}`,
+    "/.//evil.com",
+    "/%2e//evil.com",
+    "/%2E%2E//evil.com",
+    "/a/..//evil.com",
+    "/a/%2e%2e//evil.com",
+    "/./\\evil.com",
+    "/..//evil.com",
+    "/x/../..//evil.com",
+    "/%09/evil.com",
+    "/./%2f/evil.com",
+    "/a/./..//evil.com",
   ])("rejects %s", (value) => {
     expect(safeNextPath(value)).toBe("/");
   });
@@ -44,5 +56,19 @@ describe("safeNextPath", () => {
   it("recognises invite paths", () => {
     expect(isInvitePath("/invite/accept")).toBe(true);
     expect(isInvitePath("/trips/x")).toBe(false);
+  });
+
+  it("never returns anything that a browser could read as another site, for any generated path", () => {
+    const pieces = ["/", "/", ".", "..", "%2e", "%2E", "%2f", "%5c", "\\", "a", "trips", "?", "#", "=", "%25", "%", "\t", "evil.com", "%0a"];
+    fc.assert(
+      fc.property(fc.array(fc.constantFrom(...pieces), { minLength: 0, maxLength: 12 }), (parts) => {
+        const out = safeNextPath(`/${parts.join("")}`);
+        expect(out.startsWith("/")).toBe(true);
+        expect(out.startsWith("//")).toBe(false);
+        expect(out.includes("\\")).toBe(false);
+        expect(new URL(out, "https://app.example").origin).toBe("https://app.example");
+      }),
+      { numRuns: 5000 },
+    );
   });
 });

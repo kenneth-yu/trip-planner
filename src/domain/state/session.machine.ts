@@ -3,7 +3,6 @@ export const sessionMachine = {
   initial: "SignedOut",
   states: {
     SignedOut: { on: { signIn: "Active" } },
-    Active: { on: { expire: "Expired", signOut: "SignedOut", roll: "Active" } },
-    Expired: { on: { signIn: "Active" } },
+    Active: { on: { roll: "Active", expire: "SignedOut", signOut: "SignedOut" } },
   },
 } as const;

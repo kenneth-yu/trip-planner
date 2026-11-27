@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, lt } from "drizzle-orm";
 import type { Adapter, AdapterUser } from "@auth/core/adapters";
 import type { Db } from "../db/client";
 import * as t from "../db/schema";
@@ -9,6 +9,11 @@ export type User = typeof t.users.$inferSelect;
 
 export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 export const SESSION_UPDATE_AGE_SECONDS = 60 * 60 * 24;
+export const SESSION_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 400;
+
+export function sessionCookieExpiry(now: Date): Date {
+  return new Date(now.getTime() + SESSION_COOKIE_MAX_AGE_SECONDS * 1000);
+}
 
 export function generateSessionToken(): string {
   return randomBytes(32).toString("base64url");
@@ -40,7 +45,11 @@ export async function lookupSession(db: Db, sessionToken: string, now: Date): Pr
     await db.delete(t.authSessions).where(eq(t.authSessions.tokenHash, tokenHash));
     return null;
   }
-  return row;
+  const dueForRoll = row.expires.getTime() - SESSION_MAX_AGE_SECONDS * 1000 + SESSION_UPDATE_AGE_SECONDS * 1000 <= now.getTime();
+  if (!dueForRoll) return row;
+  const expires = new Date(now.getTime() + SESSION_MAX_AGE_SECONDS * 1000);
+  await db.update(t.authSessions).set({ expires }).where(eq(t.authSessions.tokenHash, tokenHash));
+  return { user: row.user, expires };
 }
 
 export function createAdapter(db: Db, now: () => Date = () => new Date()): Adapter {
@@ -91,7 +100,7 @@ export function createAdapter(db: Db, now: () => Date = () => new Date()): Adapt
     },
     async createSession(session) {
       await db.insert(t.authSessions).values({ tokenHash: hashToken(session.sessionToken), userId: session.userId, expires: session.expires });
-      return session;
+      return { ...session, expires: sessionCookieExpiry(now()) };
     },
     async getSessionAndUser(sessionToken) {
       const found = await lookupSession(db, sessionToken, now());
@@ -107,6 +116,7 @@ export function createAdapter(db: Db, now: () => Date = () => new Date()): Adapt
       await db.delete(t.authSessions).where(eq(t.authSessions.tokenHash, hashToken(sessionToken)));
     },
     async createVerificationToken(verificationToken) {
+      await db.delete(t.authVerificationTokens).where(lt(t.authVerificationTokens.expires, now()));
       await db.insert(t.authVerificationTokens).values({
         identifier: verificationToken.identifier,
         tokenHash: verificationToken.token,

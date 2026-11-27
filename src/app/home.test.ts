@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { signInModel } from "./sign-in/model";
 import { SignInScreen } from "./sign-in/sign-in-screen";
 import { TripList } from "./sign-in/trip-list";
+import { NotOnYourAccount } from "./not-on-your-account/not-on-your-account";
 
 vi.mock("./sign-in/actions", () => ({ continueWithProvider: vi.fn(), sendEmailLink: vi.fn() }));
 
@@ -28,7 +29,7 @@ describe("sign in screen", () => {
 
   it("in development lists demo accounts under a plain label, after the real options", () => {
     const html = render({ NODE_ENV: "development", DEV_SIGN_IN: "1", ...google });
-    expect(html).toContain("Demo accounts");
+    expect(html).toContain("Demo accounts, for testing only");
     expect(html).toContain("Continue as Kenneth Yu");
     expect(html.indexOf("Continue with Google")).toBeLessThan(html.indexOf("Demo accounts"));
     expect(html.indexOf("Email me a link")).toBeLessThan(html.indexOf("Demo accounts"));
@@ -68,6 +69,12 @@ describe("sign in screen", () => {
     expect(html).not.toContain("Use the account your trip invite was sent to.");
   });
 
+  it("says why to sign in when arriving from a shared trip link", () => {
+    expect(render({ NODE_ENV: "production", ...google }, { next: "/trips/x?day=2026-12-05" })).toContain("Sign in to see this trip.");
+    expect(render({ NODE_ENV: "production", ...google }, { next: "/invite/accept" })).not.toContain("Sign in to see this trip.");
+    expect(render({ NODE_ENV: "production", ...google })).not.toContain("Sign in to see this trip.");
+  });
+
   it("explains the account to use only when arriving from an invite", () => {
     expect(render({ NODE_ENV: "production", ...google }, { next: "/invite/accept" })).toContain("Use the account your trip invite was sent to.");
     expect(render({ NODE_ENV: "production", ...google }, { next: "/trips/x" })).not.toContain("trip invite");
@@ -86,6 +93,17 @@ describe("sign in screen", () => {
   it("drops an unsafe next so it never reaches the form", () => {
     const html = render({ NODE_ENV: "production", ...google }, { next: "https://evil.example" });
     expect(html).not.toContain("evil.example");
+  });
+});
+
+describe("trip that is not on the account", () => {
+  it("explains, and offers Sign out and Your trips", () => {
+    const html = renderToStaticMarkup(createElement(NotOnYourAccount, { signOut: vi.fn() }));
+    expect(html).toContain("This trip is not on your account.");
+    expect(html).toContain("Sign in with the email your travel partner uses, or ask them to invite you.");
+    expect(html).toContain("Sign out");
+    expect(html).toContain('href="/"');
+    expect(html).toContain("Your trips");
   });
 });
 

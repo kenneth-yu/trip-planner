@@ -18,11 +18,19 @@
 }
 
 .primary {
+  display: block;
+  box-sizing: border-box;
+  text-align: center;
+  text-decoration: none;
   background: var(--text);
   color: var(--ground);
 }
 
 .secondary {
+  display: block;
+  box-sizing: border-box;
+  text-align: center;
+  text-decoration: none;
   background: transparent;
   color: var(--text);
 }

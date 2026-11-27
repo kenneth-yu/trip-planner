@@ -169,3 +169,52 @@ describe("account linking by email", () => {
     expect(await db.select().from(t.authAccounts)).toHaveLength(0);
   });
 });
+
+describe("rolling sessions", () => {
+  it("extends the expiry once a day has passed, and not before", async () => {
+    const { db, adapter, advance, now } = await setup();
+    const token = generateSessionToken();
+    await present(adapter.createSession)({ sessionToken: token, userId: USERS.kenny.id, expires: new Date(now().getTime() + 30 * DAY) });
+    const initial = (await db.select().from(t.authSessions))[0].expires.getTime();
+    advance(DAY / 2);
+    await present(adapter.getSessionAndUser)(token);
+    expect((await db.select().from(t.authSessions))[0].expires.getTime()).toBe(initial);
+    advance(DAY);
+    await present(adapter.getSessionAndUser)(token);
+    expect((await db.select().from(t.authSessions))[0].expires.getTime()).toBe(now().getTime() + 30 * DAY);
+  });
+
+  it("keeps an active person signed in past 30 days since sign in, and signs out someone idle for 30 days", async () => {
+    const { adapter, advance, now } = await setup();
+    const active = generateSessionToken();
+    const idle = generateSessionToken();
+    for (const token of [active, idle]) {
+      await present(adapter.createSession)({ sessionToken: token, userId: USERS.kenny.id, expires: new Date(now().getTime() + 30 * DAY) });
+    }
+    for (let day = 0; day < 40; day++) {
+      advance(DAY);
+      expect(await present(adapter.getSessionAndUser)(active)).not.toBeNull();
+    }
+    expect(await present(adapter.getSessionAndUser)(idle)).toBeNull();
+  });
+
+  it("issues a cookie that outlives the stored expiry so the roll needs no cookie write", async () => {
+    const { adapter, now } = await setup();
+    const issued = await present(adapter.createSession)({ sessionToken: generateSessionToken(), userId: USERS.kenny.id, expires: new Date(now().getTime() + 30 * DAY) });
+    expect(issued.expires.getTime()).toBe(now().getTime() + 400 * DAY);
+  });
+});
+
+describe("expired verification tokens", () => {
+  it("are purged when the next token is created", async () => {
+    const { db, adapter, now } = await setup();
+    await present(adapter.createVerificationToken)({ identifier: "old@example.com", token: "old", expires: new Date(now().getTime() + 1000) });
+    await present(adapter.createVerificationToken)({ identifier: "live@example.com", token: "live-1", expires: new Date(now().getTime() + 15 * 60_000) });
+    expect(await db.select().from(t.authVerificationTokens)).toHaveLength(2);
+    const later = new Date(now().getTime() + 60_000);
+    const lateAdapter = createAdapter(db, () => later);
+    await present(lateAdapter.createVerificationToken)({ identifier: "new@example.com", token: "new", expires: new Date(later.getTime() + 15 * 60_000) });
+    const identifiers = (await db.select().from(t.authVerificationTokens)).map((r) => r.identifier).sort();
+    expect(identifiers).toEqual(["live@example.com", "new@example.com"]);
+  });
+});
