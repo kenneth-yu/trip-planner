@@ -1,21 +1,187 @@
-name: check
+name: ci
 
 on:
   push:
+    branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  check:
+  lint:
+    name: lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run lint
+
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:coverage
+      - name: Coverage summary
+        if: always()
+        run: |
+          node --input-type=module -e '
+            import { readFileSync, appendFileSync, existsSync } from "node:fs";
+            const file = "coverage/coverage-summary.json";
+            if (!existsSync(file)) process.exit(0);
+            const total = JSON.parse(readFileSync(file, "utf8")).total;
+            const rows = ["statements", "branches", "functions", "lines"].map((k) => `| ${k} | ${total[k].pct}% | ${total[k].covered} / ${total[k].total} |`);
+            appendFileSync(process.env.GITHUB_STEP_SUMMARY, ["## Coverage", "", "| Metric | Covered | Count |", "|---|---|---|", ...rows, ""].join("\n"));
+          '
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: coverage
+          path: coverage/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SESSION_SECRET: ci-only-secret-ci-only-secret-0000000
+      DATA_ENCRYPTION_KEY: ZmFrZS1jaS1rZXktbm90LWZvci1yZWFsLWRhdGEtMDA=
+      AUTH_SECRET: ci-only-auth-secret-ci-only-auth-0000000
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx next build
+
+  audit:
+    name: audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
       - run: npm audit --omit=dev --audit-level=high
-      - run: npm run check
-      - run: npm run build
+
+  migrations:
+    name: migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx drizzle-kit check
+      - run: npx drizzle-kit generate --name ci
+      - name: Fail when the schema has changes without a migration
+        run: |
+          if [ -n "$(git status --porcelain -- drizzle/)" ]; then
+            echo "::error::The schema differs from the checked-in migrations. Run npm run db:generate and commit the result."
+            git status --porcelain -- drizzle/
+            git diff -- drizzle/
+            exit 1
+          fi
+
+  statecharts:
+    name: statecharts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Check generated state charts
+        run: |
+          if [ ! -f scripts/statecharts.ts ]; then
+            echo "::notice::Skipped: scripts/statecharts.ts does not exist yet (WP-06 has not merged). Remove this guard when it does."
+            echo "Skipped: scripts/statecharts.ts does not exist yet (WP-06 has not merged)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          npm run docs:statecharts:check
+
+  postgres:
+    name: postgres
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
         env:
-          SESSION_SECRET: ci-only-secret-ci-only-secret-0000000
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-postgres
+          POSTGRES_DB: trip_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:ci-only-postgres@localhost:5432/trip_test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test

@@ -1,0 +1,10 @@
+title = "trip planner gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Fixture placeholder confirmation codes, only in the fixture files"
+condition = "AND"
+paths = ['''^src/fixtures/(december-trip\.json|december-trip\.ts|demo-trips\.ts)$''']
+regexes = ['''PLACEHOLDER_[A-Z0-9]+''']
