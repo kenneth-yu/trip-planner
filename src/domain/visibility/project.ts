@@ -107,6 +107,22 @@ function projectItem(item: Item, requester: Requester, perms: Permissions): Visi
   };
 }
 
+function mergeBusy(hidden: Item[], visible: VisibleItem[], homeZone: string): BusyBlock[] {
+  const spans = hidden.map((i) => ({ start: Date.parse(i.start.at), end: Date.parse(i.end.at) })).sort((a, b) => a.start - b.start || a.end - b.end);
+  const merged: { start: number; end: number }[] = [];
+  for (const span of spans) {
+    const last = merged[merged.length - 1];
+    if (last && span.start <= last.end) last.end = Math.max(last.end, span.end);
+    else merged.push({ ...span });
+  }
+  const zoneAt = (ms: number) => whereAt(ms, visible, homeZone).zone;
+  return merged.map((m) => {
+    const start = new Date(m.start).toISOString();
+    const end = new Date(m.end).toISOString();
+    return { key: `busy-${start}-${end}`, start: { at: start, zone: zoneAt(m.start) }, end: { at: end, zone: zoneAt(m.end) } };
+  });
+}
+
 export function projectTrip(agg: TripAggregate, requester: Requester): TripView {
   const permissions = permissionsFor(agg, requester);
   const items: VisibleItem[] = [];
@@ -116,13 +132,7 @@ export function projectTrip(agg: TripAggregate, requester: Requester): TripView 
     if (canSeeItem(item, requester)) items.push(projectItem(item, requester, permissions));
     else if (item.showAsBusy) hiddenBusy.push(item);
   }
-  const busy: BusyBlock[] = [];
-  for (const item of hiddenBusy) {
-    const key = `busy-${item.start.at}-${item.end.at}`;
-    if (busy.some((b) => b.key === key)) continue;
-    const zoneAt = (at: string) => whereAt(Date.parse(at), items, requester.homeZone).zone;
-    busy.push({ key, start: { at: item.start.at, zone: zoneAt(item.start.at) }, end: { at: item.end.at, zone: zoneAt(item.end.at) } });
-  }
+  const busy = requester.kind === "link" ? [] : mergeBusy(hiddenBusy, items, requester.homeZone);
   return {
     trip: {
       id: agg.trip.id,

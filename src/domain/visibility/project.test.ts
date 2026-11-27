@@ -83,7 +83,8 @@ describe("projectTrip: hidden items", () => {
   it("a busy item shows only as Busy, with no title, place, id or details", () => {
     const agg = tripWithViewer();
     agg.items.push(surprise({ showAsBusy: true }));
-    for (const r of [owner, viewer, link]) {
+    expect(projectTrip(agg, link).busy).toEqual([]);
+    for (const r of [owner, viewer]) {
       const view = projectTrip(agg, r);
       expect(view.busy).toHaveLength(1);
       expect(Object.keys(view.busy[0]).sort()).toEqual(["end", "key", "start"]);
@@ -94,7 +95,26 @@ describe("projectTrip: hidden items", () => {
   it("identical hidden busy items collapse to one block, so their number stays private", () => {
     const agg = tripWithViewer();
     agg.items.push(surprise({ id: "item-a", showAsBusy: true }), surprise({ id: "item-b", showAsBusy: true }));
-    for (const r of [owner, viewer, link]) expect(projectTrip(agg, r).busy).toHaveLength(1);
+    for (const r of [owner, viewer]) expect(projectTrip(agg, r).busy).toHaveLength(1);
+  });
+
+  it("overlapping, nested and touching hidden intervals become one block, so their number stays private", () => {
+    const at = (h: number) => fromLocal(`2026-12-03T${String(h).padStart(2, "0")}:00`, "America/New_York");
+    const hidden = (id: string, from: number, to: number) => surprise({ id, showAsBusy: true, start: at(from), end: at(to) });
+    const one = tripWithViewer();
+    one.items.push(hidden("item-x", 10, 15));
+    const many = tripWithViewer();
+    many.items.push(hidden("item-a", 10, 12), hidden("item-b", 11, 13), hidden("item-c", 11, 12), hidden("item-d", 13, 15));
+    const apart = tripWithViewer();
+    apart.items.push(hidden("item-e", 10, 11), hidden("item-f", 12, 13));
+    expect(projectTrip(many, owner).busy.map((b) => [b.start.at, b.end.at])).toEqual(projectTrip(one, owner).busy.map((b) => [b.start.at, b.end.at]));
+    expect(projectTrip(apart, owner).busy).toHaveLength(2);
+  });
+
+  it("a view link visitor gets no busy blocks at all", () => {
+    const agg = tripWithViewer();
+    agg.items.push(surprise({ showAsBusy: true }));
+    expect(projectTrip(agg, link).busy).toEqual([]);
   });
 
   it("a busy block is placed in the zone the viewer is in, not the hidden item's zone", () => {

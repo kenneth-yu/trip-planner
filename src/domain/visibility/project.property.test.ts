@@ -1,6 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { fcParams, forbiddenStrings, oracleFor, scenario } from "@/testing/arbitraries";
+import { expectedBusyIntervals, fcParams, forbiddenStrings, oracleFor, scenario } from "@/testing/arbitraries";
+import { whereAt } from "../time/days";
 import { AccessDenied, projectTrip } from "./project";
 
 const json = (x: unknown) => JSON.stringify(x);
@@ -28,7 +29,7 @@ describe("projectTrip properties", () => {
     );
   });
 
-  it("returns exactly the items the requester may see, and one busy block per distinct interval of hidden items marked busy", () => {
+  it("returns exactly the items the requester may see, and busy blocks are the merged, disjoint, non-adjacent intervals of hidden items marked busy, and none for link visitors", () => {
     fc.assert(
       fc.property(scenario, ({ agg, requester }) => {
         const oracle = oracleFor(agg, requester);
@@ -36,8 +37,8 @@ describe("projectTrip properties", () => {
         const view = projectTrip(agg, requester);
         const expectedIds = agg.items.filter((i) => oracle.seesItem(i)).map((i) => i.id).sort();
         expect(view.items.map((i) => i.id).sort()).toEqual(expectedIds);
-        const intervals = new Set(agg.items.filter((i) => !oracle.seesItem(i) && i.showAsBusy).map((i) => `${i.start.at}|${i.end.at}`));
-        expect(view.busy).toHaveLength(intervals.size);
+        expect(view.busy.map((b) => [b.start.at, b.end.at])).toEqual(expectedBusyIntervals(agg, requester));
+        for (let i = 1; i < view.busy.length; i++) expect(Date.parse(view.busy[i].start.at)).toBeGreaterThan(Date.parse(view.busy[i - 1].end.at));
         expect(new Set(view.busy.map((b) => b.key)).size).toBe(view.busy.length);
       }),
       fcParams(300),
@@ -58,15 +59,14 @@ describe("projectTrip properties", () => {
     );
   });
 
-  it("busy blocks are placed in a zone the requester already knows, never the hidden item's", () => {
+  it("busy blocks are placed in the zone the viewer is in at that instant, never the hidden item's", () => {
     fc.assert(
       fc.property(scenario, ({ agg, requester }) => {
         if (!oracleFor(agg, requester).allowed) return;
         const view = projectTrip(agg, requester);
-        const known = new Set([requester.homeZone, ...view.items.flatMap((i) => [i.start.zone, i.end.zone])]);
         for (const b of view.busy) {
-          expect(known.has(b.start.zone)).toBe(true);
-          expect(known.has(b.end.zone)).toBe(true);
+          expect(b.start.zone).toBe(whereAt(Date.parse(b.start.at), view.items, requester.homeZone).zone);
+          expect(b.end.zone).toBe(whereAt(Date.parse(b.end.at), view.items, requester.homeZone).zone);
         }
       }),
       fcParams(300),

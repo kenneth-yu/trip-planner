@@ -311,3 +311,19 @@ export function fcParams(numRuns: number): fc.Parameters<unknown> {
   const fromEnv = process.env.FC_SEED ? Number(process.env.FC_SEED) : process.env.CI ? 20261126 : undefined;
   return { numRuns, ...(fromEnv === undefined ? {} : { seed: fromEnv }) };
 }
+
+export function expectedBusyIntervals(agg: TripAggregate, requester: Requester): [string, string][] {
+  if (requester.kind === "link") return [];
+  const oracle = oracleFor(agg, requester);
+  const spans = agg.items
+    .filter((i) => !oracle.seesItem(i) && i.showAsBusy)
+    .map((i): [number, number] => [Date.parse(i.start.at), Date.parse(i.end.at)])
+    .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const merged: [number, number][] = [];
+  for (const [start, end] of spans) {
+    const last = merged[merged.length - 1];
+    if (last && start <= last[1]) last[1] = Math.max(last[1], end);
+    else merged.push([start, end]);
+  }
+  return merged.map(([start, end]) => [isoOf(start), isoOf(end)]);
+}
