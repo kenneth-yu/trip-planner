@@ -1,0 +1,20 @@
+{
+ "requestedUrl": "http://localhost:3199/trips/00000000-0000-4000-8300-000000000001",
+ "finalDisplayedUrl": "http://localhost:3199/trips/00000000-0000-4000-8300-000000000001",
+ "categories": {
+  "performance": {
+   "score": 0.84
+  }
+ },
+ "audits": {
+  "largest-contentful-paint": {
+   "numericValue": 2036.0362999999998
+  },
+  "cumulative-layout-shift": {
+   "numericValue": 0
+  },
+  "total-blocking-time": {
+   "numericValue": 615.4818499999997
+  }
+ }
+}

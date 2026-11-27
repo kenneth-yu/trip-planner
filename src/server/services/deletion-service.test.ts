@@ -7,9 +7,9 @@ import { TRIP_ID, USERS } from "@/fixtures/december-trip";
 import { AccessDenied } from "@/domain/visibility/project";
 import * as schema from "../db/schema";
 import * as t from "../db/schema";
-import { FakeGoogleCalendar, GoogleApiError, GoogleAuthorizationError } from "../google/calendar-api";
+import { FakeGoogleCalendar, GoogleApiError, GoogleAuthorizationError, googleCalendarRest } from "../google/calendar-api";
 import { jacob, kenny, testContext } from "../testing";
-import { enableMirror } from "./mirror-service";
+import { enableMirror, syncMirror } from "./mirror-service";
 import { getTripView, quickAddItem } from "./trip-service";
 import { deleteAccount, deleteTrip, TRIP_DATA_TABLES } from "./deletion-service";
 import { NotFound } from "./trip-service";
@@ -271,5 +271,64 @@ describe("deleting an account", () => {
   it("says a missing account is not found", async () => {
     const env = await setup();
     await expect(deleteAccount(env.ctx, strangerId, { removeHiddenItemsInSharedTrips: false })).rejects.toThrow(NotFound);
+  });
+});
+
+describe("account deletion follow-ups", () => {
+  it("removes a deleted hidden item from the staying members' calendars right away", async () => {
+    const env = await setup();
+    await enableMirror(env.ctx, TRIP_ID, USERS.kenny.id);
+    await quickAddItem(
+      env.ctx,
+      TRIP_ID,
+      jacob,
+      { type: "plan", title: "Birthday dinner", city: "Tokyo", startLocal: "2026-12-03T19:00", endLocal: "2026-12-03T21:00" },
+      { visibility: "specific", visibleToUserIds: [USERS.kenny.id] },
+    );
+    await syncMirror(env.ctx, TRIP_ID, USERS.kenny.id);
+    expect(env.google.allEvents().map((e) => e.summary)).toContain("Birthday dinner");
+    await deleteAccount(env.ctx, USERS.jacob.id, { removeHiddenItemsInSharedTrips: true });
+    expect(env.google.allEvents().map((e) => e.summary)).not.toContain("Birthday dinner");
+  });
+
+  it("also removes an only-me item that was never visible to the others, without touching their events", async () => {
+    const env = await setup();
+    await enableMirror(env.ctx, TRIP_ID, USERS.kenny.id);
+    const before = env.google.allEvents().length;
+    await quickAddItem(env.ctx, TRIP_ID, jacob, { type: "plan", title: "Ring shopping", city: "Tokyo", startLocal: "2026-12-03T19:00", endLocal: "2026-12-03T21:00" }, { visibility: "only_me", showAsBusy: true });
+    await syncMirror(env.ctx, TRIP_ID, USERS.kenny.id);
+    expect(env.google.allEvents().length).toBe(before + 1);
+    await deleteAccount(env.ctx, USERS.jacob.id, { removeHiddenItemsInSharedTrips: false });
+    expect(env.google.allEvents().length).toBe(before);
+  });
+
+  async function withRestGoogle(status: number, reason: string) {
+    const fetchImpl = async () => new Response(JSON.stringify({ error: { errors: [{ reason }] } }), { status });
+    const env = await testContext({ overrides: { googleFor: async () => googleCalendarRest(async () => "token", fetchImpl) } });
+    await env.db.insert(t.calendarMirrors).values({ tripId: TRIP_ID, userId: USERS.kenny.id, googleCalendarId: "cal-1" });
+    await env.db.delete(t.memberships).where(eq(t.memberships.userId, USERS.jacob.id));
+    return env;
+  }
+
+  it("keeps everything when Google answers 403 rateLimitExceeded", async () => {
+    const env = await withRestGoogle(403, "rateLimitExceeded");
+    await expect(deleteAccount(env.ctx, USERS.kenny.id, { removeHiddenItemsInSharedTrips: false })).rejects.toThrow(GoogleApiError);
+    expect(await rows(env.db, t.users)).toBe(2);
+    expect(await rows(env.db, t.trips)).toBe(1);
+    expect(await rows(env.db, t.calendarMirrors)).toBe(1);
+  });
+
+  it("drops the mirror and carries on when Google answers 403 forbidden", async () => {
+    const env = await withRestGoogle(403, "forbidden");
+    await deleteAccount(env.ctx, USERS.kenny.id, { removeHiddenItemsInSharedTrips: false });
+    expect(await rows(env.db, t.users)).toBe(1);
+    expect(await rows(env.db, t.trips)).toBe(0);
+    expect(await rows(env.db, t.calendarMirrors)).toBe(0);
+  });
+
+  it("keeps a trip when Google answers 403 rateLimitExceeded while deleting it", async () => {
+    const env = await withRestGoogle(403, "rateLimitExceeded");
+    await expect(deleteTrip(env.ctx, TRIP_ID, kenny)).rejects.toThrow(GoogleApiError);
+    expect(await rows(env.db, t.trips)).toBe(1);
   });
 });
