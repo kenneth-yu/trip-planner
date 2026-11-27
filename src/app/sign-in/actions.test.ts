@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPgliteDb, type Db } from "@/server/db/client";
 
 const env = vi.hoisted(() => {
-  const state: { db: Promise<Db> | null; forwardedFor: string; signIns: string[] } = { db: null, forwardedFor: "203.0.113.7", signIns: [] };
+  const state: { db: Promise<Db> | null; storeDown: boolean; forwardedFor: string; signIns: string[] } = { db: null, storeDown: false, forwardedFor: "203.0.113.7", signIns: [] };
   return state;
 });
 
@@ -19,6 +19,7 @@ vi.mock("@/server/db/client", async (importOriginal) => {
   return {
     ...real,
     getDb: () => {
+      if (env.storeDown) return Promise.reject(new Error("connect ECONNREFUSED postgres://user:secret@db.internal/trips"));
       env.db ??= real.createPgliteDb();
       return env.db;
     },
@@ -49,6 +50,7 @@ function googleForm() {
 
 beforeEach(() => {
   env.db = createPgliteDb();
+  env.storeDown = false;
   env.forwardedFor = "203.0.113.7";
   env.signIns = [];
   vi.stubEnv("SESSION_SECRET", "test-secret-test-secret-test-secret-0123");
@@ -79,5 +81,18 @@ describe("sign in actions are rate limited where they run", () => {
     for (let i = 0; i < 11; i++) await sendEmailLink({ status: "idle" }, emailForm());
     env.forwardedFor = "198.51.100.4";
     expect((await sendEmailLink({ status: "idle" }, emailForm())).status).toBe("sent");
+  });
+
+  it("refuses to sign in when the limit cannot be checked, says so calmly and logs no details", async () => {
+    env.storeDown = true;
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    expect((await sendEmailLink({ status: "idle" }, emailForm())).status).toBe("failed");
+    await expect(continueWithProvider(googleForm())).rejects.toThrow("redirect /sign-in?error=Unavailable");
+    expect(env.signIns).toEqual([]);
+    const lines = JSON.stringify(logged.mock.calls);
+    expect(lines).not.toContain("secret");
+    expect(lines).not.toContain("203.0.113.7");
+    expect(lines).not.toContain("kenny@example.test");
+    logged.mockRestore();
   });
 });
