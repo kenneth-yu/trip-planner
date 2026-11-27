@@ -205,6 +205,7 @@ export async function mergeEntry(
   if (requester.kind !== "member") throw new NotFound();
   const itemId = await ctx.db.transaction(async (tx) => {
     const agg = await requireAggregate(tx, tripId);
+    assertCanEditTrip(agg, requester);
     const row = await loadEntry(tx, tripId, entryId, "merge");
     const target = agg.items.find((i) => i.id === (decision.intoItemId ?? row.matchItemId));
     if (!target) throw new NotFound("There is nothing to merge this into.");

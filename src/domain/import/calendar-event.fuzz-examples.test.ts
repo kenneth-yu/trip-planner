@@ -31,6 +31,13 @@ describe("calendar event cases found by fuzzing, kept as examples", () => {
     expect(() => planCalendarImport(batch, [], importCtx)).toThrow("Event 2:");
   });
 
+  it("a date or year-month in place of a date and time is refused, not read in the server's zone", () => {
+    for (const text of ["2026-12-05", "2026-12", "2026", "2026-12-05T"]) {
+      expect(() => mapCalendarEvent(timed(text, "2026-12-05T21:00:00+09:00"), ctx)).toThrow(InputProblem);
+      expect(() => mapCalendarEvent(timed("2026-12-05T19:00:00+09:00", text), ctx)).toThrow(InputProblem);
+    }
+  });
+
   it("dates outside any real trip are refused", () => {
     expect(() => mapCalendarEvent(timed("0000-01-01T00:00:00Z", "0000-01-01T01:00:00Z"), ctx)).toThrow(InputProblem);
     expect(() => mapCalendarEvent(timed("+275760-09-13T00:00:00Z", "+275760-09-13T01:00:00Z"), ctx)).toThrow(InputProblem);
@@ -52,7 +59,7 @@ describe("calendar event cases found by fuzzing, kept as examples", () => {
     expect(p.problems.length).toBeGreaterThan(0);
   });
 
-  it("a timed event with an unrecognised calendar zone is flagged", () => {
+  it("regression guard: a timed event with an unrecognised calendar zone stays flagged", () => {
     const p = mapCalendarEvent({ summary: "Dinner", start: { dateTime: "2026-12-05T19:00:00", timeZone: "UTC+9" }, end: { dateTime: "2026-12-05T21:00:00", timeZone: "UTC+9" } }, ctx).proposed;
     expect(isValidZone(p.start.zone)).toBe(true);
     expect(p.status).toBe("needs_review");

@@ -90,6 +90,25 @@ describe(`MCP import tools fuzz (seed ${FUZZ_SEED})`, () => {
     await expectInboxSound(ctx);
   });
 
+  it("oversized fields and traveler lists are refused before any work is done", async () => {
+    const { ctx, client } = await setup();
+    const start = { dateTime: "2026-12-05T19:00:00+09:00" };
+    const end = { dateTime: "2026-12-05T21:00:00+09:00" };
+    const tooBig = [
+      { summary: "x".repeat(501), start, end },
+      { summary: "Dinner", description: "x".repeat(20001), start, end },
+      { summary: "Dinner", location: "x".repeat(501), start, end },
+      { summary: "Dinner", start: { dateTime: "x".repeat(65) }, end },
+    ];
+    for (const event of tooBig) {
+      const result = await client.callTool({ name: "import_calendar_events", arguments: { trip_id: TRIP_ID, events: [event] } });
+      expect(result.isError).toBe(true);
+    }
+    const names = await client.callTool({ name: "import_calendar_events", arguments: { trip_id: TRIP_ID, events: [{ summary: "Dinner", start, end }], traveler_names: Array.from({ length: 21 }, () => "Jacob") } });
+    expect(names.isError).toBe(true);
+    expect(await listInbox(ctx, TRIP_ID, jacob)).toEqual([]);
+  });
+
   it("an event with no readable time is refused with a message, not queued", async () => {
     const { ctx, client } = await setup();
     const result = await client.callTool({ name: "import_calendar_events", arguments: { trip_id: TRIP_ID, events: [{ summary: "Dinner", start: { dateTime: "" }, end: { dateTime: "x" } }] } });

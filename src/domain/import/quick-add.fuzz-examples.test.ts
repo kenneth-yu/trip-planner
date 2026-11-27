@@ -25,7 +25,7 @@ describe("quick add cases found by fuzzing, kept as examples", () => {
     expect(() => build({ type: "transfer", fromCity: "Tokyo", toCity: "Tokyo", startLocal: "9999-12-31T23:59", endLocal: "2026-03-08T02:30" })).toThrow(z.ZodError);
   });
 
-  it("a place nobody can locate is flagged for review", () => {
+  it("regression guard: a place nobody can locate stays flagged for review", () => {
     const p = build({ type: "plan", title: "Walk", city: "Xyzzyville", startLocal: "2026-12-05T10:00" });
     expect(p.status).toBe("needs_review");
     expect(p.problems.length).toBeGreaterThan(0);

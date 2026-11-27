@@ -166,6 +166,14 @@ describe("inbox entry transitions come from the state table", () => {
     expect(await db.select().from(t.importedItems).where(eq(t.importedItems.id, entryId))).toEqual([stored]);
   });
 
+  it("a viewer deciding an already decided entry is denied, and never learns its state", async () => {
+    const { ctx, db, entryId } = await entryDecided("approved");
+    await db.update(t.memberships).set({ role: "viewer" }).where(eq(t.memberships.userId, jacob.kind === "member" ? jacob.userId : ""));
+    for (const decide of [approveEntry, mergeEntry, discardEntry]) {
+      await expect(decide(ctx, TRIP_ID, entryId, jacob)).rejects.toThrow(AccessDenied);
+    }
+  });
+
   it("the rejection names the state and the event", async () => {
     const { ctx, entryId } = await entryDecided("approved");
     await expect(approveEntry(ctx, TRIP_ID, entryId, jacob)).rejects.toThrow("inbox-entry: no transition from Approved on add.");

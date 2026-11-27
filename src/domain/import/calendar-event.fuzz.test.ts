@@ -83,6 +83,18 @@ describe(`mapCalendarEvent fuzz (seed ${FUZZ_SEED})`, () => {
     );
   });
 
+  it("a start or end without a time of day is refused, never read in the server's zone", () => {
+    fc.assert(
+      fc.property(
+        garbageInstant.filter((t) => !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(t)),
+        (bad) => {
+          expect(() => mapCalendarEvent({ summary: "Dinner", location: "Tokyo, Japan", start: { dateTime: bad }, end: { dateTime: "2026-12-05T21:00:00+09:00" } }, ctx)).toThrow(InputProblem);
+        },
+      ),
+      fuzzParams(),
+    );
+  });
+
   it("an event whose zone is not a real zone is flagged, never trusted", () => {
     fc.assert(
       fc.property(
