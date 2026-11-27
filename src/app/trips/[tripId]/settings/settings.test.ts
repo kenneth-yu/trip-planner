@@ -164,6 +164,7 @@ describe("the traveler list", () => {
 
   it("shows each secondary text, a row button with aria-expanded, and Add traveler", () => {
     const html = renderToStaticMarkup(createElement(TravelerList, { tripId: "t", travelers: rows, linkable: [{ userId: "u", name: "Sam" }] }));
+    expect(html).toContain("Maya Chen</span> <span");
     expect(html).toContain("No account yet");
     expect(html).toContain(">You<");
     expect(html.match(/aria-expanded="false"/g)).toHaveLength(3);

@@ -203,6 +203,10 @@ export function TravelerList({ tripId, travelers, linkable }: { tripId: string; 
   const rowButtons = useRef(new Map<string, HTMLButtonElement>());
   const addButton = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
+  const [refocusAdd, setRefocusAdd] = useState(0);
+  useEffect(() => {
+    if (refocusAdd > 0) addButton.current?.focus();
+  }, [refocusAdd]);
   const panelKey = open ? `${open.id}:${open.mode}` : "";
   useEffect(() => {
     if (panelKey) panel.current?.querySelector<HTMLElement>("input, button")?.focus();
@@ -239,8 +243,7 @@ export function TravelerList({ tripId, travelers, linkable }: { tripId: string; 
                   setOpen(isOpen ? null : { id: row.id, mode: "actions" });
                 }}
               >
-                <span className={styles.rowName}>{row.name}</span>
-                {row.secondary && <span className={pageStyles.muted}>{row.secondary}</span>}
+                <span className={styles.rowName}>{row.name}</span> {row.secondary && <span className={pageStyles.muted}>{row.secondary}</span>}
                 {added === row.id && <span className={pageStyles.muted}> Added</span>}
               </button>
               {isOpen && open && (
@@ -288,11 +291,11 @@ export function TravelerList({ tripId, travelers, linkable }: { tripId: string; 
             setAdding(false);
             setAdded(id);
             setRemoved(null);
-            requestAnimationFrame(() => addButton.current?.focus());
+            setRefocusAdd((n) => n + 1);
           }}
           onCancel={() => {
             setAdding(false);
-            requestAnimationFrame(() => addButton.current?.focus());
+            setRefocusAdd((n) => n + 1);
           }}
         />
       ) : (

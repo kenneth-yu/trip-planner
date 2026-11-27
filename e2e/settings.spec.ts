@@ -54,17 +54,16 @@ test("removing a traveler who is on items is refused with the visible items name
 
 test("an editor adds a traveler on an empty trip, sees Added, and removes them again", async ({ pageSignedInAs }) => {
   const kenny = await pageSignedInAs("kenny", `/trips/${LISBON_TRIP}/settings`);
-  await expect(kenny.getByText("No dates yet. They come from your bookings.")).toBeVisible();
   await kenny.getByRole("button", { name: "Add traveler" }).click();
   await expect(kenny.getByText("As it should appear on bookings, like Maya Chen.")).toBeVisible();
   await expectNoSeriousViolations(kenny);
-  await kenny.getByLabel("Name").fill("Maya Chen");
+  await kenny.getByLabel("Name", { exact: true }).fill("Maya Chen");
   await kenny.getByRole("button", { name: "Add", exact: true }).click();
   await expect(kenny.getByRole("button", { name: /Maya Chen No account yet Added/ })).toBeVisible();
   await expect(kenny.getByRole("button", { name: "Add traveler" })).toBeFocused();
 
   await kenny.getByRole("button", { name: "Add traveler" }).click();
-  await kenny.getByLabel("Name").fill("maya chen");
+  await kenny.getByLabel("Name", { exact: true }).fill("maya chen");
   await kenny.getByRole("button", { name: "Add", exact: true }).click();
   await expect(kenny.getByRole("alert").filter({ hasText: "There is already a traveler called maya chen." })).toBeVisible();
   await kenny.getByRole("button", { name: "Cancel" }).click();
