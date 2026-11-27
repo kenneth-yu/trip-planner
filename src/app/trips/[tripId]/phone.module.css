@@ -55,6 +55,10 @@
   padding-right: var(--gutter);
   scroll-snap-type: x proximity;
   scrollbar-width: none;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--ground);
 }
 
 .chip {
