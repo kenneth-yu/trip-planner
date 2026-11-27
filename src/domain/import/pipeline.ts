@@ -6,6 +6,7 @@ import { mapCalendarEvent, type CalendarEvent } from "./calendar-event";
 import { consolidate, matchRecords, type Match } from "./matching";
 import type { Difference, ProposedItem } from "./proposal";
 import type { PlaceContext } from "../time/resolve-place";
+import { InputProblem } from "./problem";
 
 export interface InboxEntryDraft {
   proposed: ProposedItem;
@@ -44,14 +45,19 @@ export function matchAgainst(proposed: ProposedItem, items: (VisibleItem | Item)
 
 export function planCalendarImport(events: CalendarEvent[], existing: VisibleItem[], ctx: ImportContext): InboxEntryDraft[] {
   const zoneOnDate = zoneOnDateFrom(existing, ctx.homeZone);
-  const mapped = events.map((ev) =>
-    mapCalendarEvent(ev, {
-      travelerIds: (ev.calendar && ctx.calendarTravelers[ev.calendar]) || ctx.defaultTravelerIds,
-      zoneOnDate,
-      homeZone: ctx.homeZone,
-      geocode: ctx.geocode,
-    }),
-  );
+  const mapped = events.map((ev, i) => {
+    try {
+      return mapCalendarEvent(ev, {
+        travelerIds: (ev.calendar && Object.hasOwn(ctx.calendarTravelers, ev.calendar) && ctx.calendarTravelers[ev.calendar]) || ctx.defaultTravelerIds,
+        zoneOnDate,
+        homeZone: ctx.homeZone,
+        geocode: ctx.geocode,
+      });
+    } catch (e) {
+      if (e instanceof InputProblem) throw new InputProblem(`Event ${i + 1}: ${e.message}`);
+      throw e;
+    }
+  });
   return planProposals(
     mapped.map((m) => m.proposed),
     existing,
