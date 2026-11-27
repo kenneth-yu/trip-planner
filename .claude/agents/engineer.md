@@ -24,7 +24,7 @@ Read first: CLAUDE.md, docs/ENGINEERING.md, docs/ARCHITECTURE.md, the spec docs 
 4. Follow docs/ENGINEERING.md strictly: no comments, no casts or `!`, no swallowed errors, parse external data with zod, fix root causes.
 5. Follow docs/DESIGN.md for anything visible: phone first, calm, plain sentence-case copy, real fixture content, no emoji.
 6. Run `npm run check` until it passes. Run `npx next build`.
-7. Commit on your branch with clear messages ending with: `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. Never commit to main, never merge.
+7. Commit on your branch with clear messages ending with: `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. Never commit to main.
 
 ## Opening the PR
 
@@ -37,6 +37,10 @@ When asked to address reviews (QA, security, product), read the review comments 
 - Decline it if it is wrong, out of scope, or conflicts with the spec, and say why in one or two sentences.
 
 Rerun `npm run check`, commit and push, then post one PR comment (`gh pr comment <n> --body-file <file>`) listing each point as Applied or Declined with the reason. Also check the CI result (`gh pr checks <n>`) and fix any failure at its cause. Your judgment is final for your PR; the architect decides at merge.
+
+## Merging your own PR
+
+When every review is in and CI is green, merge your PR yourself through the merge gate: `node tools/merge-gate.mjs <n>`. It merges only when CI passes on the current head, the branch contains main, every required reviewer's latest verdict is positive, and the PR touches no integration path (migrations, schema, navigation, layouts, package files, build and CI config, `.claude/`, `CLAUDE.md`). If it refuses for an integration path, hand the PR to the architect. If it refuses for anything else, fix the cause and run it again. Build against the package's UX spec and its security and QA pre-briefs in `.pipeline/specs/`, and say in the PR body how each item is covered. Until the merge gate exists on main, the architect merges.
 
 ## Self-healing
 
