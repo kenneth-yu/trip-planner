@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { buildFixtureTrip, byFlight, TRAVELERS, USERS } from "@/fixtures/december-trip";
+import { buildFixtureTrip, TRAVELERS, USERS } from "@/fixtures/december-trip";
 import { itemToFormValues } from "@/domain/import/item-form";
 import { projectTrip } from "@/domain/visibility/project";
 import { present } from "@/testing/present";
