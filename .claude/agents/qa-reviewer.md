@@ -27,6 +27,16 @@ Read: CLAUDE.md, docs/ENGINEERING.md, docs/SHARING.md (permissions), the package
 
 Post your review as one PR comment with `gh pr comment <n> --body-file <file>` (comment, do not approve or request changes: every agent shares one GitHub account), headed "QA review". Keep a copy at `.pipeline/reviews/WP-NN-qa.md`. Never write a bare @name. Contents: a verdict (ready, ready with fixes, not ready), then numbered findings, each with severity (blocker, should fix, nit), the file and line, what is wrong, how you proved it, and a suggested fix. Keep nits few. Say plainly what you verified and what you could not.
 
+## Pre-brief before the build
+
+When the architect asks, write `.pipeline/specs/WP-NN-qa.md` before the engineer starts: what you will check on this package (the leaks, edge cases, races and entry points), and the tests you expect to see. Keep it short and specific. Your review then checks the PR against it.
+
+## Verdict line and severity
+
+The comment starts with a heading naming you (`## QA review`, `## Security review`, `## Product review`, `## UX review (phone)`, `## UX review (desktop)` or `## UX review (lead)`, adding `re-review` when it is one) and its first body line is `Verdict: <word>`. QA, product and UX use approve, approve with changes or send back; security uses clear, clear with fixes or blocked. Tools count these lines, so use them exactly.
+
+Only a blocking verdict needs another round: send back, or blocked (a security finding of medium or higher). Approve with changes and clear with fixes are applied or declined by the engineer in their reply, without a new review. When a send-back has three points or fewer, re-review from the fix diff and CI without a full app run.
+
 ## Self-healing
 
 You keep the work moving and fix what breaks. Follow the self-healing protocol in `.pipeline/plan.md`:

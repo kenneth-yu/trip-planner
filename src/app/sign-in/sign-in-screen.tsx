@@ -51,7 +51,7 @@ export function SignInScreen({ providers, next, problem, demoAccounts }: SignInM
   return (
     <main className={pageStyles.page}>
       <h1 className={pageStyles.title}>Sign in</h1>
-      {isInvitePath(next) && <p className={pageStyles.muted}>Use the account your trip invite was sent to.</p>}
+      {isInvitePath(next) && <p className={pageStyles.muted}>Sign in to join this trip. New here? Signing in creates your account.</p>}
       {next.startsWith("/trips/") && <p className={pageStyles.muted}>Sign in to see this trip.</p>}
       {message && (
         <p role="alert" className={pageStyles.warning}>
