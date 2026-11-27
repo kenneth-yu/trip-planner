@@ -7,7 +7,7 @@ function contentSecurityPolicy(nonce: string, isProduction: boolean): string {
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isProduction ? "" : " 'unsafe-eval'"}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
-    isProduction ? "connect-src 'self'" : "connect-src 'self' ws: wss:",
+    isProduction ? "connect-src 'self'" : "connect-src 'self' ws://localhost:* ws://127.0.0.1:*",
     `frame-ancestors ${isProduction ? "'none'" : DEV_PHONE_FRAME}`,
     "base-uri 'none'",
     "form-action 'self' https://accounts.google.com https://appleid.apple.com",

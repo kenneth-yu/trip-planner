@@ -24,6 +24,8 @@ describe("securityHeaders", () => {
     const dev = csp("/", false);
     expect(dev).toContain("frame-ancestors http://localhost:8766");
     expect(dev).toContain("'unsafe-eval'");
+    expect(dev).toContain("connect-src 'self' ws://localhost:*");
+    expect(dev).not.toMatch(/ ws: /);
     const prod = csp("/", true);
     expect(prod).not.toContain("localhost");
     expect(prod).not.toContain("unsafe-eval");

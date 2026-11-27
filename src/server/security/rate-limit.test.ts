@@ -1,8 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
+import { beforeAll, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
 import { createPgliteDb } from "../db/client";
 import { rateLimits } from "../db/schema";
 import { RATE_RULES, consumeRateLimit, ruleForPath, type RateRule } from "./rate-limit";
+
+beforeAll(() => {
+  process.env.SESSION_SECRET = "test-secret-test-secret-test-secret-0123";
+});
 
 const rule: RateRule = { name: "signIn", limit: 3, windowMs: 60_000 };
 const t0 = new Date("2026-11-27T10:00:00.000Z");
@@ -51,6 +56,14 @@ describe("consumeRateLimit", () => {
       expect(JSON.stringify(row)).not.toContain("203.0.113.7");
       expect(JSON.stringify(row)).not.toContain("kenny");
     }
+  });
+
+  it("keys with a secret so a leaked table cannot be matched against hashed addresses", async () => {
+    const db = await createPgliteDb();
+    await consumeRateLimit(db, rule, "203.0.113.7", t0);
+    const plain = createHash("sha256").update("signIn:203.0.113.7").digest("hex");
+    const [row] = await db.select().from(rateLimits);
+    expect(row.key).not.toBe(plain);
   });
 
   it("prunes windows that expired long ago", async () => {

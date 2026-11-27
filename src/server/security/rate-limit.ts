@@ -1,6 +1,7 @@
 import { lt, sql } from "drizzle-orm";
 import { rateLimits } from "../db/schema";
-import { hashToken } from "../auth/tokens";
+import { createHmac } from "node:crypto";
+import { appSecret } from "../auth/tokens";
 import type { DbOrTx } from "../repo/trip-repo";
 
 export interface RateRule {
@@ -33,6 +34,10 @@ export function ruleForPath(pathname: string): RateRule | null {
   return match ? RATE_RULES[match.rule] : null;
 }
 
+function rateLimitKey(rule: RateRule, subject: string): string {
+  return createHmac("sha256", appSecret()).update(`ratelimit:${rule.name}:${subject}`).digest("hex");
+}
+
 export async function consumeRateLimit(
   db: DbOrTx,
   rule: RateRule,
@@ -41,7 +46,7 @@ export async function consumeRateLimit(
 ): Promise<{ allowed: boolean; retryAfterS: number }> {
   const windowStartMs = Math.floor(now.getTime() / rule.windowMs) * rule.windowMs;
   const windowStart = new Date(windowStartMs);
-  const key = hashToken(`${rule.name}:${subject}`);
+  const key = rateLimitKey(rule, subject);
   const [row] = await db
     .insert(rateLimits)
     .values({ key, windowStart, count: 1 })

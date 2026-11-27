@@ -3,7 +3,25 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getDb } from "@/server/db/client";
 import { clientIp } from "@/server/security/client-ip";
 import { securityHeaders } from "@/server/security/headers";
-import { consumeRateLimit, ruleForPath } from "@/server/security/rate-limit";
+import { consumeRateLimit, ruleForPath, type RateRule } from "@/server/security/rate-limit";
+
+type Verdict = { allowed: boolean; retryAfterS: number } | "unavailable";
+
+async function checkRateLimit(rule: RateRule, request: NextRequest): Promise<Verdict> {
+  try {
+    const ip = clientIp(request.headers, process.env.TRUST_PROXY === "1");
+    return await consumeRateLimit(await getDb(), rule, ip, new Date());
+  } catch {
+    console.error(`rate limit unavailable for rule ${rule.name}`);
+    return "unavailable";
+  }
+}
+
+function plain(body: string, status: number, headers: Headers, retryAfterS: number): NextResponse {
+  headers.set("content-type", "text/plain; charset=utf-8");
+  headers.set("retry-after", String(retryAfterS));
+  return new NextResponse(body, { status, headers });
+}
 
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
@@ -12,13 +30,9 @@ export async function proxy(request: NextRequest) {
 
   const rule = ruleForPath(path);
   if (rule) {
-    const ip = clientIp(request.headers, process.env.TRUST_PROXY === "1");
-    const verdict = await consumeRateLimit(await getDb(), rule, ip, new Date());
-    if (!verdict.allowed) {
-      headers.set("retry-after", String(verdict.retryAfterS));
-      headers.set("content-type", "text/plain; charset=utf-8");
-      return new NextResponse("Too many requests. Wait a little while and try again.", { status: 429, headers });
-    }
+    const verdict = await checkRateLimit(rule, request);
+    if (verdict === "unavailable") return plain("This page is unavailable right now. Try again in a moment.", 503, headers, 30);
+    if (!verdict.allowed) return plain("Too many requests. Wait a little while and try again.", 429, headers, verdict.retryAfterS);
   }
 
   const requestHeaders = new Headers(request.headers);
