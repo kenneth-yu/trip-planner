@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import styles from "./item-form.module.css";
-import { FLASH_COOKIE, FLASH_TEXT, flashKind, flashPath, type FlashKind } from "./flash";
+import { FLASH_COOKIE, FLASH_KINDS, FLASH_TEXT, flashPath, type FlashKind } from "./flash";
 
 const subscribeNever = () => () => undefined;
 
@@ -14,8 +14,7 @@ function readCookie(): string {
 }
 
 export function parseFlash(raw: string): FlashKind | null {
-  const parsed = flashKind.safeParse(raw);
-  return parsed.success ? parsed.data : null;
+  return FLASH_KINDS.find((kind) => kind === raw) ?? null;
 }
 
 function statusHost(): HTMLElement | null {

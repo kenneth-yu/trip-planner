@@ -62,6 +62,7 @@ Sizes are bytes, and the kB in the CI report is 1024 bytes (137.3 kB is 140,6xx 
 | /trips/[tripId]/deadlines | 139,647 B | 150,000 B |
 | /trips/[tripId]/inbox | 140,613 B | 151,000 B |
 | /trips/[tripId]/items/[itemId] | 140,352 B | 151,000 B |
+| /trips/[tripId]/items/[itemId]/edit | 170,372 B (166.4 kB on the runner) | 183,000 B |
 | /invite/join | 136,050 B | 146,000 B |
 | /invite/lost | 139,352 B | 150,000 B |
 | /invite/problem/[kind] | 136,050 B | 146,000 B |
@@ -70,7 +71,7 @@ Sizes are bytes, and the kB in the CI report is 1024 bytes (137.3 kB is 140,6xx 
 | /trips/[tripId]/settings/delete | 144,384 B (141.0 kB on the runner) | 155,000 B |
 | /trips/new | 139,957 B | 150,000 B |
 
-About 133 kB of every route is the React and Next.js runtime; the add form adds about 25 kB.
+About 133 kB of every route is the React and Next.js runtime; the add form adds about 25 kB, and the edit page loads the same form, so it measures the same as /add (170,372 B for both in the same build).
 
 ## Lighthouse
 
