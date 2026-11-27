@@ -102,6 +102,7 @@ export function withoutHiddenBubbles(grid: TripGrid, hidden: Set<string>): TripG
 export interface PhoneAlert {
   kind: "deadline" | "inbox" | "check";
   sentence: string;
+  anchor: string | null;
   more: number;
   moreIsInboxOnly: boolean;
 }
@@ -111,9 +112,9 @@ export function phoneAlert(a: Pick<Attention, "deadlines" | "pending">, checks: 
   const inbox = a.pending > 0 ? 1 : 0;
   if (soon.length) {
     const others = soon.length - 1 + checks.length;
-    return { kind: "deadline", sentence: soon[0].sentence, more: others + inbox, moreIsInboxOnly: others === 0 && inbox === 1 };
+    return { kind: "deadline", sentence: soon[0].sentence, anchor: null, more: others + inbox, moreIsInboxOnly: others === 0 && inbox === 1 };
   }
-  if (inbox) return { kind: "inbox", sentence: "", more: checks.length, moreIsInboxOnly: false };
-  if (checks.length) return { kind: "check", sentence: checks[0].sentence, more: checks.length - 1, moreIsInboxOnly: false };
+  if (inbox) return { kind: "inbox", sentence: "", anchor: null, more: checks.length, moreIsInboxOnly: false };
+  if (checks.length) return { kind: "check", sentence: checks[0].sentence, anchor: checks[0].anchor, more: checks.length - 1, moreIsInboxOnly: false };
   return null;
 }

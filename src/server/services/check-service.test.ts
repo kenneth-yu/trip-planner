@@ -80,17 +80,22 @@ describe("dismissing a check", () => {
     expect((await stateFor(env, kenny)).dismissed).toEqual([]);
   });
 
-  it("a check about nowhere to sleep has no item in its key, so an item edit never brings it back", async () => {
+  it("a night with nowhere to sleep comes back when a stay changes, and not when a plan does", async () => {
     const env = await testContext();
-    await env.db.delete(t.items).where(eq(t.items.type, "stay"));
+    const stays = (await getTripView(env.ctx, TRIP_ID, kenny)).items.filter((i) => i.type === "stay");
+    const kept = present(stays[0]);
+    for (const stay of stays.slice(1)) await env.db.delete(t.items).where(eq(t.items.id, stay.id));
     const nowhere = present((await stateFor(env, kenny)).open.find((f) => f.kind === "nowhere_to_sleep"));
-    expect(nowhere.key).toMatch(/^nowhere_to_sleep\|\d{4}-\d{2}-\d{2}$/);
     await dismissCheck(env.ctx, TRIP_ID, kenny, nowhere.anchor);
     const view = await getTripView(env.ctx, TRIP_ID, kenny);
-    await updateItem(env.ctx, TRIP_ID, present(view.items[0]).id, kenny, { notes: "touched" });
-    const after = await stateFor(env, kenny);
-    expect(after.dismissed.map((d) => d.anchor)).toContain(nowhere.anchor);
-    expect(after.open.map((f) => f.anchor)).not.toContain(nowhere.anchor);
+    await updateItem(env.ctx, TRIP_ID, present(view.items.find((i) => i.type === "plan")).id, kenny, { title: "Renamed plan" });
+    const afterPlan = await stateFor(env, kenny);
+    expect(afterPlan.dismissed.map((d) => d.sentence)).toContain(nowhere.sentence);
+    expect(afterPlan.open.map((f) => f.sentence)).not.toContain(nowhere.sentence);
+    await updateItem(env.ctx, TRIP_ID, kept.id, kenny, { notes: "Changed the stay" });
+    const afterStay = await stateFor(env, kenny);
+    expect(afterStay.open.map((f) => f.sentence)).toContain(nowhere.sentence);
+    expect(afterStay.dismissed.map((d) => d.sentence)).not.toContain(nowhere.sentence);
   });
 });
 

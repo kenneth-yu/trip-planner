@@ -11,27 +11,22 @@ function Alert({ attention, checks, tripId }: { attention: Attention; checks: Op
   if (!alert) return null;
   const warn = alert.kind === "deadline";
   const className = `${styles.alert} ${warn ? styles.alertWarn : ""}`;
-  if (alert.kind === "inbox") {
-    return (
-      <div className={className}>
-        <Link className={styles.alertLink} href={`/trips/${tripId}/inbox`}>
-          {attention.pending === 1 ? "1 new item to look over" : `${attention.pending} new items to look over`}
-          <small>Nothing is added until you say so.</small>
-        </Link>
-        {alert.more > 0 && (
-          <small>
-            <Link href={`/trips/${tripId}/deadlines`}>{more(alert.more)}</Link>
-          </small>
-        )}
-      </div>
-    );
-  }
+  const base = `/trips/${tripId}`;
+  const main = alert.kind === "inbox" ? `${base}/inbox` : alert.anchor ? `${base}/deadlines#check-${alert.anchor}` : `${base}/deadlines`;
+  const rest = alert.moreIsInboxOnly ? `${base}/inbox` : `${base}/deadlines`;
   return (
-    <Link className={className} href={alert.moreIsInboxOnly ? `/trips/${tripId}/inbox` : `/trips/${tripId}/deadlines`}>
-      {alert.kind === "check" && <small>Worth a look</small>}
-      {alert.sentence}
-      {alert.more > 0 && <small>{more(alert.more)}</small>}
-    </Link>
+    <div className={className}>
+      <Link className={styles.alertLink} href={main}>
+        {alert.kind === "check" && <small>Worth a look</small>}
+        {alert.kind === "inbox" ? (attention.pending === 1 ? "1 new item to look over" : `${attention.pending} new items to look over`) : alert.sentence}
+        {alert.kind === "inbox" && <small>Nothing is added until you say so.</small>}
+      </Link>
+      {alert.more > 0 && (
+        <small>
+          <Link href={rest}>{more(alert.more)}</Link>
+        </small>
+      )}
+    </div>
   );
 }
 

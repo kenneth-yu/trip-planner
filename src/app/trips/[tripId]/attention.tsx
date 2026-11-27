@@ -127,7 +127,7 @@ export function AttentionPage({ data, tripId }: { data: AttentionData; tripId: s
             {data.dismissed.map((d) => (
               <li key={d.anchor}>
                 <div className={styles.muted}>{d.sentence}</div>
-                <div className={styles.muted}>{d.by ? `${d.by}, ${d.on}` : d.on}</div>
+                <div className={styles.muted}>{d.by ? `${d.by}, ${d.on}` : `Marked ${d.on}`}</div>
                 {data.canEdit && <ShowAgain tripId={tripId} anchor={d.anchor} />}
               </li>
             ))}

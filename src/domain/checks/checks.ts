@@ -95,7 +95,7 @@ export function nowhereToSleep(view: TripView): Finding[] {
     const flying = whereAt(zoneNight, view.items, view.homeZone).kind === "air";
     if (!covered && !flying) {
       out.push({
-        key: `nowhere_to_sleep|${night}`,
+        key: findingKey("nowhere_to_sleep", stays, night),
         kind: "nowhere_to_sleep",
         sentence: `Nowhere booked for the night of ${formatShortDate(d)}${where.city ? ` in ${where.city}` : ""}.`,
         itemIds: [],

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import styles from "../../../ui/page.module.css";
 import { dismissCheckAction, restoreCheckAction } from "./actions";
 
@@ -9,7 +8,7 @@ type Phase = "open" | "saving" | "done" | "undoing";
 
 const FIRST_WORDS = 8;
 
-function startOf(sentence: string): string {
+export function startOf(sentence: string): string {
   return sentence.split(/\s+/).slice(0, FIRST_WORDS).join(" ").replace(/[.,:;]+$/, "");
 }
 
@@ -43,16 +42,13 @@ export function CheckLine({ tripId, anchor, sentence, canEdit }: { tripId: strin
         {marked ? "Marked as fine." : ""}
       </span>
       {marked ? (
-        <button
-          ref={undo}
-          type="button"
-          className={styles.textButton}
-          aria-describedby={statusId}
-          disabled={phase === "undoing"}
-          onClick={() => change(restoreCheckAction, "undoing", "open", "done")}
-        >
-          Undo
-        </button>
+        <>
+          <div className={styles.muted}>{sentence}</div>
+          <div className={styles.muted}>Hidden for everyone on this trip.</div>
+          <button ref={undo} type="button" className={styles.textButton} aria-describedby={statusId} disabled={phase === "undoing"} onClick={() => change(restoreCheckAction, "undoing", "open", "done")}>
+            Undo
+          </button>
+        </>
       ) : (
         <>
           <div>{sentence}</div>
@@ -80,7 +76,6 @@ export function CheckLine({ tripId, anchor, sentence, canEdit }: { tripId: strin
 }
 
 export function ShowAgain({ tripId, anchor }: { tripId: string; anchor: string }) {
-  const router = useRouter();
   const [phase, setPhase] = useState<"idle" | "working" | "back">("idle");
   const [failed, setFailed] = useState(false);
 
@@ -90,21 +85,18 @@ export function ShowAgain({ tripId, anchor }: { tripId: string; anchor: string }
     const result = await restoreCheckAction({ tripId, anchor });
     setFailed(!result.ok);
     setPhase(result.ok ? "back" : "idle");
-    if (result.ok) router.refresh();
   }
 
-  if (phase === "back") {
-    return (
-      <span role="status" className={styles.muted}>
-        Showing again.
-      </span>
-    );
-  }
   return (
     <>
-      <button type="button" className={styles.textButton} disabled={phase === "working"} onClick={restore}>
-        Show again
-      </button>
+      <span role="status" className={styles.muted}>
+        {phase === "back" ? "Showing again." : ""}
+      </span>
+      {phase !== "back" && (
+        <button type="button" className={styles.textButton} disabled={phase === "working"} onClick={restore}>
+          Show again
+        </button>
+      )}
       {failed && (
         <p role="alert" className={styles.warning}>
           That did not save. Try again.
