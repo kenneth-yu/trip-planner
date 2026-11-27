@@ -3,16 +3,17 @@ import { currentUser } from "./auth/session";
 import { requestContext } from "./app-context";
 import { getTripView, NotFound } from "./services/trip-service";
 import { AccessDenied } from "@/domain/visibility/project";
+import { signInPath } from "@/domain/auth/next-path";
 import type { Requester } from "@/domain/types";
 
-export async function requireUser() {
+export async function requireUser(next = "/") {
   const user = await currentUser();
-  if (!user) redirect("/");
+  if (!user) redirect(signInPath(next));
   return user;
 }
 
-export async function loadTripPage(tripId: string) {
-  const user = await requireUser();
+export async function loadTripPage(tripId: string, next = `/trips/${tripId}`) {
+  const user = await requireUser(next);
   const ctx = await requestContext();
   const requester: Requester = { kind: "member", userId: user.id, homeZone: user.homeZone };
   try {
