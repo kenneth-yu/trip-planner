@@ -22,9 +22,9 @@ export function PastPeople({ people }: { people: { id: string; name: string }[] 
       <ul className={styles.list}>
         {shown.map((p, i) => (
           <li key={p.id}>
-            <button ref={i === VISIBLE ? firstMore : undefined} type="submit" name="personId" value={p.id} className={styles.person} disabled={pending} aria-label={`Create an invite link for ${p.name}`}>
+            <button ref={i === VISIBLE ? firstMore : undefined} type="submit" name="personId" value={p.id} className={styles.person} disabled={pending}>
               <span>{p.name}</span>
-              <span className={styles.cue} aria-hidden="true">
+              <span className={styles.cue}>
                 Invite
               </span>
             </button>

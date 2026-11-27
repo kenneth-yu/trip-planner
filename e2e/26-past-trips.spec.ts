@@ -13,7 +13,7 @@ test("Lisbon: Kenneth picks Jacob and gets one link to send, with no accessibili
   await expect(page.getByRole("heading", { name: "People from your trips" })).toBeVisible();
   expect(await seriousProblems(page)).toEqual([]);
 
-  await page.getByRole("button", { name: "Create an invite link for Jacob Feldman" }).click();
+  await page.getByRole("button", { name: "Jacob Feldman Invite" }).click();
   const line = page.getByText("Send this link to Jacob.");
   await expect(line).toBeVisible();
   await expect(line).toBeFocused();

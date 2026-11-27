@@ -40,8 +40,10 @@ describe("people from your trips", () => {
     expect(html).toContain("People from your trips");
     expect(html.match(/<button type="submit"/g)).toHaveLength(5);
     expect(html).toContain("Show all 8");
-    expect(html.match(/<span class="[^"]*" aria-hidden="true">\s*Invite\s*<\/span>/g)).toHaveLength(5);
-    expect(html).toContain('aria-label="Create an invite link for Ada Lovelace"');
+    expect(html.match(/<span class="[^"]*">\s*Invite\s*<\/span>/g)).toHaveLength(5);
+    expect(html).not.toContain("aria-label");
+    expect(html).not.toContain("aria-hidden");
+    expect(html).toMatch(/<button[^>]*>\s*<span>Ada Lovelace<\/span>\s*<span class="[^"]*">\s*Invite\s*<\/span>\s*<\/button>/);
     expect(html).not.toContain("Hal Jordan");
   });
 
