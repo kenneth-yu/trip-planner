@@ -4,7 +4,7 @@ import { deleteItem, loadTripAggregate, saveItem, touchTrip, tripsForUser, type 
 import { insertActivity } from "../repo/activity-repo";
 import type { ServiceContext } from "./context";
 import { AccessDenied, assertCanEditItem, assertCanEditTrip, projectTrip, type TripView } from "@/domain/visibility/project";
-import { inputToProposal, placeQueries } from "@/domain/import/quick-add";
+import { inputToProposal, InputProblem, placeQueries } from "@/domain/import/quick-add";
 import { placeContextFor } from "./place-service";
 import type { ProposedItem } from "@/domain/import/proposal";
 import type { Item, Requester, TripAggregate, Visibility } from "@/domain/types";
@@ -31,9 +31,11 @@ export async function listTrips(ctx: ServiceContext, userId: string) {
 }
 
 export async function createTrip(ctx: ServiceContext, owner: { id: string; name: string }, name: string): Promise<string> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new InputProblem("Enter a trip name.");
   const tripId = ctx.newId();
   await ctx.db.transaction(async (tx) => {
-    await tx.insert(t.trips).values({ id: tripId, name, ownerId: owner.id });
+    await tx.insert(t.trips).values({ id: tripId, name: trimmed, ownerId: owner.id });
     await tx.insert(t.memberships).values({ tripId, userId: owner.id, role: "owner" });
     await tx.insert(t.travelers).values({ id: ctx.newId(), tripId, name: owner.name, userId: owner.id });
   });

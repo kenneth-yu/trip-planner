@@ -1,0 +1,241 @@
+.form {
+  max-width: 34rem;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 8px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.types {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.type {
+  position: relative;
+  display: block;
+}
+
+.type input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+
+.type span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: var(--size-small);
+}
+
+.type input:checked + span {
+  background: var(--text);
+  color: var(--ground);
+  border-color: var(--text);
+}
+
+.type input:focus-visible + span {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field label {
+  font-weight: 700;
+  font-size: var(--size-small);
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  min-height: 44px;
+  font: inherit;
+  font-size: 1rem;
+  color: var(--text);
+  background: var(--ground);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.field[data-invalid="true"] input,
+.field[data-invalid="true"] select {
+  border-color: var(--warning);
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.note {
+  display: block;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--size-small);
+}
+
+.error {
+  margin: 0;
+  color: var(--warning);
+  font-size: var(--size-small);
+}
+
+.warning {
+  color: var(--warning);
+}
+
+.more {
+  align-self: flex-start;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  padding: 8px 0;
+  text-decoration: underline;
+  font-weight: 400;
+}
+
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-top: 1px solid var(--rule);
+  padding-top: 16px;
+}
+
+.detailsTitle {
+  font-size: var(--size-body);
+  font-weight: 700;
+  margin: 0;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.group legend {
+  font-weight: 700;
+  font-size: var(--size-small);
+  padding: 0 0 6px;
+}
+
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 32px;
+}
+
+.choice input {
+  margin-top: 5px;
+  width: 18px;
+  height: 18px;
+}
+
+.people {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 28px;
+}
+
+.submitBar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 12px 0 calc(12px + env(safe-area-inset-bottom));
+  background: var(--ground);
+  border-top: 1px solid var(--rule);
+}
+
+.submitBar button {
+  min-height: 48px;
+  font-size: 1rem;
+}
+
+.submitBar button:disabled {
+  opacity: 0.6;
+}
+
+.back {
+  text-align: center;
+  color: var(--muted);
+  font-size: var(--size-small);
+}
+
+.primaryLink {
+  display: inline-block;
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: 6px;
+  background: var(--text);
+  color: var(--ground);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.added {
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: var(--size-small);
+  font-weight: 400;
+  animation: addedFade 0.3s ease 6s forwards;
+}
+
+@keyframes addedFade {
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .added {
+    animation: none;
+  }
+}
+
+.tripName {
+  max-width: 34rem;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
