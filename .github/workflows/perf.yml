@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+  schedule:
+    - cron: "17 3 * * *"
 
 permissions:
   contents: read
@@ -13,10 +16,46 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  gate:
+    name: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          persist-credentials: false
+      - name: Decide whether this pull request needs the performance run
+        id: decide
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; echo "Push or schedule: measuring."; exit 0; fi
+          if [ "$DRAFT" = "true" ] || [ "$SAME_REPO" != "true" ]; then echo "run=false" >> "$GITHUB_OUTPUT"; echo "Draft or fork pull request: skipping."; exit 0; fi
+          if [ ! -f tools/ci/changed-paths.mjs ]; then echo "run=true" >> "$GITHUB_OUTPUT"; echo "No decision script on the base branch: measuring."; exit 0; fi
+          files="$(gh api "repos/${GH_REPO}/pulls/${PR}/files" --paginate --jq '.[] | .filename, (.previous_filename // empty)')" || files=""
+          total="$(gh api "repos/${GH_REPO}/pulls/${PR}" --jq .changed_files)" || total=""
+          run="$(printf '%s\n' "$files" | CHANGED_TOTAL="$total" node tools/ci/changed-paths.mjs perf)" || run=true
+          [ "$run" = "false" ] || run=true
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "Measuring: $run"
+
   measure:
     name: measure
+    needs: gate
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    if: needs.gate.outputs.run == 'true'
     timeout-minutes: 30
     env:
       SESSION_SECRET: ci-only-secret-ci-only-secret-0000000
@@ -102,7 +141,7 @@ jobs:
   comment:
     name: pull request comment
     needs: measure
-    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ !cancelled() && needs.measure.result != 'skipped' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

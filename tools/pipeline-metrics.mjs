@@ -95,7 +95,10 @@ const rows = prs
       e2e_runs: e2eCounts.total,
       e2e_failures: e2eCounts.failures,
       e2e_cancelled: e2eCounts.cancelled,
-      e2e_failing_tests: e2e.filter((r) => r.conclusion === "failure").map((r) => ({ run: r.databaseId, tests: failingTests(r.databaseId) })),
+      e2e_failing_tests: mine
+        .filter((r) => r.conclusion === "failure" && (r.workflowName === "e2e" || r.workflowName === "ci"))
+        .map((r) => ({ run: r.databaseId, workflow: r.workflowName, tests: failingTests(r.databaseId) }))
+        .filter((entry) => entry.workflow === "e2e" || entry.tests !== null),
     };
   })
   .sort((a, b) => a.pr - b.pr);

@@ -38,6 +38,13 @@ describe("failing test names", () => {
     expect(failingTestNames(log)).toEqual(["e2e/hidden-plan.spec.ts › an Only me plan never shows its title", "e2e/sign-out.spec.ts › sign out"]);
   });
 
+  it("finds failing tests in the prod-build job of the ci workflow", () => {
+    const ci = "prod-build\tEnd to end tests against the production build\t2026-11-27T20:04:10.1334754Z";
+    const log = `${ci}   1) [phone] › e2e/sign-out.spec.ts:4:1 › sign out\n${ci}   2 passed`;
+    expect(failingTestNames(log)).toEqual(["e2e/sign-out.spec.ts › sign out"]);
+    expect(failingTestNames("static\tlint\t2026-11-27T20:04:10.1334754Z   error  Unexpected any")).toBeNull();
+  });
+
   it("reports null for an empty log or a log without failing tests", () => {
     expect(failingTestNames("")).toBeNull();
     expect(failingTestNames(`${prefix}   Error: something else`)).toBeNull();
