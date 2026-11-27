@@ -115,7 +115,7 @@ Each screen answers one question. What follows is what answers it, in order, wha
 - **One filled button:** in the e2e phone project, at most one visible filled button per page state.
 - **Copy (enforced):** the `copy/copy` lint rule over `src/app/**/*.tsx` rejects emoji, "please", "simply", "successfully", "N/A", "!", "12:00am" and "12:00pm", and title case in headings and buttons.
 - **Contrast:** form field borders need 3:1 against their ground, in both modes (enforced in `e2e/a11y.spec.ts`). A unit test over every text and background token pair at 4.5:1 is still to do.
-- **axe (enforced):** `e2e/a11y.spec.ts` runs axe on every page of the four demo trips in light and dark: zero serious or critical.
+- **axe (enforced):** `e2e/a11y.spec.ts` runs axe on every page of the four demo trips in light and dark: zero serious or critical. It visits only each page's default state (plus `?day=all` on the trip page), so open menus, validation errors, expanded details and other states need their own test.
 
 ## Anti-patterns in this app
 

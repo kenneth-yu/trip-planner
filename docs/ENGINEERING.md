@@ -141,6 +141,7 @@ People and agents copy what they see. Delete dead code, deprecated paths, scaffo
 
 - Build one phase at a time from `docs/PHASES.md`; a phase is done when its acceptance checks pass against the fixture trip.
 - Time logic and permission logic get unit tests before UI is built on them, using the fixture trip's flights (`docs/TIME_RULES.md` lists the expected outputs).
+- Design the phone layout first, then widen it. Use real content from the fixture trip in every screen and test, never lorem ipsum or placeholders like "Event title". Keep UI copy short and plain (docs/DESIGN.md, Copy).
 - When a rule in the docs seems wrong or a case is not covered, stop and ask instead of inventing behavior.
 
 ## Definition of done

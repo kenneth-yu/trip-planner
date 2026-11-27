@@ -67,7 +67,7 @@ export default defineConfig([
   {
     files: ["src/app/**/*.tsx"],
     plugins: { copy: copyPlugin },
-    rules: { "copy/copy": ["error", { properNouns: ["Google Calendar", "Google", "Apple"] }] },
+    rules: { "copy/copy": ["error", { properNouns: ["Google Calendar", "Google", "Apple", "New York", "Hong Kong", "Tokyo", "Shenzhen", "Kyoto", "Lisbon", "Chicago"] }] },
   },
   {
     files: ["eslint.config.mjs"],

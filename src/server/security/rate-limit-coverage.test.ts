@@ -21,9 +21,9 @@ const ACTION_ALLOWLIST: Record<string, string> = {
   "src/app/trips/new/actions.ts#createTripAction": "Signed in, creates only the caller's own empty trip; SECURITY.md lists no per person limit for it.",
   "src/app/trips/[tripId]/actions.ts#decideEntry": "Signed in and permission checked in the service; SECURITY.md lists no per person limit for it.",
   "src/app/trips/[tripId]/actions.ts#addAllClean": "Signed in and permission checked in the service; SECURITY.md lists no per person limit for it.",
-  "src/app/trips/[tripId]/actions.ts#connectAssistant": "Signed in and owner checked in the service; SECURITY.md lists no per person limit for it.",
+  "src/app/trips/[tripId]/actions.ts#connectAssistant": "Any trip member can mint links (viewers get read only ones) and nothing limits how many; known gap. Needs a per person rule in RATE_RULES, then remove this entry.",
   "src/app/trips/[tripId]/actions.ts#revokeAssistant": "Signed in and owner checked in the service; SECURITY.md lists no per person limit for it.",
-  "src/app/trips/[tripId]/actions.ts#mirrorAction": "Signed in and checked in the service; SECURITY.md lists no per person limit for it.",
+  "src/app/trips/[tripId]/actions.ts#mirrorAction": "Signed in and acts only on the caller's own mirror, but can start Google Calendar API calls with no per person limit; Google's quota is the only brake. Known gap; add a rule if it is abused.",
 };
 
 function walk(dir: string): string[] {

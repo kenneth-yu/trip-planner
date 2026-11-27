@@ -113,7 +113,8 @@ Each component lists what it shows and why.
 
 ## Copy
 
-* Sentence case, no emoji, no exclamation marks and no "please", "simply" or "successfully" are enforced by the `copy/copy` lint rule; its message says what to write instead.
+* The `copy/copy` lint rule rejects emoji, exclamation marks, "please", "simply", "successfully", "N/A" and "12:00pm" in any literal UI text, and title case or all caps in literal headings and buttons. Its message says what to write instead. Sentence case elsewhere (labels, sentences, text that comes from data) is a judgment call the rule cannot see; keep to it anyway.
+* Copy is short and plain. Use real content from the fixture trip in every screen and story, never lorem ipsum or "Event title".
 * Buttons are verbs: "Add flight", "Invite", "Copy link".
 * Times as people say them: "8:50am", "noon", "midnight". Durations rounded sensibly: "14h 30m", "about 45 min".
 * Places by city first, airport second: "Tokyo, Narita".

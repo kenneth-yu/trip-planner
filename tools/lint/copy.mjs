@@ -63,23 +63,47 @@ const copy = {
       return name && name.type === "JSXIdentifier" ? name.name : null;
     }
 
+    function containerOf(node) {
+      let child = node;
+      let current = node.parent;
+      while (current) {
+        if (current.type === "JSXExpressionContainer") return current;
+        const passesThrough =
+          current.type === "TemplateLiteral" ||
+          current.type === "LogicalExpression" ||
+          (current.type === "ConditionalExpression" && current.test !== child);
+        if (!passesThrough) return null;
+        child = current;
+        current = current.parent;
+      }
+      return null;
+    }
+
+    function checkExpressionText(node, text, strictCase) {
+      const container = containerOf(node);
+      if (!container) return;
+      const owner = container.parent;
+      if (owner.type === "JSXAttribute") {
+        if (owner.name.type === "JSXIdentifier" && COPY_PROPS.has(owner.name.name)) checkText(node, text, false);
+        return;
+      }
+      checkText(node, text, strictCase && HEADING_OR_BUTTON.has(enclosingName(node)));
+    }
+
     return {
       JSXText(node) {
         checkText(node, node.value, HEADING_OR_BUTTON.has(enclosingName(node)));
       },
       Literal(node) {
-        if (typeof node.value !== "string") return;
-        if (node.parent.type === "JSXExpressionContainer" && node.parent.parent.type !== "JSXAttribute") {
-          checkText(node, node.value, HEADING_OR_BUTTON.has(enclosingName(node)));
-        }
+        if (typeof node.value === "string") checkExpressionText(node, node.value, true);
+      },
+      TemplateElement(node) {
+        checkExpressionText(node, node.value.cooked ?? "", false);
       },
       JSXAttribute(node) {
         if (node.name.type !== "JSXIdentifier" || !COPY_PROPS.has(node.name.name)) return;
         const value = node.value;
         if (value?.type === "Literal" && typeof value.value === "string") checkText(value, value.value, false);
-        if (value?.type === "JSXExpressionContainer" && value.expression.type === "Literal" && typeof value.expression.value === "string") {
-          checkText(value.expression, value.expression.value, false);
-        }
       },
     };
   },

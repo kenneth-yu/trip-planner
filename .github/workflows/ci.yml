@@ -195,4 +195,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Fail a branch that lacks commits main's tooling needs
-        run: bash tools/ci/branch-current.sh origin/main tools/ci/required-commits.txt 40
+        run: |
+          for f in branch-current.sh required-commits.txt; do
+            git show "origin/main:tools/ci/$f" > "$RUNNER_TEMP/$f" 2>/dev/null || cp "tools/ci/$f" "$RUNNER_TEMP/$f"
+          done
+          bash "$RUNNER_TEMP/branch-current.sh" origin/main "$RUNNER_TEMP/required-commits.txt" 40
