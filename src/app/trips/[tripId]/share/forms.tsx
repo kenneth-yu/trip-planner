@@ -181,7 +181,7 @@ export function RemoveControl({ tripId, userId, name }: { tripId: string; userId
       <input type="hidden" name="tripId" value={tripId} />
       <input type="hidden" name="userId" value={userId} />
       <span ref={sentence} tabIndex={-1} className={styles.sentence}>
-        Remove {name}? They lose access to this trip.
+        Remove {name.split(" ")[0]}? They lose access to this trip.
         {removal.hidden > 0 && ` Their ${removal.hidden} private ${removal.hidden === 1 ? "item is" : "items are"} deleted too.`}
       </span>
       <button className={`quiet ${styles.danger}`}>Remove {name.split(" ")[0]}</button>

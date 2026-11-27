@@ -46,6 +46,7 @@
 
 .danger {
   color: var(--warning);
+  border-color: var(--warning);
 }
 
 .sentence:focus {
