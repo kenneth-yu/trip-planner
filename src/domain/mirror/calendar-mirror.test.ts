@@ -46,6 +46,15 @@ describe("building mirror events", () => {
     expect(JSON.stringify(out)).not.toMatch(/PLACEHOLDER|30K|30C/);
   });
 
+  it("a viewer's mirror has no item notes", () => {
+    const agg = buildFixtureTrip();
+    agg.memberships.push({ tripId: TRIP_ID, userId: "user-mom", role: "viewer" });
+    fixtureItem(agg, byFlight("CX509")).notes = "Gate code NOTE_CANARY";
+    const viewerOut = eventsFor(agg, { kind: "member", userId: "user-mom", homeZone: NY });
+    expect(JSON.stringify(viewerOut)).not.toContain("NOTE_CANARY");
+    expect(JSON.stringify(eventsFor(agg))).toContain("NOTE_CANARY");
+  });
+
   it("hidden items: nothing, or a plain Busy block with no trace of the item", () => {
     const agg = buildFixtureTrip();
     const base = fixtureItem(agg, byTitle("Jantzen"));

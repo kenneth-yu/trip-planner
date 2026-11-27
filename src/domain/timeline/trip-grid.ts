@@ -281,6 +281,7 @@ export function dayStrip(grid: TripGrid): StripDay[] {
 
 export interface UpNextEntry {
   key: string;
+  itemId: string;
   dayKey: string;
   date: string;
   time: string;
@@ -295,16 +296,16 @@ export function upNext(view: TripView, nowMs: number, count = 3): UpNextEntry[] 
     .flatMap((i) => {
       const at = (t: VisibleItem["start"]) => ({ dayKey: localDateKey(t), date: toLocal(t).toFormat("ccc LLL d", { locale: "en-US" }), time: formatClock(toLocal(t)), ms: instantMs(t) });
       if (i.type === "flight") {
-        return [{ ...at(i.start), key: `up:${i.id}`, title: `${i.flight?.flightNumber ?? i.title} to ${flightCities(i).to ?? i.flight?.toAirport ?? ""}`, place: flightCities(i).from }];
+        return [{ ...at(i.start), key: `up:${i.id}`, itemId: i.id, title: `${i.flight?.flightNumber ?? i.title} to ${flightCities(i).to ?? i.flight?.toAirport ?? ""}`, place: flightCities(i).from }];
       }
       if (i.type === "stay") {
         const name = i.stay?.propertyName ?? i.title;
         const out = [];
-        if (instantMs(i.start) > nowMs) out.push({ ...at(i.start), key: `in:${i.id}`, title: `Check in: ${name}`, place: itemCity(i) });
-        out.push({ ...at(i.end), key: `out:${i.id}`, title: `Check out: ${name}`, place: itemCity(i) });
+        if (instantMs(i.start) > nowMs) out.push({ ...at(i.start), key: `in:${i.id}`, itemId: i.id, title: `Check in: ${name}`, place: itemCity(i) });
+        out.push({ ...at(i.end), key: `out:${i.id}`, itemId: i.id, title: `Check out: ${name}`, place: itemCity(i) });
         return out;
       }
-      return [{ ...at(i.start), key: `up:${i.id}`, title: i.title.split(",")[0], place: itemCity(i) }];
+      return [{ ...at(i.start), key: `up:${i.id}`, itemId: i.id, title: i.title.split(",")[0], place: itemCity(i) }];
     })
     .filter((e) => e.ms > nowMs)
     .sort((a, b) => a.ms - b.ms)
