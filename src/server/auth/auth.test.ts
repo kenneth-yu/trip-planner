@@ -135,6 +135,13 @@ describe("devSignInEnabled", () => {
     expect(() => devSignInEnabled({ DEV_SIGN_IN: "1", NODE_ENV: "production" })).toThrow(/DEV_SIGN_IN/);
   });
 
+  it("is true under NODE_ENV=production only for the local review server", () => {
+    expect(devSignInEnabled({ DEV_SIGN_IN: "1", NODE_ENV: "production", REVIEW_SERVER: "1" })).toBe(true);
+    for (const extra of [{ VERCEL_ENV: "production" }, { VERCEL: "1" }, { DATABASE_URL: "postgres://u:p@localhost/x" }]) {
+      expect(() => devSignInEnabled({ DEV_SIGN_IN: "1", NODE_ENV: "production", REVIEW_SERVER: "1", ...extra })).toThrow(/DEV_SIGN_IN/);
+    }
+  });
+
   it("throws on a Vercel production deployment, whatever NODE_ENV says", () => {
     expect(() => devSignInEnabled({ DEV_SIGN_IN: "1", NODE_ENV: "production", VERCEL_ENV: "production" })).toThrow(/DEV_SIGN_IN/);
     expect(() => devSignInEnabled({ DEV_SIGN_IN: "1", NODE_ENV: "development", VERCEL_ENV: "production" })).toThrow(/DEV_SIGN_IN/);

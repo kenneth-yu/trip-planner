@@ -1,10 +1,8 @@
-import { z } from "zod";
-
 export const FLASH_COOKIE = "trip-flash";
 
-export const flashKind = z.enum(["saved", "deleted"]);
+export const FLASH_KINDS = ["saved", "deleted"] as const;
 
-export type FlashKind = z.infer<typeof flashKind>;
+export type FlashKind = (typeof FLASH_KINDS)[number];
 
 export function flashPath(tripId: string): string {
   return `/trips/${tripId}`;

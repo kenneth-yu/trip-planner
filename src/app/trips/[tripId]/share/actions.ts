@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { loadTripPage } from "@/server/web";
 import { changeRole, createInvite, hiddenItemCount, removeMember, revokeInvite } from "@/server/services/sharing-service";
+import { findCoTraveler, RateLimited, spendInviteBudget } from "@/server/services/member-service";
 import { InputProblem } from "@/domain/import/quick-add";
+import { firstName } from "@/domain/people/first-name";
 import { InvalidTransition } from "@/domain/state/machine";
 
 export interface CreatedInviteState {
@@ -12,6 +14,7 @@ export interface CreatedInviteState {
   travelerId: string | null;
   url: string | null;
   role: "editor" | "viewer" | null;
+  forName: string | null;
   error: string | null;
 }
 
@@ -23,13 +26,16 @@ export async function createInviteAction(_prev: CreatedInviteState, form: FormDa
   const tripId = z.string().uuid().parse(form.get("tripId"));
   const role = z.enum(["editor", "viewer"]).parse(form.get("role"));
   const traveler = z.string().parse(form.get("traveler") ?? NEW_TRAVELER);
-  const { ctx, requester } = await loadTripPage(tripId);
+  const personId = form.get("personId");
+  const { ctx, requester, user } = await loadTripPage(tripId);
   try {
+    await spendInviteBudget(ctx, user.id);
+    const person = personId === null ? null : await findCoTraveler(ctx, tripId, requester, personId);
     const { inviteId, url } = await createInvite(ctx, tripId, requester, { role, travelerId: traveler === NEW_TRAVELER ? undefined : traveler });
     revalidatePath(`/trips/${tripId}/share`);
-    return { inviteId, travelerId: traveler === NEW_TRAVELER ? null : traveler, url, role, error: null };
+    return { inviteId, travelerId: traveler === NEW_TRAVELER ? null : traveler, url, role, forName: person ? firstName(person.name) : null, error: null };
   } catch (e) {
-    if (e instanceof InputProblem) return { inviteId: null, travelerId: null, url: null, role: null, error: e.message };
+    if (e instanceof InputProblem || e instanceof RateLimited) return { inviteId: null, travelerId: null, url: null, role: null, forName: null, error: e.message };
     throw e;
   }
 }

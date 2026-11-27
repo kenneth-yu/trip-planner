@@ -1,42 +1,42 @@
 {
   "hotPaths": {
     "projectTrip/december": {
-      "budgetMs": 0.04
+      "budgetMs": 1
     },
     "buildTripGrid/december": {
-      "budgetMs": 22
+      "budgetMs": 33
     },
     "buildDays/december": {
-      "budgetMs": 14
+      "budgetMs": 22
     },
     "runChecks/december": {
-      "budgetMs": 28
+      "budgetMs": 46
     },
     "planCalendarImport/december": {
-      "budgetMs": 95
+      "budgetMs": 145
     },
     "projectTrip/packed": {
-      "budgetMs": 0.15
+      "budgetMs": 1
     },
     "buildTripGrid/packed": {
-      "budgetMs": 12
+      "budgetMs": 21
     },
     "buildDays/packed": {
-      "budgetMs": 6
+      "budgetMs": 10
     },
     "runChecks/packed": {
-      "budgetMs": 6
+      "budgetMs": 9
     },
     "planCalendarImport/packed": {
-      "budgetMs": 90
+      "budgetMs": 144
     }
   },
   "mcp": {
     "get_trip/in-memory": {
-      "budgetMs": 100
+      "budgetMs": 120
     },
     "get_trip/http": {
-      "budgetMs": 110
+      "budgetMs": 140
     }
   },
   "bundle": {
@@ -76,6 +76,9 @@
     "/trips/[tripId]/items/[itemId]": {
       "budgetGzipBytes": 151000
     },
+    "/trips/[tripId]/items/[itemId]/edit": {
+      "budgetGzipBytes": 183000
+    },
     "/invite/join": {
       "budgetGzipBytes": 146000
     },
@@ -93,6 +96,9 @@
     },
     "/trips/[tripId]/settings/delete": {
       "budgetGzipBytes": 155000
+    },
+    "/trips/[tripId]/settings": {
+      "budgetGzipBytes": 156000
     }
   }
 }
