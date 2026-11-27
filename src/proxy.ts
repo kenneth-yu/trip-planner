@@ -3,7 +3,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getDb } from "@/server/db/client";
 import { clientIp } from "@/server/security/client-ip";
 import { securityHeaders } from "@/server/security/headers";
-import { consumeRateLimit, ruleForPath, type RateRule } from "@/server/security/rate-limit";
+import { consumeRateLimit, ruleForRequest, type RateRule } from "@/server/security/rate-limit";
+import { REQUEST_PATH_HEADER } from "@/server/security/request-path";
 
 type Verdict = { allowed: boolean; retryAfterS: number } | "unavailable";
 
@@ -28,7 +29,7 @@ export async function proxy(request: NextRequest) {
   const nonce = randomBytes(16).toString("base64");
   const headers = securityHeaders(path, nonce, process.env.NODE_ENV === "production");
 
-  const rule = ruleForPath(path);
+  const rule = ruleForRequest(request.method, path);
   if (rule) {
     const verdict = await checkRateLimit(rule, request);
     if (verdict === "unavailable") return plain("This page is unavailable right now. Try again in a moment.", 503, headers, 30);
@@ -37,6 +38,7 @@ export async function proxy(request: NextRequest) {
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set(REQUEST_PATH_HEADER, `${path}${request.nextUrl.search}`);
   const policy = headers.get("content-security-policy");
   if (policy) requestHeaders.set("content-security-policy", policy);
   const response = NextResponse.next({ request: { headers: requestHeaders } });

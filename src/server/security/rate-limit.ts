@@ -5,7 +5,7 @@ import { appSecret } from "../auth/tokens";
 import type { DbOrTx } from "../repo/trip-repo";
 
 export interface RateRule {
-  name: "signIn" | "inviteAccept" | "viewLink" | "feed" | "assistant";
+  name: "signIn" | "inviteAccept" | "viewLink" | "feed" | "assistant" | "quickAdd" | "placeHint";
   limit: number;
   windowMs: number;
 }
@@ -19,18 +19,23 @@ export const RATE_RULES: Record<RateRule["name"], RateRule> = {
   viewLink: { name: "viewLink", limit: 120, windowMs: MINUTE },
   feed: { name: "feed", limit: 60, windowMs: MINUTE },
   assistant: { name: "assistant", limit: 120, windowMs: MINUTE },
+  quickAdd: { name: "quickAdd", limit: 30, windowMs: MINUTE },
+  placeHint: { name: "placeHint", limit: 60, windowMs: MINUTE },
 };
 
-const PATH_RULES: ReadonlyArray<{ rule: RateRule["name"]; test: (path: string) => boolean }> = [
-  { rule: "signIn", test: (p) => ["/api/auth/signin", "/api/auth/callback", "/api/auth/email"].some((s) => p === s || p.startsWith(`${s}/`)) },
-  { rule: "inviteAccept", test: (p) => p.startsWith("/invite/") },
-  { rule: "viewLink", test: (p) => p.startsWith("/v/") },
-  { rule: "feed", test: (p) => p.startsWith("/api/feed/") },
-  { rule: "assistant", test: (p) => p === "/api/mcp" || p.startsWith("/api/mcp/") },
+const SIGN_IN_FORM_PAGES = ["/", "/sign-in"];
+
+const REQUEST_RULES: ReadonlyArray<{ rule: RateRule["name"]; test: (method: string, path: string) => boolean }> = [
+  { rule: "signIn", test: (_m, p) => ["/api/auth/signin", "/api/auth/callback", "/api/auth/email"].some((s) => p === s || p.startsWith(`${s}/`)) },
+  { rule: "signIn", test: (m, p) => m === "POST" && SIGN_IN_FORM_PAGES.includes(p) },
+  { rule: "inviteAccept", test: (_m, p) => p.startsWith("/invite/") },
+  { rule: "viewLink", test: (_m, p) => p.startsWith("/v/") },
+  { rule: "feed", test: (_m, p) => p.startsWith("/api/feed/") },
+  { rule: "assistant", test: (_m, p) => p === "/api/mcp" || p.startsWith("/api/mcp/") },
 ];
 
-export function ruleForPath(pathname: string): RateRule | null {
-  const match = PATH_RULES.find((r) => r.test(pathname));
+export function ruleForRequest(method: string, pathname: string): RateRule | null {
+  const match = REQUEST_RULES.find((r) => r.test(method.toUpperCase(), pathname));
   return match ? RATE_RULES[match.rule] : null;
 }
 

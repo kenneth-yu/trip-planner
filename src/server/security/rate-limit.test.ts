@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
 import { createPgliteDb } from "../db/client";
 import { rateLimits } from "../db/schema";
-import { RATE_RULES, consumeRateLimit, ruleForPath, type RateRule } from "./rate-limit";
+import { RATE_RULES, consumeRateLimit, ruleForRequest, type RateRule } from "./rate-limit";
 
 beforeAll(() => {
   process.env.SESSION_SECRET = "test-secret-test-secret-test-secret-0123";
@@ -75,21 +75,50 @@ describe("consumeRateLimit", () => {
   });
 });
 
-describe("ruleForPath", () => {
-  it.each<[string, RateRule["name"]]>([
-    ["/api/auth/signin/google", "signIn"],
-    ["/api/auth/callback/google", "signIn"],
-    ["/api/auth/email", "signIn"],
-    ["/invite/abc", "inviteAccept"],
-    ["/v/abc", "viewLink"],
-    ["/api/feed/abc.ics", "feed"],
-    ["/api/mcp", "assistant"],
-    ["/api/mcp/abc", "assistant"],
-  ])("%s uses the %s rule", (path, name) => {
-    expect(ruleForPath(path)).toEqual(RATE_RULES[name]);
+describe("ruleForRequest", () => {
+  it.each<[string, string, RateRule["name"]]>([
+    ["GET", "/api/auth/signin/google", "signIn"],
+    ["POST", "/api/auth/signin/email", "signIn"],
+    ["GET", "/api/auth/callback/google", "signIn"],
+    ["GET", "/api/auth/email", "signIn"],
+    ["POST", "/", "signIn"],
+    ["POST", "/sign-in", "signIn"],
+    ["GET", "/invite/abc", "inviteAccept"],
+    ["GET", "/v/abc", "viewLink"],
+    ["GET", "/api/feed/abc.ics", "feed"],
+    ["POST", "/api/mcp", "assistant"],
+    ["GET", "/api/mcp/abc", "assistant"],
+  ])("%s %s uses the %s rule", (method, path, name) => {
+    expect(ruleForRequest(method, path)).toEqual(RATE_RULES[name]);
   });
 
-  it.each(["/", "/trips/abc", "/api/mcpx", "/vault", "/invited", "/api/auth/session"])("%s is not limited", (path) => {
-    expect(ruleForPath(path)).toBeNull();
+  it.each<[string, string]>([
+    ["GET", "/"],
+    ["GET", "/sign-in"],
+    ["POST", "/sign-in/x"],
+    ["GET", "/trips/abc"],
+    ["POST", "/trips/abc/add"],
+    ["GET", "/api/mcpx"],
+    ["GET", "/vault"],
+    ["GET", "/invited"],
+    ["GET", "/api/auth/session"],
+  ])("%s %s is not limited", (method, path) => {
+    expect(ruleForRequest(method, path)).toBeNull();
+  });
+});
+
+describe("per person action limits", () => {
+  const kenny = "00000000-0000-4000-8000-00000000000k";
+
+  it("refuses the 31st quick add in a minute and the 61st place hint, per person", async () => {
+    const db = await createPgliteDb();
+    const quick = [];
+    for (let i = 0; i < 31; i++) quick.push((await consumeRateLimit(db, RATE_RULES.quickAdd, kenny, t0)).allowed);
+    expect(quick.filter(Boolean)).toHaveLength(30);
+    expect(quick[30]).toBe(false);
+    expect((await consumeRateLimit(db, RATE_RULES.placeHint, kenny, t0)).allowed).toBe(true);
+    expect((await consumeRateLimit(db, RATE_RULES.quickAdd, "someone-else", t0)).allowed).toBe(true);
+    expect((await consumeRateLimit(db, RATE_RULES.quickAdd, kenny, after(60_000))).allowed).toBe(true);
+    expect(RATE_RULES.placeHint.limit).toBe(60);
   });
 });

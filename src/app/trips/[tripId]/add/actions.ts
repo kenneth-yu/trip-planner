@@ -6,7 +6,7 @@ import { loadTripPage } from "@/server/web";
 import { listTripMembers } from "@/server/services/member-service";
 import { quickAddItem } from "@/server/services/trip-service";
 import { placeContextFor } from "@/server/services/place-service";
-import { PLACE_HINT_BUDGET, QUICK_ADD_BUDGET, spendBudget } from "@/server/services/action-budget";
+import { RATE_RULES, consumeRateLimit } from "@/server/security/rate-limit";
 import { airportFor, FORM_ERROR, MESSAGES, parseItemForm, parseTripId, placeQueryFor, type FormEntries, type ZoneOf } from "@/domain/import/item-form";
 import { airportByCode, airportShortName, airportsInCity } from "@/domain/time/places";
 import { resolvePlace, type PlaceQuery } from "@/domain/time/resolve-place";
@@ -34,7 +34,7 @@ export async function addItem(_prev: FormState, form: FormData): Promise<FormSta
   const entries = entriesOf(form);
   const { ctx, user, requester, view } = await loadTripPage(tripId);
   if (!view.permissions.canEdit) notFound();
-  if (!(await spendBudget(ctx.db, QUICK_ADD_BUDGET, user.id, ctx.now()))) return { errors: {}, message: MESSAGES.tooMany, values: entries };
+  if (!(await consumeRateLimit(ctx.db, RATE_RULES.quickAdd, user.id, ctx.now())).allowed) return { errors: {}, message: MESSAGES.tooMany, values: entries };
   const members = await listTripMembers(ctx, tripId, requester);
   const places = await placeContextFor(ctx, view.items, requester.homeZone, placeQueriesIn(entries));
   const zoneOf: ZoneOf = (query, isoDate) => {
@@ -71,7 +71,7 @@ export async function placeHint(request: z.input<typeof HintRequest>): Promise<P
   if (!view.permissions.canEdit) notFound();
   const value = text.trim();
   if (!value) return { status: "empty" };
-  if (!(await spendBudget(ctx.db, PLACE_HINT_BUDGET, user.id, ctx.now()))) return { status: "limited", message: MESSAGES.tooMany };
+  if (!(await consumeRateLimit(ctx.db, RATE_RULES.placeHint, user.id, ctx.now())).allowed) return { status: "limited", message: MESSAGES.tooMany };
   if (kind === "airport") {
     const code = airportFor(value);
     const airport = code ? airportByCode(code) : null;
