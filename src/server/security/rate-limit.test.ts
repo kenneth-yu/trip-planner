@@ -120,5 +120,6 @@ describe("per person action limits", () => {
     expect((await consumeRateLimit(db, RATE_RULES.quickAdd, "someone-else", t0)).allowed).toBe(true);
     expect((await consumeRateLimit(db, RATE_RULES.quickAdd, kenny, after(60_000))).allowed).toBe(true);
     expect(RATE_RULES.placeHint.limit).toBe(60);
+    expect(RATE_RULES.dataExport.limit).toBe(6);
   });
 });
