@@ -1,8 +1,12 @@
 import type { Deadline, Item, ItemPrivate, Requester, Role, TripAggregate, Traveler, ZonedTime } from "../types";
 
+export interface VisibleDeadline extends Omit<Deadline, "confirmedBy"> {
+  confirmed: boolean;
+}
+
 export interface VisibleItem extends Omit<Item, "private" | "deadlines" | "visibleToUserIds" | "createdBy" | "updatedBy"> {
   private: ItemPrivate[];
-  deadlines: Deadline[];
+  deadlines: VisibleDeadline[];
   createdBy: string | null;
   updatedBy: string | null;
   visibleToUserIds: string[];
@@ -94,7 +98,7 @@ function projectItem(item: Item, requester: Requester, perms: Permissions): Visi
     flags: [...item.flags],
     notes: item.notes,
     private: perms.canSeeSensitive ? item.private.map((p) => structuredClone(p)) : [],
-    deadlines: perms.canSeeDeadlines ? item.deadlines.map((d) => structuredClone(d)) : [],
+    deadlines: perms.canSeeDeadlines ? item.deadlines.map(({ confirmedBy, ...d }) => ({ ...structuredClone(d), confirmed: confirmedBy !== null })) : [],
     createdBy: isMember ? item.createdBy : null,
     updatedBy: isMember ? item.updatedBy : null,
     createdAt: item.createdAt,

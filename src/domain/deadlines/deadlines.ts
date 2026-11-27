@@ -52,7 +52,7 @@ export function buildDeadlineLines(view: TripView, nowMs: number): DeadlineLine[
           exact: deadlineExact(d.at, itemCity(item), view.homeZone),
           warning: !passed && atMs - nowMs <= WARNING_WINDOW_MS,
           passed,
-          needsConfirming: d.source === "parsed" && !d.confirmedBy,
+          needsConfirming: d.source === "parsed" && !d.confirmed,
         };
       }),
     )

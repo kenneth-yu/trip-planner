@@ -84,3 +84,14 @@ describe("planning a sync", () => {
     ]);
   });
 });
+
+describe("busy blocks with identical times", () => {
+  it("become one Busy event, so keys stay unique and the number of hidden plans stays private", () => {
+    const agg = buildFixtureTrip();
+    const base = present(agg.items.find((i) => i.type === "plan"));
+    const hidden = (id: string) => ({ ...base, id, visibility: "only_me" as const, createdBy: USERS.jacob.id, showAsBusy: true });
+    agg.items.push(hidden("00000000-0000-4000-8400-000000000901"), hidden("00000000-0000-4000-8400-000000000902"));
+    const busy = eventsFor(agg).filter((e) => e.key.startsWith("busy:"));
+    expect(busy).toHaveLength(1);
+  });
+});

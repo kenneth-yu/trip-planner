@@ -137,6 +137,16 @@ describe("projectTrip: deadlines switches", () => {
     expect(hasDeadlines(agg, link)).toBe(true);
     expect(hasDeadlines(agg, viewer)).toBe(false);
   });
+
+  it("a link visitor who sees deadlines never receives the id of the person who confirmed one", () => {
+    const agg = tripWithViewer();
+    agg.shareLink = { enabled: true, showsDeadlines: true };
+    const confirmed = present(agg.items.flatMap((i) => i.deadlines).find((d) => d.confirmedBy === USERS.kenny.id));
+    const out = json(projectTrip(agg, link));
+    expect(out).not.toContain(USERS.kenny.id);
+    const view = projectTrip(agg, link);
+    expect(present(view.items.flatMap((i) => i.deadlines).find((d) => d.id === confirmed.id)).confirmed).toBe(true);
+  });
 });
 
 describe("projectTrip: access", () => {
