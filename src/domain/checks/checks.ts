@@ -261,7 +261,7 @@ const PRIORITY: CheckKind[] = [
   "busy_overlap",
 ];
 
-export function byImportance(findings: Finding[]): Finding[] {
+export function byImportance<T extends Pick<Finding, "kind">>(findings: T[]): T[] {
   return [...findings].sort((a, b) => PRIORITY.indexOf(a.kind) - PRIORITY.indexOf(b.kind));
 }
 
