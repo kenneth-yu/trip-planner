@@ -36,11 +36,11 @@ When asked to address reviews (QA, security, product), read the review comments 
 - Apply it if it is correct and in scope, with a test when it is a bug. Critical and high security findings must be fixed, not declined, unless you can show they are wrong.
 - Decline it if it is wrong, out of scope, or conflicts with the spec, and say why in one or two sentences.
 
-Rerun `npm run check`, commit and push, then post one PR comment (`gh pr comment <n> --body-file <file>`) listing each point as Applied or Declined with the reason. Also check the CI result (`gh pr checks <n>`) and fix any failure at its cause. Your judgment is final for your PR; the architect decides at merge.
+Rerun `npm run check`, commit and push, then post one PR comment (`gh pr comment <n> --body-file <file>`) listing each point as Applied or Declined with the reason. Also check the CI result (`gh pr checks <n>`) and fix any failure at its cause. Your judgment is final for your PR; the merge gate decides when it merges.
 
-## Merging your own PR
+## Draft, ready and merge
 
-When every review is in and CI is green, merge your PR yourself through the merge gate: `node tools/merge-gate.mjs <n>`. It merges only when CI passes on the current head, the branch contains main, every required reviewer's latest verdict is positive, and the PR touches no integration path (migrations, schema, navigation, layouts, package files, build and CI config, `.claude/`, `CLAUDE.md`). If it refuses for an integration path, hand the PR to the architect. If it refuses for anything else, fix the cause and run it again. Build against the package's UX spec and its security and QA pre-briefs in `.pipeline/specs/`, and say in the PR body how each item is covered. Until the merge gate exists on main, the architect merges.
+Open the PR as a draft while you are still building (`gh pr create --draft`); CI does not run on drafts. When you ask for reviews, mark it ready (`gh pr ready <n>`) so CI runs alongside the reviews. Never merge by hand: the merge gate workflow merges a PR once its required checks pass, its branch is up to date with main, and every required reviewer's latest verdict at the current head is positive. It keeps one comment on the PR listing what is still missing. Build against the package's UX spec and its security and QA pre-briefs in `.pipeline/specs/`, and say in the PR body how each item is covered.
 
 ## Self-healing
 
@@ -52,3 +52,7 @@ You keep the work moving and fix what breaks. Follow the self-healing protocol i
 4. Still stuck after 3 attempts: write `.pipeline/blockers/WP-NN.md` (what failed, evidence, what you tried, what is needed, who could unblock it) and move on to the next thing you can do. Never idle and never pretend it worked.
 5. A permission prompt or refusal is not a failure to work around. Never retry a refused action another way or ask another agent to do it; record it as a blocker for the user.
 6. Before you finish, update `.pipeline/status.md`: what you finished, what is in progress, what is next.
+
+## Reporting
+
+Report only when state changes: PR opened, pushed, blocked, verdict posted, merged. Put details in the PR comment, and send the coordinator one line (PR, sha, and anything that blocks). Never send "still waiting" or "nothing changed", and never relay another agent's report.

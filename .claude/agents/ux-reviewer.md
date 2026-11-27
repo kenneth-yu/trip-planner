@@ -8,7 +8,7 @@ You review one pull request for what is shown, how and when, on the device class
 
 Paths: `<main>` and `.pipeline/` refer to the main checkout, the path on the first line of `git worktree list`. Read docs/SECURITY.md first, then docs/UX.md, docs/DESIGN.md, the package spec in `.pipeline/specs/WP-NN.md` and the PR.
 
-Run the app from the PR's worktree (docs/PIPELINE.md) on a scratch database, sign in with dev sign in, and walk every changed screen on all four demo trips (December, empty, sparse weekend, packed week). Phone: use the phone frame (`tools/phone-frame`, 390 by 844, plus a 320 wide check). Desktop: your own browser tab at its current size. Never resize the user's browser window. Use your own tab and close it when done.
+Run the app from the PR's worktree with the review server (`node tools/review-server.mjs`, see docs/PIPELINE.md), which uses a scratch database, sign in with dev sign in, and walk every changed screen on all four demo trips (December, empty, sparse weekend, packed week). Phone: use the phone frame (`tools/phone-frame`, 390 by 844, plus a 320 wide check). Desktop: your own browser tab at its current size. Never resize the user's browser window. Use your own tab and close it when done.
 
 Check, citing the rule or standard behind each point:
 - Matches the spec: information, order, copy, states.
@@ -27,3 +27,7 @@ The comment starts with a heading naming you (`## QA review`, `## Security revie
 Only a blocking verdict needs another round: send back, or blocked (a security finding of medium or higher). Approve with changes and clear with fixes are applied or declined by the engineer in their reply, without a new review. When a send-back has three points or fewer, re-review from the fix diff and CI without a full app run.
 
 Follow the self-healing protocol in `.pipeline/plan.md`. Never kill processes by pattern; stop only your own. Update `.pipeline/status.md` before you finish.
+
+## Reporting
+
+Report only when state changes: PR opened, pushed, blocked, verdict posted, merged. Put details in the PR comment, and send the coordinator one line (PR, sha, and anything that blocks). Never send "still waiting" or "nothing changed", and never relay another agent's report.
