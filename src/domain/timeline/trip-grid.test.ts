@@ -4,7 +4,7 @@ import { present } from "@/testing/present";
 import { projectTrip } from "../visibility/project";
 import { DateTime } from "../time/luxon";
 import { fromLocal } from "../time/format";
-import { buildTripGrid, tripSpan } from "./trip-grid";
+import { buildTripGrid, dayStrip, pickDay, tripSpan, upNext } from "./trip-grid";
 
 const NY = "America/New_York";
 const now = new Date(FIXTURE_TODAY).getTime();
@@ -20,7 +20,6 @@ describe("trip grid on the fixture trip", () => {
     ]);
     expect(grid.days[0].month).toBe("Dec");
     expect(grid.days[1].month).toBeNull();
-    expect(grid.days.filter((d) => d.weekend).map((d) => d.day)).toEqual(["5", "6", "12", "13"]);
   });
 
   it("reads as a route", () => {
@@ -92,7 +91,51 @@ describe("trip grid on the fixture trip", () => {
     expect(present(buildTripGrid(projectTrip(agg, { kind: "member", userId: "user-mom", homeZone: NY }), now)).route).toEqual(grid.route);
   });
 
+  it("opens on the day you asked for, else today, else the first day", () => {
+    expect(pickDay(grid.days, "2026-12-05")).toBe("2026-12-05");
+    expect(pickDay(grid.days, "2027-01-01")).toBe("2026-12-01");
+    expect(pickDay(grid.days, null)).toBe("2026-12-01");
+    const during = present(buildTripGrid(view, DateTime.fromISO("2026-12-07T12:00", { zone: "Asia/Shanghai" }).toMillis()));
+    expect(pickDay(during.days, null)).toBe("2026-12-07");
+    expect(pickDay([], null)).toBeNull();
+  });
+
   it("summarizes dates with a friendly countdown", () => {
     expect(tripSpan(view, now)).toEqual({ dates: "Dec 1 to 15", countdown: "You leave in 5 days" });
+  });
+});
+
+describe("day strip for phones", () => {
+  const strip = dayStrip(grid);
+
+  it("has one chip per day with the city you sleep in that night", () => {
+    expect(strip.map((d) => `${d.day} ${d.city ?? "-"}`)).toEqual([
+      "1 -", "2 Tokyo", "3 Tokyo", "4 Tokyo", "5 Hong Kong", "6 Shenzhen", "7 Shenzhen", "8 Shenzhen", "9 Shenzhen",
+      "10 Hong Kong", "11 Hong Kong", "12 Hong Kong", "13 Tokyo", "14 Tokyo", "15 -",
+    ]);
+  });
+
+  it("marks days with something on them and days that need attention", () => {
+    expect(strip.filter((d) => d.busy).map((d) => d.day)).toEqual(["1", "2", "5", "13", "15"]);
+    expect(strip.filter((d) => d.needsAttention).map((d) => d.day)).toEqual(["6", "10", "11", "12", "13"]);
+  });
+});
+
+describe("up next", () => {
+  it("before the trip: the first things to happen, with how long until", () => {
+    expect(upNext(view, now).map((e) => `${e.date} ${e.time} ${e.title} (${e.inHowLong})`)).toEqual([
+      "Tue Dec 1 12:55am NH159 to Tokyo (in 5 days)",
+      "Wed Dec 2 3:00pm Check in: Hotel Resol Ueno (in 6 days)",
+      "Wed Dec 2 6:30pm Head spa (in 6 days)",
+    ]);
+  });
+
+  it("during the trip: what comes next from now", () => {
+    const fri = DateTime.fromISO("2026-12-05T16:00", { zone: "Asia/Hong_Kong" }).toMillis();
+    expect(upNext(view, fri).map((e) => `${e.time} ${e.title}`)).toEqual(["5:00pm Jantzen Tailor", "6:45pm Sun Kai Tat", "11:00am Check out: Stanford Hotel"]);
+  });
+
+  it("after the trip: nothing", () => {
+    expect(upNext(view, DateTime.fromISO("2027-01-01").toMillis())).toEqual([]);
   });
 });

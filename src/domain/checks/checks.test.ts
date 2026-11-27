@@ -3,7 +3,7 @@ import { buildFixtureTrip, byTitle, fixtureItem, TRIP_ID, USERS } from "@/fixtur
 import { fromLocal } from "../time/format";
 import { projectTrip } from "../visibility/project";
 import type { Requester } from "../types";
-import { runChecks } from "./checks";
+import { byImportance, runChecks } from "./checks";
 
 const NY = "America/New_York";
 const kenny: Requester = { kind: "member", userId: USERS.kenny.id, homeZone: NY };
@@ -73,6 +73,14 @@ describe("other checks", () => {
     tailor.start = fromLocal("2026-12-07T17:00", "Asia/Hong_Kong");
     tailor.end = fromLocal("2026-12-07T18:00", "Asia/Hong_Kong");
     expect(sentences(agg2)).toContain("Jantzen Tailor is in Hong Kong, but you are in Shenzhen at 5:00pm on Dec 7.");
+  });
+});
+
+describe("importance", () => {
+  it("puts disagreements and unclear places first and airport switches last", () => {
+    const kinds = byImportance(runChecks(projectTrip(buildFixtureTrip(), kenny))).map((f) => f.kind);
+    expect(kinds[0]).toBe("overlapping_stays");
+    expect(kinds.at(-1)).toBe("airport_switch");
   });
 });
 

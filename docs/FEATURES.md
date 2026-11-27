@@ -5,7 +5,8 @@ Every path a person or an assistant can take through the app, where it lives, an
 | Who | Path | Entry point | Service | Proven by |
 |---|---|---|---|---|
 | Member | See the trip day by day in local time | `/trips/[id]` | `getTripView` then `buildDays` | `days.test.ts`, `flight-card.test.ts` |
-| Member | See the whole trip as a day grid: where you sleep, travel with clock changes, plans, missing transfers, unclear bookings | `/trips/[id]` on desktop, `/trips/[id]/timeline` on phone | `buildTripGrid`, `missingTransfers` | `trip-grid.test.ts` |
+| Member | See the whole trip as a day grid: where you sleep, travel with clock changes, plans, missing transfers, unclear bookings | `/trips/[id]` on desktop | `buildTripGrid`, `missingTransfers`, `pickDay` | `trip-grid.test.ts` |
+| Member | On a phone, see what is next and pick a day from a strip | `/trips/[id]` on phone | `upNext`, `dayStrip` | `trip-grid.test.ts` |
 | Member | On desktop, see what to decide and what to check beside the day list | `/trips/[id]` (1000px and wider) | `loadAttention` | `deadlines.test.ts`, `checks.test.ts` |
 | Member | See deadlines and problems | `/trips/[id]/deadlines` | `buildDeadlineLines`, `runChecks`, `disagreementFindings` | `deadlines.test.ts`, `checks.test.ts`, `services.test.ts` |
 | Editor | Quick add a flight, stay, plan or transfer | form or API (UI pending) | `quickAddItem` | `quick-add.test.ts`, `services.test.ts` |

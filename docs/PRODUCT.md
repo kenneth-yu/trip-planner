@@ -52,7 +52,7 @@ Each screen answers one question. If something does not help answer it, it belon
 **Question:** where am I, and when?
 * The whole trip as a calendar style grid, one column per day (see `TIME_RULES.md`, Timeline)
 * Rows: where you sleep (colored by city), travel, plans, and anything unclear
-* On desktop it sits at the top of the trip page; on a phone it is its own tab and scrolls sideways
+* On desktop it sits at the top of the trip page. On a phone a compact day strip takes its place (see `DESIGN.md`, Phone trip screen)
 
 ### Deadlines
 **Question:** what do I have to decide, and by when?

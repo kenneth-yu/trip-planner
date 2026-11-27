@@ -24,7 +24,7 @@ function Flight({ card }: { card: FlightCard }) {
         <div className={styles.duration}>{card.duration}</div>
         <div className={styles.arrive}>
           <div className={styles.key}>
-            {card.arrive.time}
+            <span className={styles.arrivalTime}>{card.arrive.time}</span>
             {card.arrive.tag && <span className={styles.tag}>{card.arrive.tag}</span>}
           </div>
           <div className={styles.legPlace}>
@@ -126,7 +126,7 @@ function Entry({ entry, view, colors, names }: { entry: DayEntry; view: TripView
   );
 }
 
-export function DayView({ view, days, todayKey }: { view: TripView; days: Day[]; todayKey: string }) {
+export function DayView({ view, days, todayKey, only, anchors = true }: { view: TripView; days: Day[]; todayKey: string; only?: string; anchors?: boolean }) {
   const colors = cityColors(view);
   const names = new Map(view.travelers.map((t) => [t.id, t.name]));
   if (!days.length) {
@@ -141,15 +141,13 @@ export function DayView({ view, days, todayKey }: { view: TripView; days: Day[];
   }
   return (
     <>
-      {groupFreeDays(days).map((day) => (
-        <details key={day.key} id={`day-${day.key}`} className={styles.day} open={day.keys[day.keys.length - 1] >= todayKey}>
+      {groupFreeDays(days).filter((day) => !only || day.keys.includes(only)).map((day) => (
+        <details key={day.key} id={anchors ? `day-${day.key}` : undefined} className={styles.day} open={Boolean(only) || day.keys[day.keys.length - 1] >= todayKey}>
           <summary>
             <span className={styles.date}>{day.header}</span>
             {day.place && <span className={styles.place}>{day.place}</span>}
           </summary>
-          {day.keys.slice(1).map((k) => (
-            <span key={k} id={`day-${k}`} />
-          ))}
+          {anchors && day.keys.slice(1).map((k) => <span key={k} id={`day-${k}`} />)}
           {day.isFree ? (
             <p className={styles.free}>{day.keys.length > 1 ? "Free days" : "Free day"}</p>
           ) : (

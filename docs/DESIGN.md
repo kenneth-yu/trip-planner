@@ -85,11 +85,19 @@ Each component lists what it shows and why.
 * On the day you land, when it is a different date from departure: "5:25am  Landed from New York". Small, secondary.
 * Why: each day reads on its own without scrolling back.
 
+### Phone trip screen
+* Opens on what is next: alerts for new items and decisions due soon, then the next three things with how long until each.
+* A day strip replaces the grid: one small chip per day with the date, a thin bar in the city color of where you sleep, a dot when something is planned and a red dot when something needs a look. Tap a chip to see that day.
+* Each day sits in its own soft panel, with the date pinned at the top while you scroll it.
+* Why: on a small screen people need one thing at a time. The strip keeps the shape of the trip in view without the weight of the grid.
+
 ### Trip grid (timeline)
 * One column per day, rows labeled in plain words: Sleeping in, Travel, Plans, Not sure yet.
 * City blocks carry their own name and nights, so no legend is needed. The clock change rides on each landing: "Land in Tokyo, 5:25am, clocks +14h".
 * Each travel item and plan sits in its own soft, rounded bubble. A missing transfer gets a softly red bubble.
-* Each row has a faint neutral tint, and soft day lines run the full height, so rows and days are easy to follow. Weekends are slightly darker. The tints are near-neutral so they never read as city colors.
+* Each row has a faint neutral tint, and soft day lines run the full height, so rows and days are easy to follow. The tints are near-neutral so they never read as city colors.
+* A cell shows at most three plans, then "+N more". The grid is the shape of the trip, not the full list.
+* The chosen day is gently highlighted, and its full detail appears below the grid.
 * Days are at least about 7rem wide and at most 12rem. Long trips scroll sideways with the row names pinned on the left; short trips stay compact instead of stretching.
 * A row with nothing in it for the whole trip is not drawn.
 * Why: people read a trip by day. Every label fits in its own cell and nothing floats.

@@ -2,7 +2,7 @@ import { DateTime } from "../time/luxon";
 import type { TripView, VisibleItem } from "../visibility/project";
 import { buildDays, itemCity, whereAt } from "../time/days";
 import { flightCities } from "../time/flight-card";
-import { formatClock, instantMs, localDateKey, offsetAt, toLocal } from "../time/format";
+import { formatClock, formatTimeUntil, instantMs, localDateKey, offsetAt, toLocal } from "../time/format";
 
 export interface GridDay {
   key: string;
@@ -10,7 +10,6 @@ export interface GridDay {
   day: string;
   month: string | null;
   place: string | null;
-  weekend: boolean;
   today: boolean;
 }
 
@@ -214,7 +213,6 @@ export function buildTripGrid(view: TripView, nowMs: number): TripGrid | null {
         day: String(dt.day),
         month: !previous || previous.month !== dt.month ? dt.toFormat("LLL", { locale: "en-US" }) : null,
         place: d.place,
-        weekend: dt.weekday >= 6,
         today: d.key === todayKey,
       };
     }),
@@ -225,6 +223,11 @@ export function buildTripGrid(view: TripView, nowMs: number): TripGrid | null {
     cities,
     route: routeOf(view),
   };
+}
+
+export function pickDay(days: Pick<GridDay, "key" | "today">[], requested: string | null): string | null {
+  if (requested && days.some((d) => d.key === requested)) return requested;
+  return days.find((d) => d.today)?.key ?? days[0]?.key ?? null;
 }
 
 export function tripSpan(view: TripView, nowMs: number): { dates: string; countdown: string | null } | null {
@@ -245,4 +248,66 @@ export function tripSpan(view: TripView, nowMs: number): { dates: string; countd
     return { dates, countdown: where.kind === "air" ? "You're in the air" : where.city ? `You're in ${where.city}` : null };
   }
   return { dates, countdown: null };
+}
+
+export interface StripDay {
+  key: string;
+  weekday: string;
+  day: string;
+  month: string | null;
+  cityIndex: number | null;
+  city: string | null;
+  busy: boolean;
+  needsAttention: boolean;
+  today: boolean;
+}
+
+export function dayStrip(grid: TripGrid): StripDay[] {
+  return grid.days.map((d, i) => {
+    const night = grid.sleep.find((s) => s.from <= i && i < s.to) ?? null;
+    return {
+      key: d.key,
+      weekday: d.weekday,
+      day: d.day,
+      month: d.month,
+      cityIndex: night ? night.cityIndex : null,
+      city: night ? night.city : null,
+      busy: grid.plans[i].length > 0 || grid.travel[i].some((t) => t.kind !== "missing"),
+      needsAttention: grid.travel[i].some((t) => t.kind === "missing") || grid.unsure.some((u) => u.from <= i && i < u.to),
+      today: d.today,
+    };
+  });
+}
+
+export interface UpNextEntry {
+  key: string;
+  dayKey: string;
+  date: string;
+  time: string;
+  title: string;
+  place: string | null;
+  inHowLong: string;
+}
+
+export function upNext(view: TripView, nowMs: number, count = 3): UpNextEntry[] {
+  const entries = view.items
+    .filter((i) => isConfirmed(i) && instantMs(i.end) > nowMs)
+    .flatMap((i) => {
+      const at = (t: VisibleItem["start"]) => ({ dayKey: localDateKey(t), date: toLocal(t).toFormat("ccc LLL d", { locale: "en-US" }), time: formatClock(toLocal(t)), ms: instantMs(t) });
+      if (i.type === "flight") {
+        return [{ ...at(i.start), key: `up:${i.id}`, title: `${i.flight?.flightNumber ?? i.title} to ${flightCities(i).to ?? i.flight?.toAirport ?? ""}`, place: flightCities(i).from }];
+      }
+      if (i.type === "stay") {
+        const name = i.stay?.propertyName ?? i.title;
+        const out = [];
+        if (instantMs(i.start) > nowMs) out.push({ ...at(i.start), key: `in:${i.id}`, title: `Check in: ${name}`, place: itemCity(i) });
+        out.push({ ...at(i.end), key: `out:${i.id}`, title: `Check out: ${name}`, place: itemCity(i) });
+        return out;
+      }
+      return [{ ...at(i.start), key: `up:${i.id}`, title: i.title.split(",")[0], place: itemCity(i) }];
+    })
+    .filter((e) => e.ms > nowMs)
+    .sort((a, b) => a.ms - b.ms)
+    .slice(0, count);
+  return entries.map(({ ms, ...e }) => ({ ...e, inHowLong: formatTimeUntil(nowMs, ms) }));
 }

@@ -1,0 +1,135 @@
+.upNext {
+  margin: 0 0 20px;
+}
+
+.upNext h2,
+.stripTitle {
+  font-size: var(--size-body);
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.next {
+  display: grid;
+  grid-template-columns: 4.75rem 1fr;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--rule);
+  text-decoration: none;
+  color: var(--text);
+}
+
+.next b {
+  white-space: nowrap;
+}
+
+.next small {
+  display: block;
+  color: var(--muted);
+  font-size: var(--size-small);
+}
+
+.alert {
+  display: block;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--warning) 10%, var(--ground));
+  color: var(--text);
+  text-decoration: none;
+  margin-bottom: 10px;
+}
+
+.alert small {
+  display: block;
+  color: var(--muted);
+  font-size: var(--size-small);
+}
+
+.strip {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 4px 2px 12px;
+  margin: 0 calc(-1 * var(--gutter)) 12px;
+  padding-left: var(--gutter);
+  padding-right: var(--gutter);
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+
+.chip {
+  flex: 0 0 3.5rem;
+  scroll-snap-align: center;
+  border-radius: 12px;
+  padding: 6px 0 8px;
+  text-align: center;
+  text-decoration: none;
+  color: var(--muted);
+  background: var(--soft);
+  font-size: var(--size-small);
+  line-height: 1.2;
+  position: relative;
+}
+
+.chip b {
+  display: block;
+  font-size: 1.125rem;
+  color: var(--text);
+}
+
+.chosen {
+  background: var(--text);
+  color: var(--ground);
+}
+
+.chosen b {
+  color: var(--ground);
+}
+
+.bar {
+  display: block;
+  height: 4px;
+  margin: 6px 8px 0;
+  border-radius: 2px;
+  background: var(--city, transparent);
+}
+
+.dots {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  height: 6px;
+  margin-top: 5px;
+}
+
+.dot,
+.warn {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.warn {
+  background: var(--warning);
+}
+
+.city1 {
+  --city: var(--city-1);
+}
+
+.city2 {
+  --city: var(--city-2);
+}
+
+.city3 {
+  --city: var(--city-3);
+}
+
+.city4 {
+  --city: var(--city-4);
+}
+
+.city5 {
+  --city: var(--city-5);
+}

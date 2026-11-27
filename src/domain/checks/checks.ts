@@ -248,6 +248,23 @@ export const CHECKS: ((view: TripView) => Finding[])[] = [
   unsurePlace,
 ];
 
+const PRIORITY: CheckKind[] = [
+  "records_disagree",
+  "unsure_place",
+  "overlapping_stays",
+  "city_change_no_transport",
+  "nowhere_to_sleep",
+  "late_arrival",
+  "tight_connection",
+  "plan_outside_places",
+  "airport_switch",
+  "busy_overlap",
+];
+
+export function byImportance(findings: Finding[]): Finding[] {
+  return [...findings].sort((a, b) => PRIORITY.indexOf(a.kind) - PRIORITY.indexOf(b.kind));
+}
+
 export function runChecks(view: TripView, opts: { dismissedKeys?: Set<string>; extra?: Finding[] } = {}): Finding[] {
   if (!view.permissions.canSeeDeadlines) return [];
   const all = [...CHECKS.flatMap((c) => c(view)), ...(opts.extra ?? [])];

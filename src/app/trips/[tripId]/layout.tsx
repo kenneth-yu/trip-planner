@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import styles from "../../ui/page.module.css";
 import { loadTripPage } from "@/server/web";
 import { buildTripGrid, tripSpan } from "@/domain/timeline/trip-grid";
@@ -18,12 +19,15 @@ export default async function TripLayout({ children, params }: LayoutProps<"/tri
     <main className={styles.trip}>
       <h1 className={styles.hello}>{view.trip.name}</h1>
       {route.length > 1 && (
-        <p className={styles.route}>
+        <p className={`${styles.route} ${styles.wideOnly}`}>
           {route.map((city, i) => (
-            <span key={`${city}-${i}`} style={{ padding: 0, color: "inherit" }}>
-              {i > 0 && <span>→</span>}
-              {city}
-            </span>
+            <Fragment key={`${city}-${i}`}>
+              {i > 0 && " "}
+              <span className={styles.stop}>
+                {i > 0 && <span className={styles.arrow}>→</span>}
+                {city}
+              </span>
+            </Fragment>
           ))}
         </p>
       )}

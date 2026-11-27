@@ -272,24 +272,27 @@ Phone first, one question per screen. From 1000px wide, the trip page combines t
 flowchart TB
   subgraph Desktop["Trip page, 1000px and wider"]
     direction TB
-    H["Trip name<br/>New York → Tokyo → Hong Kong → Shenzhen → Hong Kong → Tokyo → New York<br/>Dec 1 to 15 · You leave in 5 days · with Jacob"]
-    T["Trip grid: one column per day<br/>Sleeping in · Travel · Plans · Not sure yet"]
+    H["Trip name, route, dates, countdown"]
+    T["Trip grid: one column per day, at most three plans per cell<br/>click a day to choose it"]
     subgraph Cols[" "]
       direction LR
-      A["Left: new items to look over,<br/>decide in the next few days, later,<br/>worth double-checking"]
-      D["Right: day by day"]
+      A["Left: new items to look over,<br/>decide soon, top three to look at,<br/>See N more"]
+      D["Right: the chosen day in detail<br/>(Show every day on request)"]
     end
     H --> T --> Cols
   end
   subgraph Phone["Phone"]
     direction TB
-    P1[Day by day] --- P2["Timeline tab<br/>(the grid, scrolls sideways)"] --- P3[Deadlines] --- P4[Review inbox] --- P5[Connect]
+    Q1["Alerts: new items, decide soon"] --> Q2["Up next: the next three things"] --> Q3["Day strip: one chip per day,<br/>city bar, plan dot, red dot"] --> Q4["The chosen day in its own panel"]
   end
 ```
 
 - `buildTripGrid(view)` in `src/domain/timeline` builds the grid from a `TripView`, so it obeys the same visibility rules as everything else. Hidden items show only as Busy.
-- Every column header and block links to that day in the list.
-- Each fact appears once. Deadlines live in the left column, exact times in the day list, and the grid shows the shape of the trip.
+- Every column header and block links to that day.
+- On a phone the page opens on what is next (PRODUCT.md, Now screen): alerts, then `upNext`, then the day strip (`dayStrip`), then one day. The strip replaces the grid on phones and is about 70px tall. Each chip shows the date, a bar in the color of the city you sleep in, a dot when something is planned and a red dot when something needs a look.
+- Every day sits in its own soft panel with a sticky date, so days never run together.
+- Each fact appears once on a screen. The grid is the overview, the chosen day is the detail, and the left column lists only what needs a decision soon plus the three most important things to check (`byImportance`). Everything else is one click away on the Deadlines tab.
+- The chosen day lives in the URL (`?day=2026-12-05`, or `?day=all` for every day), so it survives a reload and can be shared. Without one, the page opens on today during the trip and on the first day before it (`pickDay`).
 - Consecutive free days in the same place merge into one row in the day list ("Mon Dec 7 to Wed Dec 9, Free days").
 - Deliberately left out: a row of big-number tiles (DESIGN.md lists those as a pattern to avoid) and visa or entry advice (CHECKS.md says not to generate it).
 
@@ -298,6 +301,8 @@ flowchart TB
 1. A Gantt-style chart with lanes on real elapsed time. Accurate, but it read like a database.
 2. A single journey line on real elapsed time. Friendlier, but labels floated at many heights and short things were slivers.
 3. The trip grid, one column per day. People plan trips by day, so the overview now does too.
+4. Overview plus one day. Showing the grid, every day in full and every check at once repeated each fact three times. Desktop now shows the grid, one chosen day, and a short list of what needs attention.
+5. On phones, the grid became a day strip and the page opens on what is next. A full grid or a full list was too much to take in on a small screen.
 
 ## Data model (stored)
 

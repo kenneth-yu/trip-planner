@@ -2,6 +2,7 @@ import Link from "next/link";
 import styles from "../../ui/page.module.css";
 import type { Attention as AttentionData } from "@/server/attention";
 import type { DeadlineLine } from "@/domain/deadlines/deadlines";
+import { byImportance } from "@/domain/checks/checks";
 
 function Deadlines({ title, lines }: { title: string; lines: DeadlineLine[] }) {
   if (!lines.length) return null;
@@ -28,11 +29,43 @@ function sentFrom(names: string[]): string {
   return names.length === 1 ? `From ${names[0]}` : `From ${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
 
-export function Attention({ data, tripId, showPassed }: { data: AttentionData; tripId: string; showPassed: boolean }) {
+const SHORT_LIST = 3;
+
+export function Attention({ data, tripId, showPassed, short }: { data: AttentionData; tripId: string; showPassed: boolean; short?: boolean }) {
   const upcoming = data.deadlines.filter((l) => !l.passed);
   const soon = upcoming.filter((l) => l.warning);
   const later = upcoming.filter((l) => !l.warning);
   const passed = data.deadlines.filter((l) => l.passed);
+  if (short) {
+    const findings = byImportance(data.findings);
+    const more = later.length + Math.max(0, findings.length - SHORT_LIST);
+    return (
+      <>
+        {data.pending > 0 && (
+          <Link className={styles.callout} href={`/trips/${tripId}/inbox`}>
+            {data.pending === 1 ? "1 new item to look over" : `${data.pending} new items to look over`}
+            <small>{sentFrom(data.pendingFrom)}. Nothing is added until you say so.</small>
+          </Link>
+        )}
+        <Deadlines title="Decide soon" lines={soon} />
+        {findings.length > 0 && (
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>Worth a look</h2>
+            <ul className={styles.list}>
+              {findings.slice(0, SHORT_LIST).map((f) => (
+                <li key={f.key}>{f.sentence}</li>
+              ))}
+            </ul>
+          </section>
+        )}
+        {more > 0 && (
+          <p className={styles.section}>
+            <Link href={`/trips/${tripId}/deadlines`}>See {more} more</Link>
+          </p>
+        )}
+      </>
+    );
+  }
   return (
     <>
       {data.pending > 0 && (

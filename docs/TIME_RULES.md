@@ -60,6 +60,7 @@ Changed on Nov 26, 2026 at the trip owner's request: a real elapsed time axis ma
 * A missing transfer between cities appears in the travel row on the day you move: "No way to Shenzhen booked".
 * Weekends are shaded. Today, during the trip, is marked.
 * Precise times, home time references and durations stay in the day by day view and on flight cards.
+* On phones the grid is replaced by a day strip with the same days and the same city colors (see `DESIGN.md`).
 
 ## Defaults for imported all day stays
 

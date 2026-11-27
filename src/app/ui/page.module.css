@@ -17,10 +17,10 @@
 
 .nav {
   display: flex;
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: 6px 20px;
   margin: 12px 0 28px;
   font-size: var(--size-small);
-  overflow-x: auto;
 }
 
 .nav a {
@@ -104,9 +104,13 @@
   margin: 0 0 4px;
 }
 
-.route span {
+.stop {
+  white-space: nowrap;
+}
+
+.arrow {
   color: var(--muted);
-  padding: 0 6px;
+  padding-right: 6px;
 }
 
 .span {
@@ -143,6 +147,10 @@
   display: none;
 }
 
+.phoneOnly {
+  display: block;
+}
+
 @media (min-width: 1000px) {
   .trip {
     padding-left: 40px;
@@ -153,6 +161,10 @@
     display: block;
   }
 
+  .phoneOnly {
+    display: none;
+  }
+
   .columns {
     grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
     gap: 56px;
@@ -160,7 +172,4 @@
   }
 
 
-  .timelineLink {
-    display: none;
-  }
 }

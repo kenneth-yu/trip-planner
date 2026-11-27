@@ -2,8 +2,9 @@ import styles from "./trip-grid.module.css";
 import type { TripGrid } from "@/domain/timeline/trip-grid";
 
 const CITY = [styles.city1, styles.city2, styles.city3, styles.city4, styles.city5];
+const PER_CELL = 3;
 
-export function TripGridView({ grid, dayHref }: { grid: TripGrid; dayHref: (dayKey: string) => string }) {
+export function TripGridView({ grid, dayHref, selectedKey }: { grid: TripGrid; dayHref: (dayKey: string) => string; selectedKey: string | null }) {
   const col = (i: number) => i + 2;
   const hasUnsure = grid.unsure.length > 0;
   const hasTravel = grid.travel.some((cell) => cell.length > 0);
@@ -26,12 +27,12 @@ export function TripGridView({ grid, dayHref }: { grid: TripGrid; dayHref: (dayK
         {hasPlans && <span className={`${styles.band} ${styles.bandPlans}`} style={{ gridRow: rows.plans }} />}
         {hasUnsure && <span className={`${styles.band} ${styles.bandUnsure}`} style={{ gridRow: rows.unsure }} />}
         {grid.days.map((d, i) => (
-          <span key={`col-${d.key}`} className={`${styles.column} ${d.weekend ? styles.weekend : ""} ${d.today ? styles.today : ""}`} style={{ gridColumn: col(i) }} />
+          <span key={`col-${d.key}`} className={`${styles.column} ${d.key === selectedKey ? styles.selected : ""} ${d.today ? styles.today : ""}`} style={{ gridColumn: col(i) }} />
         ))}
 
         <span className={styles.corner} style={{ gridRow: rows.head }} />
         {grid.days.map((d, i) => (
-          <a key={`head-${d.key}`} href={dayHref(d.key)} className={styles.head} style={{ gridColumn: col(i), gridRow: rows.head }}>
+          <a key={`head-${d.key}`} href={dayHref(d.key)} className={`${styles.head} ${d.key === selectedKey ? styles.headSelected : ""}`} aria-current={d.key === selectedKey ? "date" : undefined} style={{ gridColumn: col(i), gridRow: rows.head }}>
             {d.month && <span className={styles.month}>{d.month} </span>}
             {d.weekday}
             <b>{d.day}</b>
@@ -65,12 +66,17 @@ export function TripGridView({ grid, dayHref }: { grid: TripGrid; dayHref: (dayK
         {hasPlans && <span className={`${styles.rowLabel} ${styles.bandPlans}`} style={{ gridRow: rows.plans }}>Plans</span>}
         {hasPlans && grid.plans.map((entries, i) => (
           <div key={`plans-${grid.days[i].key}`} className={styles.cell} style={{ gridColumn: col(i), gridRow: rows.plans }}>
-            {entries.map((p) => (
+            {entries.slice(0, PER_CELL).map((p) => (
               <a key={p.key} href={dayHref(grid.days[i].key)} className={styles.entry}>
                 {p.title}
                 <small>{p.time}</small>
               </a>
             ))}
+            {entries.length > PER_CELL && (
+              <a href={dayHref(grid.days[i].key)} className={styles.more}>
+                +{entries.length - PER_CELL} more
+              </a>
+            )}
           </div>
         ))}
 
