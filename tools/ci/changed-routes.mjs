@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { concreteRoute, concreteRoutes, routeOfPage, selectPages } from "./changed-routes-lib.mjs";
+import { concreteRoute, finalRoutes, routeOfPage, selectPages } from "./changed-routes-lib.mjs";
 
 const pages = readdirSync("src/app", { recursive: true, encoding: "utf8" })
   .filter((entry) => entry.endsWith("page.tsx") && (entry === "page.tsx" || entry.endsWith("/page.tsx")))
@@ -19,4 +19,6 @@ const selection = all || !trusted ? { pages, reason: null } : selectPages(change
 if (selection.reason) process.stderr.write(`Every route is checked: ${selection.reason}.\n`);
 const skipped = selection.pages.filter((page) => concreteRoute(routeOfPage(page)) === null).map(routeOfPage);
 if (skipped.length > 0) process.stderr.write(`Routes the checker cannot open, so axe does not cover them: ${skipped.join(", ")}\n`);
-process.stdout.write(`${concreteRoutes(selection.pages).join(",")}\n`);
+const result = finalRoutes(selection.pages, pages);
+if (result.rejected.length > 0) process.stderr.write(`Page folders with unusual names were left out and every other route is checked: ${result.rejected.map((route) => JSON.stringify(route)).join(", ")}\n`);
+process.stdout.write(`${result.routes.join(",")}\n`);

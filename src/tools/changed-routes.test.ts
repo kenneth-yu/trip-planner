@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { concreteRoute, concreteRoutes, routeOfPage, routesTouched, selectPages } from "../../tools/ci/changed-routes-lib.mjs";
+import { concreteRoute, concreteRoutes, finalRoutes, isSafeRoute, routeOfPage, routesTouched, selectPages } from "../../tools/ci/changed-routes-lib.mjs";
 
 const TRIP = "00000000-0000-4000-8300-000000000001";
 const pages = [
@@ -62,6 +62,29 @@ describe("routes of changed pages", () => {
     expect(concreteRoutes(pages)).toEqual(
       [`/`, `/sign-in`, `/trips/new`, `/trips/${TRIP}`, `/trips/${TRIP}/add`, `/trips/${TRIP}/inbox`, `/trips/${TRIP}/items/00000000-0000-4000-8400-000000000005`].sort(),
     );
+  });
+});
+
+describe("safe route names", () => {
+  it.each(["/", "/sign-in", "/trips/new", "/a_b/c-d/9"])("accepts %s", (route) => {
+    expect(isSafeRoute(route)).toBe(true);
+  });
+
+  it.each(["/x\nAXE_ROUTES=/evil", "/x y", "/x;rm", "/x$(id)", "/x,/y", "x", "/x%0a", "/é"])("rejects %j", (route) => {
+    expect(isSafeRoute(route)).toBe(false);
+  });
+
+  it("drops a page folder with an unusual name and widens to every safe route", () => {
+    const bad = "src/app/evil\nname/page.tsx";
+    const all = [...pages, bad];
+    const result = finalRoutes([bad, "src/app/sign-in/page.tsx"], all);
+    expect(result.widened).toBe(true);
+    expect(result.rejected).toEqual(["/evil\nname"]);
+    expect(result.routes).toEqual(concreteRoutes(pages));
+  });
+
+  it("changes nothing when every route is safe", () => {
+    expect(finalRoutes(["src/app/sign-in/page.tsx"], pages)).toEqual({ routes: ["/sign-in"], rejected: [], widened: false });
   });
 });
 

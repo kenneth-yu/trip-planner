@@ -156,6 +156,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository && !(needs.changes.result == 'success' && needs.changes.outputs.code == 'false'))) }}
+    permissions:
+      contents: read
+      pull-requests: read
     timeout-minutes: 30
     services:
       postgres:
@@ -223,6 +226,7 @@ jobs:
             routes="$(node tools/ci/changed-routes.mjs --all)"
           fi
           echo "Routes for axe: ${routes:-none}"
+          if ! printf '%s' "$routes" | grep -Eq '^(/[A-Za-z0-9/_-]*)?(,/[A-Za-z0-9/_-]*)*$'; then echo "::error::The route list holds a character outside letters, digits, slash, dash and underscore."; exit 1; fi
           echo "AXE_ROUTES=$routes" >> "$GITHUB_ENV"
       - name: End to end tests against the production build
         env:

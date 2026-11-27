@@ -54,3 +54,18 @@ export function selectPages(changedFiles, pages) {
   if (unfillable) return { pages, reason: `${unfillable} has a parameter the checker cannot fill in` };
   return { pages: touched, reason: null };
 }
+
+const SAFE_ROUTE = /^\/[A-Za-z0-9/_-]*$/;
+
+export function isSafeRoute(route) {
+  return SAFE_ROUTE.test(route);
+}
+
+export function finalRoutes(selectedPages, allPages) {
+  const rejected = [];
+  const keep = (pages) => concreteRoutes(pages).filter((route) => (isSafeRoute(route) ? true : (rejected.push(route), false)));
+  const selected = keep(selectedPages);
+  if (rejected.length === 0) return { routes: selected, rejected, widened: false };
+  const everything = keep(allPages);
+  return { routes: everything, rejected: [...new Set(rejected)], widened: true };
+}
