@@ -148,8 +148,8 @@
         "start": { "local": "2026-12-01T00:55", "zone": "America/New_York" },
         "end": { "local": "2026-12-02T05:25", "zone": "Asia/Tokyo" },
         "travelers": ["kenny", "jacob"],
-        "private": [ { "traveler": "kenny", "seat": "30K", "confirmationCode": "PLACEHOLDER_A" },
-                     { "traveler": "jacob", "seat": "30C", "confirmationCode": "PLACEHOLDER_B" } ] },
+        "private": [ { "traveler": "kenny", "seat": "30K", "confirmationCode": "PLACEHOLDER_A"  },
+                     { "traveler": "jacob", "seat": "30C", "confirmationCode": "PLACEHOLDER_B"  } ] },
 
       { "type": "stay", "title": "Hotel Resol Ueno", "city": "Tokyo",
         "start": { "local": "2026-12-02T15:00", "zone": "Asia/Tokyo" },
