@@ -1,4 +1,4 @@
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 import * as t from "../db/schema";
 import type { ServiceContext } from "./context";
@@ -21,19 +21,23 @@ export const TRIP_DATA_TABLES: readonly (PgTable & { tripId: AnyPgColumn })[] = 
   t.memberships,
 ];
 
-async function removeTrip(ctx: ServiceContext, tripId: string): Promise<void> {
+type Tx = Parameters<Parameters<ServiceContext["db"]["transaction"]>[0]>[0];
+
+async function teardownTripMirrors(ctx: ServiceContext, tripId: string): Promise<void> {
   const mirrors = await ctx.db.select({ userId: t.calendarMirrors.userId }).from(t.calendarMirrors).where(eq(t.calendarMirrors.tripId, tripId));
   for (const mirror of mirrors) await teardownMirror(ctx, tripId, mirror.userId);
-  await ctx.db.transaction(async (tx) => {
-    for (const table of TRIP_DATA_TABLES) await tx.delete(table).where(eq(table.tripId, tripId));
-    await tx.delete(t.trips).where(eq(t.trips.id, tripId));
-  });
+}
+
+async function deleteTripRows(tx: Tx, tripId: string): Promise<void> {
+  for (const table of TRIP_DATA_TABLES) await tx.delete(table).where(eq(table.tripId, tripId));
+  await tx.delete(t.trips).where(eq(t.trips.id, tripId));
 }
 
 export async function deleteTrip(ctx: ServiceContext, tripId: string, requester: Requester): Promise<void> {
   const agg = await requireAggregate(ctx.db, tripId);
   if (permissionsFor(agg, requester).role !== "owner") throw new AccessDenied("Only the trip owner can delete a trip.");
-  await removeTrip(ctx, tripId);
+  await teardownTripMirrors(ctx, tripId);
+  await ctx.db.transaction((tx) => deleteTripRows(tx, tripId));
 }
 
 export interface AccountDeletion {
@@ -55,6 +59,40 @@ async function tripsBlockingDeletion(db: Reader, userId: string): Promise<{ trip
 
 const ownerOfTrip = (tripId: AnyPgColumn) => sql<string>`(select ${t.trips.ownerId} from ${t.trips} where ${t.trips.id} = ${tripId})`;
 
+async function removeItems(tx: Tx, itemIds: string[]): Promise<void> {
+  if (itemIds.length === 0) return;
+  await tx.delete(t.activity).where(inArray(t.activity.itemId, itemIds));
+  await tx.delete(t.importedItems).where(inArray(t.importedItems.resultItemId, itemIds));
+  await tx.delete(t.items).where(inArray(t.items.id, itemIds));
+}
+
+async function settleHiddenItems(tx: Tx, userId: string, removeAll: boolean): Promise<void> {
+  const hidden = await tx
+    .select({ id: t.items.id, tripId: t.items.tripId, visibility: t.items.visibility, visibleTo: t.items.visibleToUserIds })
+    .from(t.items)
+    .where(and(eq(t.items.createdBy, userId), ne(t.items.visibility, "everyone")))
+    .orderBy(asc(t.items.id));
+  const doomed: string[] = [];
+  for (const item of hidden) {
+    if (removeAll || item.visibility === "only_me") {
+      doomed.push(item.id);
+      continue;
+    }
+    const members = await tx.select({ userId: t.memberships.userId }).from(t.memberships).where(and(eq(t.memberships.tripId, item.tripId), ne(t.memberships.userId, userId)));
+    const staying = new Set(members.map((m) => m.userId));
+    const successor = item.visibleTo.find((id) => id !== userId && staying.has(id));
+    if (!successor) {
+      doomed.push(item.id);
+      continue;
+    }
+    await tx
+      .update(t.items)
+      .set({ createdBy: successor, updatedBy: successor, visibleToUserIds: item.visibleTo.filter((id) => id !== userId) })
+      .where(eq(t.items.id, item.id));
+  }
+  await removeItems(tx, doomed);
+}
+
 export async function deleteAccount(ctx: ServiceContext, userId: string, opts: { removeHiddenItemsInSharedTrips: boolean }): Promise<AccountDeletion> {
   const [user] = await ctx.db.select().from(t.users).where(eq(t.users.id, userId));
   if (!user) throw new NotFound("That account does not exist.");
@@ -62,7 +100,7 @@ export async function deleteAccount(ctx: ServiceContext, userId: string, opts: {
   if (blockedBy.length > 0) return { blockedBy };
 
   const owned = await ctx.db.select({ id: t.trips.id }).from(t.trips).where(eq(t.trips.ownerId, userId));
-  for (const trip of owned) await removeTrip(ctx, trip.id);
+  for (const trip of owned) await teardownTripMirrors(ctx, trip.id);
   const mirrors = await ctx.db.select({ tripId: t.calendarMirrors.tripId }).from(t.calendarMirrors).where(eq(t.calendarMirrors.userId, userId));
   for (const mirror of mirrors) await teardownMirror(ctx, mirror.tripId, userId);
 
@@ -70,9 +108,10 @@ export async function deleteAccount(ctx: ServiceContext, userId: string, opts: {
     const lateBlockers = await tripsBlockingDeletion(tx, userId);
     if (lateBlockers.length > 0) return { blockedBy: lateBlockers };
 
-    if (opts.removeHiddenItemsInSharedTrips) {
-      await tx.delete(t.items).where(and(eq(t.items.createdBy, userId), ne(t.items.visibility, "everyone")));
-    }
+    const ownedNow = await tx.select({ id: t.trips.id }).from(t.trips).where(eq(t.trips.ownerId, userId));
+    for (const trip of ownedNow) await deleteTripRows(tx, trip.id);
+
+    await settleHiddenItems(tx, userId, opts.removeHiddenItemsInSharedTrips);
     const visibleToUser = await tx
       .select({ id: t.items.id, ids: t.items.visibleToUserIds })
       .from(t.items)

@@ -7,10 +7,10 @@ import { TRIP_ID, USERS } from "@/fixtures/december-trip";
 import { AccessDenied } from "@/domain/visibility/project";
 import * as schema from "../db/schema";
 import * as t from "../db/schema";
-import { FakeGoogleCalendar, GoogleApiError } from "../google/calendar-api";
+import { FakeGoogleCalendar, GoogleApiError, GoogleAuthorizationError } from "../google/calendar-api";
 import { jacob, kenny, testContext } from "../testing";
 import { enableMirror } from "./mirror-service";
-import { quickAddItem } from "./trip-service";
+import { getTripView, quickAddItem } from "./trip-service";
 import { deleteAccount, deleteTrip, TRIP_DATA_TABLES } from "./deletion-service";
 import { NotFound } from "./trip-service";
 
@@ -146,7 +146,7 @@ describe("deleting an account", () => {
     const result = await deleteAccount(env.ctx, USERS.jacob.id, { removeHiddenItemsInSharedTrips: false });
     expect(result.blockedBy).toEqual([]);
     expect(await rows(env.db, t.trips)).toBe(1);
-    expect(await rows(env.db, t.items)).toBe(itemsBefore);
+    expect(await rows(env.db, t.items)).toBe(itemsBefore - 1);
     expect(await rows(env.db, t.memberships)).toBe(1);
     expect(env.google.calendars.size).toBe(1);
     for (const table of [t.authSessions, t.authAccounts, t.googleConnections, t.authVerificationTokens]) expect(await rows(env.db, table), getTableConfig(table).name).toBe(0);
@@ -175,19 +175,89 @@ describe("deleting an account", () => {
     expect(checked.length).toBeGreaterThan(10);
   });
 
-  it("hands Jacob's hidden items to the owner unless the flag removes them", async () => {
-    const kept = await setup();
-    await populate(kept);
-    await deleteAccount(kept.ctx, USERS.jacob.id, { removeHiddenItemsInSharedTrips: false });
-    const hiddenKept = await kept.db.select().from(t.items).where(eq(t.items.title, "Ring shopping"));
-    expect(hiddenKept).toHaveLength(1);
-    expect(hiddenKept[0].createdBy).toBe(USERS.kenny.id);
+  it.each([true, false])("never shows Jacob's only-me item to Kenny after the account is deleted (flag %s)", async (flag) => {
+    const env = await setup();
+    await populate(env);
+    const before = await getTripView(env.ctx, TRIP_ID, kenny);
+    expect(before.items.map((i) => i.title)).not.toContain("Ring shopping");
+    await deleteAccount(env.ctx, USERS.jacob.id, { removeHiddenItemsInSharedTrips: flag });
+    const after = await getTripView(env.ctx, TRIP_ID, kenny);
+    expect(after.items.map((i) => i.title)).not.toContain("Ring shopping");
+    expect(await rows(env.db, t.items, eq(t.items.title, "Ring shopping"))).toBe(0);
+  });
 
-    const removed = await setup();
-    await populate(removed);
-    await deleteAccount(removed.ctx, USERS.jacob.id, { removeHiddenItemsInSharedTrips: true });
-    expect(await rows(removed.db, t.items, eq(t.items.title, "Ring shopping"))).toBe(0);
-    expect(await rows(removed.db, t.items, eq(t.items.visibility, "everyone"))).toBeGreaterThan(0);
+  it("deletes the activity and approved imports of removed hidden items in the same pass", async () => {
+    const env = await setup();
+    await populate(env);
+    const [ring] = await env.db.select().from(t.items).where(eq(t.items.title, "Ring shopping"));
+    await env.db.insert(t.importedItems).values({ batchId: (await env.db.select().from(t.importBatches))[0].id, tripId: TRIP_ID, resultItemId: ring.id, state: "approved" });
+    await deleteAccount(env.ctx, USERS.jacob.id, { removeHiddenItemsInSharedTrips: false });
+    expect(await rows(env.db, t.activity, eq(t.activity.itemId, ring.id))).toBe(0);
+    expect(await rows(env.db, t.importedItems, eq(t.importedItems.resultItemId, ring.id))).toBe(0);
+  });
+
+  it("passes a specific item to the first person on its list who stays, or deletes it when nobody does", async () => {
+    const env = await setup();
+    const sharing = (visibleToUserIds: string[]) => ({ visibility: "specific" as const, visibleToUserIds });
+    const plan = (title: string) => ({ type: "plan", title, city: "Tokyo", startLocal: "2026-12-03T19:00", endLocal: "2026-12-03T21:00" });
+    await quickAddItem(env.ctx, TRIP_ID, jacob, plan("Birthday dinner"), sharing([strangerId, USERS.kenny.id]));
+    await quickAddItem(env.ctx, TRIP_ID, jacob, plan("Gift pickup"), sharing([strangerId]));
+    await deleteAccount(env.ctx, USERS.jacob.id, { removeHiddenItemsInSharedTrips: false });
+    const titles = (await getTripView(env.ctx, TRIP_ID, kenny)).items.map((i) => i.title);
+    expect(titles).toContain("Birthday dinner");
+    expect(titles).not.toContain("Gift pickup");
+    expect(await rows(env.db, t.items, eq(t.items.title, "Gift pickup"))).toBe(0);
+    const [dinner] = await env.db.select().from(t.items).where(eq(t.items.title, "Birthday dinner"));
+    expect(dinner.createdBy).toBe(USERS.kenny.id);
+    expect(dinner.visibleToUserIds).not.toContain(USERS.jacob.id);
+  });
+
+  it("deletes specific items too when the flag is on", async () => {
+    const env = await setup();
+    await quickAddItem(env.ctx, TRIP_ID, jacob, { type: "plan", title: "Birthday dinner", city: "Tokyo", startLocal: "2026-12-03T19:00", endLocal: "2026-12-03T21:00" }, { visibility: "specific", visibleToUserIds: [USERS.kenny.id] });
+    await deleteAccount(env.ctx, USERS.jacob.id, { removeHiddenItemsInSharedTrips: true });
+    expect(await rows(env.db, t.items, eq(t.items.title, "Birthday dinner"))).toBe(0);
+  });
+
+  it("drops a mirror whose Google access was revoked and carries on", async () => {
+    const env = await setup();
+    await populate(env);
+    env.google.failNext = new GoogleAuthorizationError(401, "invalid_grant");
+    await deleteTrip(env.ctx, TRIP_ID, kenny);
+    expect(await rows(env.db, t.trips)).toBe(0);
+    expect(await rows(env.db, t.calendarMirrors)).toBe(0);
+  });
+
+  it("changes nothing when someone joins a trip the user owns while Google is being cleaned up", async () => {
+    const google = new class extends FakeGoogleCalendar {
+      join: (() => Promise<void>) | null = null;
+      override async deleteCalendar(calendarId: string) {
+        await this.join?.();
+        await super.deleteCalendar(calendarId);
+      }
+    }();
+    const env = await testContext({ overrides: { googleFor: async () => google } });
+    await env.db.delete(t.memberships).where(eq(t.memberships.userId, USERS.jacob.id));
+    await enableMirror(env.ctx, TRIP_ID, USERS.kenny.id);
+    await env.db.insert(t.authSessions).values({ tokenHash: "k1", userId: USERS.kenny.id, expires: new Date("2027-01-01") });
+    google.join = () => env.db.insert(t.memberships).values({ tripId: TRIP_ID, userId: USERS.jacob.id, role: "viewer" }).then(() => undefined);
+    const itemsBefore = await rows(env.db, t.items);
+    const result = await deleteAccount(env.ctx, USERS.kenny.id, { removeHiddenItemsInSharedTrips: true });
+    expect(result.blockedBy).toHaveLength(1);
+    expect(await rows(env.db, t.users)).toBe(2);
+    expect(await rows(env.db, t.trips)).toBe(1);
+    expect(await rows(env.db, t.items)).toBe(itemsBefore);
+    expect(await rows(env.db, t.authSessions)).toBe(1);
+  });
+
+  it("keeps the account when Google fails for a transient reason", async () => {
+    const env = await setup();
+    await env.db.delete(t.memberships).where(eq(t.memberships.userId, USERS.jacob.id));
+    await enableMirror(env.ctx, TRIP_ID, USERS.kenny.id);
+    env.google.failNext = new GoogleApiError(503, "Backend Error");
+    await expect(deleteAccount(env.ctx, USERS.kenny.id, { removeHiddenItemsInSharedTrips: false })).rejects.toThrow(GoogleApiError);
+    expect(await rows(env.db, t.users)).toBe(2);
+    expect(await rows(env.db, t.trips)).toBe(1);
   });
 
   it("removes the user from other people's visible-to lists", async () => {

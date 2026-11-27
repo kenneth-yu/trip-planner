@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import * as t from "../db/schema";
-import { GoogleApiError, type GoogleCalendarApi } from "../google/calendar-api";
+import { GoogleApiError, GoogleAuthorizationError, type GoogleCalendarApi } from "../google/calendar-api";
 import type { ServiceContext } from "./context";
 import { requireAggregate } from "./trip-service";
 import { buildMirrorEvents, planMirrorSync } from "@/domain/mirror/calendar-mirror";
@@ -51,12 +51,21 @@ export async function disableMirror(ctx: ServiceContext, tripId: string, userId:
   await ctx.db.update(t.calendarMirrors).set({ enabled: isActive(next) }).where(eq(t.calendarMirrors.id, mirror.id));
 }
 
+async function deleteCalendarIfReachable(google: GoogleCalendarApi, mirrorId: string, calendarId: string): Promise<void> {
+  try {
+    await google.deleteCalendar(calendarId);
+  } catch (e) {
+    if (!(e instanceof GoogleAuthorizationError)) throw e;
+    console.error(`Google refused access, calendar for mirror ${mirrorId} was not deleted`);
+  }
+}
+
 export async function teardownMirror(ctx: ServiceContext, tripId: string, userId: string): Promise<void> {
   const [mirror] = await ctx.db.select().from(t.calendarMirrors).where(and(eq(t.calendarMirrors.tripId, tripId), eq(t.calendarMirrors.userId, userId)));
   if (!mirror) return;
   if (mirror.googleCalendarId) {
     const google = await ctx.googleFor?.(userId);
-    if (google) await google.deleteCalendar(mirror.googleCalendarId);
+    if (google) await deleteCalendarIfReachable(google, mirror.id, mirror.googleCalendarId);
   }
   await ctx.db.delete(t.calendarMirrors).where(eq(t.calendarMirrors.id, mirror.id));
 }

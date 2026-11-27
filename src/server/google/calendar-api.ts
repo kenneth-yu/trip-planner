@@ -24,6 +24,13 @@ export class GoogleApiError extends Error {
   }
 }
 
+export class GoogleAuthorizationError extends GoogleApiError {
+  constructor(status: number, message: string) {
+    super(status, message);
+    this.name = "GoogleAuthorizationError";
+  }
+}
+
 const BASE = "https://www.googleapis.com/calendar/v3";
 
 export function googleCalendarRest(getAccessToken: () => Promise<string>, fetchImpl: typeof fetch = fetch): GoogleCalendarApi {
@@ -33,7 +40,10 @@ export function googleCalendarRest(getAccessToken: () => Promise<string>, fetchI
       headers: { authorization: `Bearer ${await getAccessToken()}`, "content-type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    if (!res.ok) throw new GoogleApiError(res.status, `Google Calendar ${method} ${path} failed: ${res.status} ${await res.text()}`);
+    if (!res.ok) {
+      const message = `Google Calendar ${method} ${path} failed: ${res.status} ${await res.text()}`;
+      throw res.status === 401 || res.status === 403 ? new GoogleAuthorizationError(res.status, message) : new GoogleApiError(res.status, message);
+    }
     return res.status === 204 ? undefined : res.json();
   }
   const cal = (id: string) => encodeURIComponent(id);
