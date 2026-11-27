@@ -10,7 +10,13 @@ async function seriousProblems(page: Page): Promise<string[]> {
 
 async function turnOn(page: Page): Promise<string> {
   await page.goto(`/trips/${DECEMBER_TRIP}/share`);
-  await page.getByRole("switch", { name: /Anyone with the link can see this trip/ }).check();
+  const link = page.getByRole("switch", { name: /Anyone with the link can see this trip/ });
+  if (await link.isChecked()) {
+    await link.click();
+    await expect(link).not.toBeChecked();
+  }
+  await link.click();
+  await expect(link).toBeChecked();
   const field = page.getByLabel("Link for family and friends");
   await expect(field).toBeVisible();
   return field.inputValue();
@@ -30,7 +36,7 @@ test("a visitor opens the link, sees where they are and nothing private, and a n
   await expect(guest.getByRole("heading", { name: "Up next" })).toBeVisible();
   const html = await guest.content();
   for (const secret of ["PLACEHOLDER_", "30K", "30C", "Busy", "Worth a look", "Decisions"]) expect(html).not.toContain(secret);
-  await expect(guest.getByRole("navigation", { name: "Trip" })).toHaveCount(0);
+  await expect(guest.getByRole("link", { name: "Share" })).toHaveCount(0);
   expect(await seriousProblems(guest)).toEqual([]);
 
   await page.getByRole("button", { name: "Make a new link" }).click();
@@ -49,7 +55,8 @@ test("a visitor opens the link, sees where they are and nothing private, and a n
 test("turning on Show deadlines adds a Decisions section for the visitor", async ({ page, signIn, browser }) => {
   await signIn("kenny");
   const link = await turnOn(page);
-  await page.getByRole("switch", { name: /Show deadlines on the link/ }).check();
+  await page.getByRole("switch", { name: /Show deadlines on the link/ }).click();
+  await expect(page.getByRole("switch", { name: /Show deadlines on the link/ })).toBeChecked();
   await expect(page.getByText("Saved")).toBeVisible();
 
   const visitor = await browser.newContext();

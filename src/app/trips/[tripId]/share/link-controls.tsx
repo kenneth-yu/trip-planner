@@ -30,7 +30,7 @@ function SwitchRow({ name, label, checked, hint, tripId, action }: { name: strin
       <input type="hidden" name="tripId" value={tripId} />
       <input type="hidden" name="on" value={String(!checked)} />
       <label className={styles.option}>
-        <input type="checkbox" role="switch" name={name} checked={checked} aria-checked={checked} onChange={(e) => e.currentTarget.form?.requestSubmit()} />
+        <input key={String(checked)} type="checkbox" role="switch" name={name} checked={checked} aria-checked={checked} onChange={(e) => e.currentTarget.form?.requestSubmit()} />
         <span>
           {label} <span className={pageStyles.muted}>({checked ? "on" : "off"})</span>
           {hint && <span className={`${pageStyles.muted} ${styles.hint}`}>{hint}</span>}
@@ -102,7 +102,7 @@ export function LinkControls({ tripId, enabled, showsDeadlines }: { tripId: stri
         <input type="hidden" name="tripId" value={tripId} />
         <input type="hidden" name="intent" value="enable" />
         <label className={styles.option}>
-          <input type="checkbox" role="switch" checked={enabled} aria-checked={enabled} onChange={(e) => e.currentTarget.form?.requestSubmit()} />
+          <input key={String(enabled)} type="checkbox" role="switch" checked={enabled} aria-checked={enabled} onChange={(e) => e.currentTarget.form?.requestSubmit()} />
           <span>
             Anyone with the link can see this trip <span className={pageStyles.muted}>({enabled ? "on" : "off"})</span>
             <span className={`${pageStyles.muted} ${styles.hint}`}>They see times and places, never codes, seats or prices, and never anything you hid. Turning this off stops the link. Turning it on again makes a new one.</span>
