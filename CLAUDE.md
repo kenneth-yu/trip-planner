@@ -6,6 +6,7 @@ The first real user is a two person trip: New York, Tokyo, Hong Kong, Shenzhen a
 
 ## Read these first, in this order
 
+0. `docs/SECURITY.md` personal data we hold, the rules for handling it, and the threat model. Security comes first.
 0. `docs/ENGINEERING.md` how code is written and changed here. The rules in it are enforced by `npm run check`.
 1. `docs/PRODUCT.md` what we are building, the screens, what is out of scope
 2. `docs/DESIGN.md` how it must look and read. Read this before writing any UI.

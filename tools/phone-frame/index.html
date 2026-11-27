@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Phone preview</title>
+<style>
+  body { margin: 0; background: #2a2c30; font: 14px system-ui, sans-serif; color: #ddd; display: flex; gap: 40px; justify-content: center; padding: 24px; }
+  figure { margin: 0; text-align: center; }
+  iframe { width: 390px; height: 844px; border: 0; border-radius: 36px; background: #fff; box-shadow: 0 0 0 10px #111, 0 10px 40px #0008; }
+  figcaption { margin-top: 18px; }
+</style>
+<body>
+<figure>
+  <iframe id="phone"></iframe>
+  <figcaption id="label"></figcaption>
+</figure>
+<script>
+  const target = new URLSearchParams(location.search).get("url") || "http://localhost:3000/";
+  document.getElementById("phone").src = target;
+  document.getElementById("label").textContent = "390 × 844 · " + target.replace(/^http:\/\/localhost:\d+/, "");
+</script>
+</body>
+</html>

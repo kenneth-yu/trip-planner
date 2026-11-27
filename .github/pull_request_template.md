@@ -7,6 +7,7 @@ Tests added or changed, and for UI or integration work, screenshots or output fr
 ## Checklist (docs/ENGINEERING.md)
 
 - [ ] `npm run check` passes
+- [ ] Security (docs/SECURITY.md): no personal data in logs, errors or URLs; every input parsed; viewers, link visitors and removed members proven unable to see or change what they should not; new stored data is deleted with its trip
 - [ ] New behavior has tests; a bug fix has a test that failed before the fix
 - [ ] The root cause was fixed, not the symptom, and no comment explains a workaround
 - [ ] No errors swallowed, no casts, no non-null assertions

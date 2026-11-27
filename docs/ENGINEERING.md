@@ -2,7 +2,7 @@
 
 How this code base is built and changed, by people and by coding agents alike. Read this before your first change. Most rules are enforced by tooling, so breaking one fails `npm run check` with a message that says what to do instead. This document explains why.
 
-The product rules (time zones, permissions, hidden items, the review inbox) live in `CLAUDE.md` and `docs/`. This file is about how we write and change code.
+The product rules (time zones, permissions, hidden items, the review inbox) live in `CLAUDE.md` and `docs/`. This file is about how we write and change code. Security and privacy rules live in `docs/SECURITY.md` and take priority over everything here.
 
 ## The trust pyramid
 
