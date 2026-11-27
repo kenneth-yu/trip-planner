@@ -66,7 +66,7 @@ describe("sign in screen", () => {
     expect(html).toContain("<h1");
     expect(html).toContain(">Sign in</h1>");
     expect(html).not.toMatch(/remember me|password|terms|privacy|welcome/i);
-    expect(html).not.toContain("Use the account your trip invite was sent to.");
+    expect(html).not.toContain("Sign in to join this trip. New here? Signing in creates your account.");
   });
 
   it("says why to sign in when arriving from a shared trip link", () => {
@@ -75,8 +75,8 @@ describe("sign in screen", () => {
     expect(render({ NODE_ENV: "production", ...google })).not.toContain("Sign in to see this trip.");
   });
 
-  it("explains the account to use only when arriving from an invite", () => {
-    expect(render({ NODE_ENV: "production", ...google }, { next: "/invite/accept" })).toContain("Use the account your trip invite was sent to.");
+  it("says signing in creates an account only when arriving from an invite", () => {
+    expect(render({ NODE_ENV: "production", ...google }, { next: "/invite/accept" })).toContain("Sign in to join this trip. New here? Signing in creates your account.");
     expect(render({ NODE_ENV: "production", ...google }, { next: "/trips/x" })).not.toContain("trip invite");
   });
 

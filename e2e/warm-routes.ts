@@ -1,7 +1,7 @@
 import { chromium, type FullConfig, type Page } from "@playwright/test";
 import { DECEMBER_TRIP, LISBON_TRIP } from "./trips";
 
-export const WARM_PATHS = ["/", `/trips/${DECEMBER_TRIP}`, `/trips/${DECEMBER_TRIP}/add`, `/trips/${DECEMBER_TRIP}/deadlines`, `/trips/${DECEMBER_TRIP}/inbox`, `/trips/${LISBON_TRIP}`];
+export const WARM_PATHS = ["/", `/trips/${DECEMBER_TRIP}`, `/trips/${DECEMBER_TRIP}/add`, `/trips/${DECEMBER_TRIP}/deadlines`, `/trips/${DECEMBER_TRIP}/inbox`, `/trips/${LISBON_TRIP}`, "/account", `/trips/${DECEMBER_TRIP}/settings/delete`, "/trips/new"];
 
 async function load(page: Page, path: string, expectedPath: string): Promise<void> {
   const response = await page.goto(path, { waitUntil: "load", timeout: 120_000 });

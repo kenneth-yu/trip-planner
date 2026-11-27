@@ -1,0 +1,50 @@
+import { describe, it } from "vitest";
+import { buildFixtureTrip, fixture, TRAVELERS, USERS } from "@/fixtures/december-trip";
+import { buildDemoTrip, PACKED_TRIP } from "@/fixtures/demo-trips";
+import { runChecks } from "@/domain/checks/checks";
+import { planCalendarImport } from "@/domain/import/pipeline";
+import { buildTripGrid } from "@/domain/timeline/trip-grid";
+import { buildDays } from "@/domain/time/days";
+import { projectTrip } from "@/domain/visibility/project";
+import type { Requester, TripAggregate } from "@/domain/types";
+import { budgets } from "./budgets";
+import { check, measureSync } from "./harness";
+
+const owner: Requester = { kind: "member", userId: USERS.kenny.id, homeZone: USERS.kenny.homeZone };
+const NOW = Date.parse(fixture.today);
+const SAMPLES = 31;
+const WARMUP = 20;
+const BATCH = 20;
+
+const trips: { label: string; agg: TripAggregate }[] = [
+  { label: "december", agg: buildFixtureTrip() },
+  { label: "packed", agg: buildDemoTrip(PACKED_TRIP) },
+];
+
+function budgetFor(name: string): number {
+  const entry = budgets.hotPaths[name];
+  if (!entry) throw new Error(`Add "${name}" to hotPaths in perf/budgets.json with a measured budget.`);
+  return entry.budgetMs;
+}
+
+describe.each(trips)("hot paths on the $label trip", ({ label, agg }) => {
+  const view = projectTrip(agg, owner);
+  const run = (name: string, fn: () => unknown) => {
+    it(`${name} stays inside its budget`, () => {
+      const key = `${name}/${label}`;
+      check("hot-paths", key, measureSync(fn, { samples: SAMPLES, batch: BATCH, warmup: WARMUP }), budgetFor(key), SAMPLES);
+    });
+  };
+
+  run("projectTrip", () => projectTrip(agg, owner));
+  run("buildTripGrid", () => buildTripGrid(view, NOW));
+  run("buildDays", () => buildDays(view));
+  run("runChecks", () => runChecks(view));
+  run("planCalendarImport", () =>
+    planCalendarImport(fixture.calendarEvents, view.items, {
+      calendarTravelers: { "kenny primary": [TRAVELERS.kenny], "shared China": [TRAVELERS.kenny, TRAVELERS.jacob] },
+      defaultTravelerIds: [TRAVELERS.kenny],
+      homeZone: owner.homeZone,
+    }),
+  );
+});

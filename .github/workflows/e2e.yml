@@ -15,7 +15,8 @@ concurrency:
 jobs:
   phone:
     name: e2e phone
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, trip-planner]
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 20
     services:
       postgres:
@@ -25,7 +26,7 @@ jobs:
           POSTGRES_PASSWORD: ci-only-postgres
           POSTGRES_DB: trip_e2e
         ports:
-          - 5432:5432
+          - 5432
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 5s
@@ -33,8 +34,9 @@ jobs:
           --health-retries 10
     env:
       E2E_PRODUCTION_BUILD: "1"
-      E2E_DATABASE_URL: postgres://postgres:ci-only-postgres@localhost:5432/trip_e2e
     steps:
+      - name: Point at this job's Postgres port
+        run: echo "E2E_DATABASE_URL=postgres://postgres:ci-only-postgres@localhost:${{ job.services.postgres.ports[5432] }}/trip_e2e" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -43,7 +45,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install chromium
       - name: Generate masked throwaway secrets
         run: |
           for name in E2E_SESSION_SECRET:hex E2E_AUTH_SECRET:hex E2E_TOKEN_ENCRYPTION_KEY:base64 E2E_DATA_ENCRYPTION_KEY:base64; do
