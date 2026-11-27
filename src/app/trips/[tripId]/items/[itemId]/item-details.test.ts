@@ -8,6 +8,7 @@ import { buildDays } from "@/domain/time/days";
 import { projectTrip } from "@/domain/visibility/project";
 import type { Item, Requester, TripAggregate } from "@/domain/types";
 import { DayView } from "../../day-view";
+import { itemToFormValues } from "@/domain/import/item-form";
 import { ItemDetails } from "./item-details";
 import { itemOf } from "./item-of";
 
@@ -40,17 +41,15 @@ function trip(): TripAggregate {
   return t;
 }
 
-function viewerNameOf(r: Requester): string | null {
+function viewerTravelerOf(agg: TripAggregate, r: Requester): string | null {
   if (r.kind !== "member") return null;
-  if (r.userId === USERS.kenny.id) return USERS.kenny.name;
-  if (r.userId === USERS.jacob.id) return USERS.jacob.name;
-  return null;
+  return agg.travelers.find((t) => t.userId === r.userId)?.id ?? null;
 }
 
 function render(agg: TripAggregate, requester: Requester, id: string): string {
   const view = projectTrip(agg, requester);
   const item = present(itemOf(view, id));
-  return renderToStaticMarkup(createElement(ItemDetails, { view, item, nowMs: NOW_MS, viewerName: viewerNameOf(requester) }));
+  return renderToStaticMarkup(createElement(ItemDetails, { view, item, nowMs: NOW_MS, viewerTravelerId: viewerTravelerOf(agg, requester) }));
 }
 
 const nh159 = (agg: TripAggregate) => fixtureItem(agg, byFlight("NH159"));
@@ -175,5 +174,75 @@ describe("details wording", () => {
   it("the flight title says where it goes", () => {
     const agg = trip();
     expect(render(agg, owner, nh159(agg).id)).toContain("NH159 to Tokyo");
+  });
+});
+
+describe("WP-10a follow-ups", () => {
+  function renamedAccounts(): TripAggregate {
+    const agg = trip();
+    for (const traveler of agg.travelers) traveler.name = traveler.userId === USERS.kenny.id ? "Kenny" : "Jacob";
+    return agg;
+  }
+
+  it("matches Your confirmation code on the linked user, not the name", () => {
+    const agg = renamedAccounts();
+    const page = render(agg, editor, nh159(agg).id);
+    expect(page).toContain("Your confirmation code");
+    expect(page).toContain("Confirmation code, Kenny");
+  });
+
+  it("lists codes by first name, in the order on the item, when the viewer is linked to no traveler", () => {
+    const agg = trip();
+    agg.memberships.push({ tripId: TRIP_ID, userId: "user-editor", role: "editor" });
+    const page = render(agg, { kind: "member", userId: "user-editor", homeZone: NY }, nh159(agg).id);
+    expect(page).not.toContain("Your confirmation code");
+    expect(page.indexOf("Confirmation code, Kenneth")).toBeLessThan(page.indexOf("Confirmation code, Jacob"));
+  });
+
+  it("makes the back link at least 44px tall and the airline the only subtitle", () => {
+    const agg = trip();
+    const cx = fixtureItem(agg, byFlight("CX509"));
+    const view = projectTrip(agg, owner);
+    const html = renderToStaticMarkup(createElement(ItemDetails, { view, item: present(itemOf(view, cx.id)), nowMs: NOW_MS, viewerTravelerId: null }));
+    expect(html).toContain("Cathay Pacific");
+    expect(html.match(/CX509/g)).toHaveLength(1);
+  });
+
+  it("has no subtitle line when the airline is unknown", () => {
+    const agg = trip();
+    const flight = nh159(agg);
+    if (flight.flight) flight.flight = { ...flight.flight, airline: undefined };
+    const view = projectTrip(agg, owner);
+    const html = renderToStaticMarkup(createElement(ItemDetails, { view, item: present(itemOf(view, flight.id)), nowMs: NOW_MS, viewerTravelerId: null }));
+    expect(html).not.toContain("Unknown");
+    expect(html.match(/NH159/g)).toHaveLength(1);
+  });
+});
+
+describe("edit prompts", () => {
+  it("offers an editor Add confirmation code on a stay without one, and no viewer anything", () => {
+    const agg = trip();
+    const stay = fixtureItem(agg, byTitle("Hotel Resol Ueno")).id;
+    const ownerPage = render(agg, owner, stay);
+    expect(ownerPage).toContain("Add confirmation code");
+    expect(ownerPage).toContain(`/items/${stay}/edit?focus=code`);
+    const viewerPage = render(agg, viewer, stay);
+    for (const text of ["Add confirmation code", "Add your seat", "/edit"]) expect(viewerPage).not.toContain(text);
+  });
+
+  it("offers Add your seat only to the traveler linked to the viewer who has no seat", () => {
+    const agg = trip();
+    const flight = nh159(agg);
+    flight.private = flight.private.map((p) => (p.travelerId === flight.travelerIds[1] ? { ...p, seat: undefined } : p));
+    expect(render(agg, editor, flight.id)).toContain("Add your seat");
+    expect(render(agg, owner, flight.id)).not.toContain("Add your seat");
+  });
+
+  it("round trips the confirmation codes of a two traveler flight into one field each", () => {
+    const agg = trip();
+    const view = projectTrip(agg, owner);
+    const item = present(itemOf(view, nh159(agg).id));
+    const values = itemToFormValues(item, view.travelers);
+    expect(Object.keys(values.fields).filter((k) => k.startsWith("code:"))).toHaveLength(2);
   });
 });

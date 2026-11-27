@@ -1,6 +1,8 @@
+import Link from "next/link";
 import styles from "./item.module.css";
 import { CopyButton } from "./copy-button";
-import { buildFlightCard, flightCities } from "@/domain/time/flight-card";
+import { buildFlightCard } from "@/domain/time/flight-card";
+import { itemHeading } from "./item-title";
 import { formatClock, formatDayHeader, homeReference, toLocal } from "@/domain/time/format";
 import { buildDeadlineLines } from "@/domain/deadlines/deadlines";
 import { itemCity } from "@/domain/time/days";
@@ -38,12 +40,6 @@ function moments(item: VisibleItem, view: TripView): { rows: Moment[]; lead: str
   return { lead: null, sentence: null, rows: [moment(null, item.start, view)] };
 }
 
-function heading(item: VisibleItem): string {
-  if (item.type !== "flight" || !item.flight) return item.title;
-  const to = flightCities(item).to;
-  return to ? `${item.flight.flightNumber} to ${to}` : item.flight.flightNumber;
-}
-
 function firstName(view: TripView, id: string | null): string | null {
   if (!id) return null;
   return (view.travelers.find((t) => t.id === id)?.name ?? "Someone").split(" ")[0];
@@ -55,10 +51,16 @@ interface Entry {
   value: string;
 }
 
-function entriesFor(view: TripView, item: VisibleItem, viewerName: string | null, rows: ItemPrivate[], pick: (p: ItemPrivate) => string | undefined): Entry[] {
-  const all = rows.flatMap((p) => {
+function travelerOrder(item: VisibleItem, travelerId: string | null): number {
+  const index = travelerId === null ? -1 : item.travelerIds.indexOf(travelerId);
+  return index === -1 ? item.travelerIds.length : index;
+}
+
+function entriesFor(view: TripView, item: VisibleItem, viewerTravelerId: string | null, rows: ItemPrivate[], pick: (p: ItemPrivate) => string | undefined): Entry[] {
+  const ordered = [...rows].sort((a, b) => travelerOrder(item, a.travelerId) - travelerOrder(item, b.travelerId));
+  const all = ordered.flatMap((p) => {
     const value = pick(p);
-    const mine = viewerName !== null && view.travelers.find((t) => t.id === p.travelerId)?.name === viewerName;
+    const mine = viewerTravelerId !== null && p.travelerId === viewerTravelerId;
     return value ? [{ who: firstName(view, p.travelerId), mine, value }] : [];
   });
   const distinct = new Set(all.map((e) => e.value));
@@ -88,23 +90,30 @@ function Field({ label, entries, big }: { label: string; entries: Entry[]; big?:
   );
 }
 
-export function ItemDetails({ view, item, nowMs, viewerName }: { view: TripView; item: VisibleItem; nowMs: number; viewerName: string | null }) {
+export function ItemDetails({ view, item, nowMs, viewerTravelerId }: { view: TripView; item: VisibleItem; nowMs: number; viewerTravelerId: string | null }) {
   const { rows, lead, sentence } = moments(item, view);
   const city = itemCity(item);
-  const flightHeader = item.type === "flight" && item.flight ? buildFlightCard(item, view.homeZone).header : null;
+  const airline = item.type === "flight" ? (item.flight?.airline ?? null) : null;
+  const canEdit = view.permissions.canEdit;
+  const editBase = `/trips/${item.tripId}/items/${item.id}/edit`;
   const placeName = item.type === "flight" ? null : [item.location?.name && item.location.name !== item.title ? item.location.name : null, city].filter(Boolean).join(", ") || null;
   const address = item.location?.address ?? null;
   const sensitive = view.permissions.canSeeSensitive;
   const priv = sensitive ? item.private : [];
-  const seats = entriesFor(view, item, viewerName, priv, (p) => p.seat);
-  const seatLine = priv.flatMap((p) => (p.seat ? [[firstName(view, p.travelerId), p.seat] as const] : [])).map(([who, seat]) => (who ? `${who} ${seat}` : seat)).join(", ");
-  const prices = entriesFor(view, item, viewerName, priv, (p) => (p.price ? `${p.price.currency} ${p.price.amount}` : undefined));
+  const seats = entriesFor(view, item, viewerTravelerId, priv, (p) => p.seat);
+  const seatLine = [...priv].sort((a, b) => travelerOrder(item, a.travelerId) - travelerOrder(item, b.travelerId)).flatMap((p) => (p.seat ? [[firstName(view, p.travelerId), p.seat] as const] : [])).map(([who, seat]) => (who ? `${who} ${seat}` : seat)).join(", ");
+  const prices = entriesFor(view, item, viewerTravelerId, priv, (p) => (p.price ? `${p.price.currency} ${p.price.amount}` : undefined));
   const notes = [...priv.flatMap((p) => (p.notes ? [p.notes] : [])), ...(sensitive && item.notes ? [item.notes] : [])];
+  const hasCode = priv.some((p) => p.confirmationCode);
+  const wantsCode = canEdit && (item.type === "flight" || item.type === "stay") && !hasCode;
+  const wantsSeat = canEdit && item.type === "flight" && viewerTravelerId !== null && item.travelerIds.includes(viewerTravelerId) && !priv.some((p) => p.travelerId === viewerTravelerId && p.seat);
   const deadlines = buildDeadlineLines(view, nowMs).filter((l) => l.itemId === item.id);
   return (
     <article className={styles.item}>
-      <h2 className={styles.title}>{heading(item)}</h2>
-      {flightHeader && <div className={styles.sub}>{flightHeader}</div>}
+      <h2 className={styles.title} id="item-title" tabIndex={-1}>
+        {itemHeading(item)}
+      </h2>
+      {airline && <div className={styles.sub}>{airline}</div>}
       <div className={styles.when}>
         {rows.map((r, i) => (
           <div key={i} className={styles.moment}>
@@ -141,8 +150,13 @@ export function ItemDetails({ view, item, nowMs, viewerName }: { view: TripView;
       ))}
       {sensitive && (
         <>
-          <Field label="Confirmation code" entries={entriesFor(view, item, viewerName, priv, (p) => p.confirmationCode)} big />
-          <Field label="Booking reference" entries={entriesFor(view, item, viewerName, priv, (p) => p.bookingReference)} />
+          <Field label="Confirmation code" entries={entriesFor(view, item, viewerTravelerId, priv, (p) => p.confirmationCode)} big />
+          {wantsCode && (
+            <Link href={`${editBase}?focus=code`} className={styles.prompt}>
+              Add confirmation code
+            </Link>
+          )}
+          <Field label="Booking reference" entries={entriesFor(view, item, viewerTravelerId, priv, (p) => p.bookingReference)} />
           {seats.length > 0 && (
             <section className={styles.field}>
               <div className={styles.fieldHead}>
@@ -152,7 +166,12 @@ export function ItemDetails({ view, item, nowMs, viewerName }: { view: TripView;
               <div className={styles.value}>{seatLine}</div>
             </section>
           )}
-          <Field label="Phone" entries={entriesFor(view, item, viewerName, priv, (p) => p.phone)} />
+          {wantsSeat && (
+            <Link href={`${editBase}?focus=seat`} className={styles.prompt}>
+              Add your seat
+            </Link>
+          )}
+          <Field label="Phone" entries={entriesFor(view, item, viewerTravelerId, priv, (p) => p.phone)} />
           <Field label="Price" entries={prices} />
           {notes.map((n, i) => (
             <section key={i} className={styles.field}>
