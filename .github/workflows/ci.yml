@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   lint:
@@ -82,7 +82,6 @@ jobs:
     timeout-minutes: 15
     env:
       SESSION_SECRET: ci-only-secret-ci-only-secret-0000000
-      DATA_ENCRYPTION_KEY: ZmFrZS1jaS1rZXktbm90LWZvci1yZWFsLWRhdGEtMDA=
       AUTH_SECRET: ci-only-auth-secret-ci-only-auth-0000000
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -93,6 +92,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Generate throwaway build secrets
+        run: |
+          echo "DATA_ENCRYPTION_KEY=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
       - run: npx next build
 
   audit:
@@ -146,14 +148,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Check generated state charts
-        run: |
-          if [ ! -f scripts/statecharts.ts ]; then
-            echo "::notice::Skipped: scripts/statecharts.ts does not exist yet (WP-06 has not merged). Remove this guard when it does."
-            echo "Skipped: scripts/statecharts.ts does not exist yet (WP-06 has not merged)." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          npm run docs:statecharts:check
+      - run: npm run docs:statecharts:check
 
   postgres:
     name: postgres
@@ -184,4 +179,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Migrate an empty database with drizzle
+        run: npx vitest run src/server/db/migrate.test.ts
       - run: npm test

@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: security-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   gitleaks:
@@ -29,32 +29,3 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GITLEAKS_CONFIG: .gitleaks.toml
-
-  dependency-review:
-    name: dependency-review
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - id: availability
-        name: Check that dependency review is available
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          status=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${GITHUB_REPOSITORY}/dependency-graph/compare/${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}")
-          if [ "$status" = "200" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Skipped: dependency review is unavailable for this repository (HTTP ${status}). It needs the dependency graph and, on private repositories, GitHub Advanced Security."
-            echo "Skipped: dependency review is unavailable for this repository (HTTP ${status}); see .pipeline/blockers/WP-05.md." >> "$GITHUB_STEP_SUMMARY"
-          fi
-      - uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
-        if: steps.availability.outputs.available == 'true'
-        with:
-          fail-on-severity: high
