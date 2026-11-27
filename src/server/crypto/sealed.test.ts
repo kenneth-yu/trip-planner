@@ -23,10 +23,15 @@ afterEach(() => vi.unstubAllEnvs());
 describe("sealed json", () => {
   it("round trips and hides the plaintext", () => {
     const sealed = sealJson(value, "item_private", rowId);
+    const p = parts(sealed);
+    const plaintext = Buffer.from(JSON.stringify(value), "utf8");
+    expect(sealed).toMatch(/^k1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+    expect(Buffer.from(p.iv, "base64url")).toHaveLength(12);
+    expect(Buffer.from(p.tag, "base64url")).toHaveLength(16);
+    const body = Buffer.from(p.body, "base64url");
+    expect(body).toHaveLength(plaintext.length);
+    expect(body.equals(plaintext)).toBe(false);
     expect(sealed).not.toContain("PLACEHOLDER_A");
-    expect(sealed).not.toContain("30K");
-    expect(sealed.startsWith("k1.")).toBe(true);
-    expect(sealed.split(".")).toHaveLength(4);
     expect(openJson(sealed, schema, "item_private", rowId)).toEqual(value);
   });
 
