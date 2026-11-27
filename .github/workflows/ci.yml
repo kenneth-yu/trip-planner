@@ -189,7 +189,8 @@ jobs:
       - run: npm ci
       - name: Migrate an empty database with drizzle
         run: npx vitest run src/server/db/migrate.test.ts
-      - run: npm test
+      - name: Run every other test against Postgres
+        run: npm test -- --exclude src/server/db/migrate.test.ts
 
   prod-guard:
     name: prod-guard
