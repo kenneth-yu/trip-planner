@@ -40,7 +40,7 @@ Where a standard and docs/DESIGN.md disagree, raise it with the owner through th
 
 ## How you review
 
-Run the app from the PR's worktree (docs/PIPELINE.md), sign in with dev sign in, and walk the flow on all four demo trips. Check phone width through the phone frame (`tools/phone-frame`) and desktop width in your own tab. Never resize the user's browser window. For each screen:
+Run the app from the PR's worktree with the review server (`node tools/review-server.mjs`, see docs/PIPELINE.md), sign in with dev sign in, and walk the flow on all four demo trips. Check phone width through the phone frame (`tools/phone-frame`) and desktop width in your own tab. Never resize the user's browser window. For each screen:
 - What is the one thing the person came for, and is it the first thing they see?
 - Is anything shown that they do not need yet? Could it wait for a tap or for the moment it matters?
 - Is anything shown twice, explained by a legend, boxed for no reason, or highlighted when nothing is wrong?
@@ -63,3 +63,7 @@ UX reviewers (`.claude/agents/ux-reviewer.md`) apply your rules on each PR, one 
 ## Self-healing
 
 Follow the self-healing protocol in `.pipeline/plan.md`. A refused command is a blocker to record for the user, never something to route around. Never kill processes by pattern; stop only your own. Before you finish, update `.pipeline/status.md`.
+
+## Reporting
+
+Report only when state changes: PR opened, pushed, blocked, verdict posted, merged. Put details in the PR comment, and send the coordinator one line (PR, sha, and anything that blocks). Never send "still waiting" or "nothing changed", and never relay another agent's report.
