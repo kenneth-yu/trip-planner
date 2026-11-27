@@ -6,7 +6,7 @@ import { itemToFormValues } from "@/domain/import/item-form";
 import { projectTrip } from "@/domain/visibility/project";
 import { present } from "@/testing/present";
 import { ItemForm } from "./item-form";
-import { parseFlash } from "./flash-status";
+import { parseFlash, StatusLine } from "./flash-status";
 import { FLASH_COOKIE, FLASH_TEXT } from "./flash";
 
 vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams() }));
@@ -65,6 +65,17 @@ describe("edit form", () => {
     expect(html).toContain('spellCheck="false"');
     expect(html).toContain('autoComplete="off"');
     expect(html).toContain("Booking reference");
+  });
+});
+
+describe("flash announcement", () => {
+  it("renders the one status element empty first, so the text that follows is announced", () => {
+    const before = renderToStaticMarkup(createElement(StatusLine, { text: null }));
+    const after = renderToStaticMarkup(createElement(StatusLine, { text: FLASH_TEXT.deleted }));
+    expect(before.match(/role="status"/g)).toHaveLength(1);
+    expect(before).not.toContain("Item deleted.");
+    expect(after.match(/role="status"/g)).toHaveLength(1);
+    expect(after).toContain("Item deleted.");
   });
 });
 

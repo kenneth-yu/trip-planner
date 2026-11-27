@@ -25,12 +25,27 @@ function statusHost(): HTMLElement | null {
   return host.isConnected ? host : null;
 }
 
+export function StatusLine({ text }: { text: string | null }) {
+  return (
+    <p role="status" className={text ? styles.flash : undefined}>
+      {text}
+    </p>
+  );
+}
+
 export function FlashStatus({ kind, tripId, focusId }: { kind: FlashKind; tripId: string; focusId?: string }) {
   const raw = useSyncExternalStore(subscribeNever, readCookie, () => "");
   const matches = parseFlash(raw) === kind;
   const holder = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLElement | null>(null);
   const [host, setHost] = useState<HTMLElement | null>(null);
+  const [announced, setAnnounced] = useState(false);
+
+  useEffect(() => {
+    if (!host) return;
+    const timer = window.setTimeout(() => setAnnounced(true), 150);
+    return () => window.clearTimeout(timer);
+  }, [host]);
 
   useEffect(() => {
     if (!matches) return;
@@ -57,12 +72,7 @@ export function FlashStatus({ kind, tripId, focusId }: { kind: FlashKind; tripId
   return (
     <div ref={holder}>
       {host &&
-        createPortal(
-          <p role="status" className={styles.flash}>
-            {FLASH_TEXT[kind]}
-          </p>,
-          host,
-        )}
+createPortal(<StatusLine text={announced ? FLASH_TEXT[kind] : null} />, host)}
     </div>
   );
 }
