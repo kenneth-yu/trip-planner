@@ -6,13 +6,37 @@ import { localTimeFlag, localTimeProblem } from "../time/local-time";
 import { airportZone } from "../time/places";
 import { placeZone, type PlaceContext, type PlaceQuery } from "../time/resolve-place";
 import { DEFAULT_CHECK_IN, DEFAULT_CHECK_OUT } from "./calendar-event";
+import { InputProblem } from "./problem";
 import type { ProposedItem } from "./proposal";
+
+export { InputProblem };
+
+const FIRST_YEAR = 2000;
+const LAST_YEAR = 2100;
+
+function isRealDate(text: string): boolean {
+  const [year, month, day] = text.slice(0, 10).split("-").map(Number);
+  const d = new Date(Date.UTC(year, month - 1, day));
+  return year >= FIRST_YEAR && year <= LAST_YEAR && d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day;
+}
+
+function isRealClock(text: string): boolean {
+  const [hour, minute] = text.split(":").map(Number);
+  return hour <= 23 && minute <= 59;
+}
 
 const localDateTime = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "Use local time like 2026-12-05T08:50");
-const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a date like 2026-12-02");
-const clock = z.string().regex(/^\d{2}:\d{2}$/, "Use a 24 hour time like 15:00");
+  .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "Use local time like 2026-12-05T08:50")
+  .refine((s) => isRealDate(s) && isRealClock(s.slice(11)), "That date or time does not exist. Use local time like 2026-12-05T08:50");
+const localDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Use a date like 2026-12-02")
+  .refine(isRealDate, "That date does not exist. Use a date like 2026-12-02");
+const clock = z
+  .string()
+  .regex(/^\d{2}:\d{2}$/, "Use a 24 hour time like 15:00")
+  .refine(isRealClock, "That time does not exist. Use a 24 hour time like 15:00");
 
 const money = z.object({ amount: z.string().max(14).regex(/^\d+(\.\d{1,2})?$/), currency: z.string().length(3) });
 
@@ -112,13 +136,6 @@ export function placeQueries(raw: unknown): PlaceQuery[] {
         { city: input.fromCity, country: input.country },
         { city: input.toCity, country: input.country },
       ];
-  }
-}
-
-export class InputProblem extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "InputProblem";
   }
 }
 
