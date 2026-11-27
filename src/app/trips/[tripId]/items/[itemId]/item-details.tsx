@@ -13,12 +13,11 @@ interface Moment {
   time: string;
   place: string | null;
   home: string | null;
-  tag: string | null;
 }
 
-function moment(label: string | null, t: ZonedTime, view: TripView, place: string | null = null, tag: string | null = null): Moment {
+function moment(label: string | null, t: ZonedTime, view: TripView, place: string | null = null): Moment {
   const local = toLocal(t);
-  return { label, day: formatDayHeader(local), time: formatClock(local), place, home: homeReference(t, view.homeZone), tag };
+  return { label, day: formatDayHeader(local), time: formatClock(local), place, home: homeReference(t, view.homeZone) };
 }
 
 function moments(item: VisibleItem, view: TripView): { rows: Moment[]; lead: string | null; sentence: string | null } {
@@ -29,7 +28,7 @@ function moments(item: VisibleItem, view: TripView): { rows: Moment[]; lead: str
       sentence: card.clockSentence,
       rows: [
         { ...moment("Departs", item.start, view, card.depart.place), home: null },
-        { ...moment("Arrives", item.end, view, card.arrive.place, card.arrive.tag), home: card.arrive.home },
+        { ...moment("Arrives", item.end, view, card.arrive.place), home: card.arrive.home },
       ],
     };
   }
@@ -42,7 +41,7 @@ function moments(item: VisibleItem, view: TripView): { rows: Moment[]; lead: str
 function heading(item: VisibleItem): string {
   if (item.type !== "flight" || !item.flight) return item.title;
   const to = flightCities(item).to;
-  return [to ? `${item.flight.flightNumber} to ${to}` : item.flight.flightNumber, item.flight.airline].filter(Boolean).join(", ");
+  return to ? `${item.flight.flightNumber} to ${to}` : item.flight.flightNumber;
 }
 
 function firstName(view: TripView, id: string | null): string | null {
@@ -52,17 +51,24 @@ function firstName(view: TripView, id: string | null): string | null {
 
 interface Entry {
   who: string | null;
+  mine: boolean;
   value: string;
 }
 
-function entriesFor(view: TripView, item: VisibleItem, rows: ItemPrivate[], pick: (p: ItemPrivate) => string | undefined): Entry[] {
+function entriesFor(view: TripView, item: VisibleItem, viewerName: string | null, rows: ItemPrivate[], pick: (p: ItemPrivate) => string | undefined): Entry[] {
   const all = rows.flatMap((p) => {
     const value = pick(p);
-    return value ? [{ who: firstName(view, p.travelerId), value }] : [];
+    const mine = viewerName !== null && view.travelers.find((t) => t.id === p.travelerId)?.name === viewerName;
+    return value ? [{ who: firstName(view, p.travelerId), mine, value }] : [];
   });
   const distinct = new Set(all.map((e) => e.value));
-  if (distinct.size === 1 && (all.length > 1 || item.travelerIds.length < 2)) return [{ who: null, value: all[0].value }];
-  return all;
+  if (distinct.size === 1 && (all.length > 1 || item.travelerIds.length < 2)) return [{ who: null, mine: false, value: all[0].value }];
+  return [...all].sort((a, b) => Number(b.mine) - Number(a.mine));
+}
+
+function labelFor(label: string, e: Entry): string {
+  if (e.mine) return `Your ${label.toLowerCase()}`;
+  return e.who ? `${label}, ${e.who}` : label;
 }
 
 function Field({ label, entries, big }: { label: string; entries: Entry[]; big?: boolean }) {
@@ -72,7 +78,7 @@ function Field({ label, entries, big }: { label: string; entries: Entry[]; big?:
       {entries.map((e, i) => (
         <div key={i} className={styles.fieldRow}>
           <div className={styles.fieldHead}>
-            <span className={styles.label}>{e.who ? `${label}, ${e.who}` : label}</span>
+            <span className={styles.label}>{labelFor(label, e)}</span>
             <CopyButton value={e.value} what={e.who ? `${label.toLowerCase()} for ${e.who}` : label.toLowerCase()} />
           </div>
           <div className={big ? (e.value.length > 10 ? `${styles.code} ${styles.codeLong}` : styles.code) : styles.value}>{e.value}</div>
@@ -82,21 +88,23 @@ function Field({ label, entries, big }: { label: string; entries: Entry[]; big?:
   );
 }
 
-export function ItemDetails({ view, item, nowMs }: { view: TripView; item: VisibleItem; nowMs: number }) {
+export function ItemDetails({ view, item, nowMs, viewerName }: { view: TripView; item: VisibleItem; nowMs: number; viewerName: string | null }) {
   const { rows, lead, sentence } = moments(item, view);
   const city = itemCity(item);
+  const flightHeader = item.type === "flight" && item.flight ? buildFlightCard(item, view.homeZone).header : null;
   const placeName = item.type === "flight" ? null : [item.location?.name && item.location.name !== item.title ? item.location.name : null, city].filter(Boolean).join(", ") || null;
   const address = item.location?.address ?? null;
   const sensitive = view.permissions.canSeeSensitive;
   const priv = sensitive ? item.private : [];
-  const seats = entriesFor(view, item, priv, (p) => p.seat);
+  const seats = entriesFor(view, item, viewerName, priv, (p) => p.seat);
   const seatLine = priv.flatMap((p) => (p.seat ? [[firstName(view, p.travelerId), p.seat] as const] : [])).map(([who, seat]) => (who ? `${who} ${seat}` : seat)).join(", ");
-  const prices = entriesFor(view, item, priv, (p) => (p.price ? `${p.price.currency} ${p.price.amount}` : undefined));
+  const prices = entriesFor(view, item, viewerName, priv, (p) => (p.price ? `${p.price.currency} ${p.price.amount}` : undefined));
   const notes = [...priv.flatMap((p) => (p.notes ? [p.notes] : [])), ...(sensitive && item.notes ? [item.notes] : [])];
   const deadlines = buildDeadlineLines(view, nowMs).filter((l) => l.itemId === item.id);
   return (
     <article className={styles.item}>
       <h2 className={styles.title}>{heading(item)}</h2>
+      {flightHeader && <div className={styles.sub}>{flightHeader}</div>}
       <div className={styles.when}>
         {rows.map((r, i) => (
           <div key={i} className={styles.moment}>
@@ -106,7 +114,6 @@ export function ItemDetails({ view, item, nowMs }: { view: TripView; item: Visib
             </div>
             <div className={styles.time}>
               {r.time}
-              {r.tag && <span className={styles.tag}>{r.tag}</span>}
             </div>
             {(r.place || r.home) && (
               <div className={styles.sub}>
@@ -134,7 +141,7 @@ export function ItemDetails({ view, item, nowMs }: { view: TripView; item: Visib
       ))}
       {sensitive && (
         <>
-          <Field label="Confirmation code" entries={entriesFor(view, item, priv, (p) => p.confirmationCode)} big />
+          <Field label="Confirmation code" entries={entriesFor(view, item, viewerName, priv, (p) => p.confirmationCode)} big />
           <Field label="Booking reference" entries={entriesFor(view, item, priv, (p) => p.bookingReference)} />
           {seats.length > 0 && (
             <section className={styles.field}>

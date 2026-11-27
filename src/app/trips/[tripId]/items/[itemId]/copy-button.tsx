@@ -28,8 +28,13 @@ export function CopyButton({ value, what }: { value: string; what: string }) {
   }
 
   return (
-    <button type="button" className={styles.copy} aria-label={`Copy ${what}`} onClick={copy}>
-      {state === "copied" ? "Copied" : state === "failed" ? "Could not copy" : "Copy"}
-    </button>
+    <span className={styles.copyWrap}>
+      <button type="button" className={styles.copy} aria-label={`Copy ${what}`} onClick={copy}>
+        {state === "copied" ? "Copied" : "Copy"}
+      </button>
+      <span role="status" className={state === "failed" ? styles.copyFailed : styles.srOnly}>
+        {state === "copied" ? "Copied" : state === "failed" ? "Could not copy. Press and hold the code to copy it." : ""}
+      </span>
+    </span>
   );
 }

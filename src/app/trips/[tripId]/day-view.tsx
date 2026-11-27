@@ -50,34 +50,7 @@ function Flight({ card, itemId, item }: { card: FlightCard; itemId: string; item
   );
 }
 
-function Details({ item, names }: { item: VisibleItem; names: Map<string, string> }) {
-  const rows: [string, string][] = [];
-  const hasBooking = item.private.length > 0 || item.notes !== "" || item.deadlines.length > 0;
-  if (item.location?.address) rows.push(["Address", item.location.address]);
-  if (item.travelerIds.length) rows.push(["Travelers", item.travelerIds.map((id) => names.get(id) ?? "Someone").join(", ")]);
-  if (item.startIsEstimated || item.endIsEstimated) rows.push(["Times", "Estimated. Check the booking."]);
-  if (item.status === "needs_review") rows.push(["Status", "Needs review"]);
-  for (const flag of item.flags) rows.push(["Check", flag]);
-  return (
-    <div className={styles.detail}>
-      {hasBooking && (
-        <p className={styles.openDetails}>
-          <Link href={`/trips/${item.tripId}/items/${item.id}`}>Open booking</Link>
-        </p>
-      )}
-      <dl>
-        {rows.map(([k, v], i) => (
-          <div key={i} style={{ display: "contents" }}>
-            <dt>{k}</dt>
-            <dd className={k === "Check" ? styles.check : undefined}>{v}</dd>
-          </div>
-        ))}
-      </dl>
-    </div>
-  );
-}
-
-function Entry({ entry, view, colors, names }: { entry: DayEntry; view: TripView; colors: Map<string, string>; names: Map<string, string> }) {
+function Entry({ entry, view, colors }: { entry: DayEntry; view: TripView; colors: Map<string, string> }) {
   if (entry.kind === "arrival") {
     return <li className={styles.arrival}>{entry.time}  {entry.text}</li>;
   }
@@ -95,16 +68,13 @@ function Entry({ entry, view, colors, names }: { entry: DayEntry; view: TripView
     );
   }
   const item = view.items.find((i) => i.id === entry.itemId);
-  const detail = item ? <Details item={item} names={names} /> : null;
+  const href = `/trips/${view.trip.id}/items/${entry.itemId}`;
   if (entry.kind === "flight") {
     return (
       <li className={styles.entry}>
-        <details>
-          <summary style={{ display: "block", padding: 0 }}>
-            <Flight card={entry.card} itemId={entry.itemId} item={item} />
-          </summary>
-          {detail}
-        </details>
+        <Link className={styles.flightRow} href={href}>
+          <Flight card={entry.card} itemId={entry.itemId} item={item} />
+        </Link>
       </li>
     );
   }
@@ -114,8 +84,7 @@ function Entry({ entry, view, colors, names }: { entry: DayEntry; view: TripView
   const place = entry.place;
   return (
     <li className={styles.entry}>
-      <details>
-        <summary className={isStay ? `${styles.stay} ${(city && colors.get(city)) || ""}` : undefined}>
+      <Link className={isStay ? `${styles.row} ${styles.stay} ${(city && colors.get(city)) || ""}` : styles.row} href={href}>
           <span className={styles.time}>
             {entry.time}
             {entry.home && <span className={styles.home}>{entry.home}</span>}
@@ -127,16 +96,13 @@ function Entry({ entry, view, colors, names }: { entry: DayEntry; view: TripView
             {place && entry.kind === "event" && <span className={styles.sub}>{place}</span>}
             {item && item.flags.length > 0 && <span className={styles.flagged}>Check where this is</span>}
           </span>
-        </summary>
-        {detail}
-      </details>
+      </Link>
     </li>
   );
 }
 
 export function DayView({ view, days, todayKey, only, anchors = true }: { view: TripView; days: Day[]; todayKey: string; only?: string; anchors?: boolean }) {
   const colors = cityColors(view);
-  const names = new Map(view.travelers.map((t) => [t.id, t.name]));
   if (!days.length) {
     return (
       <div className={styles.empty}>
@@ -172,7 +138,7 @@ export function DayView({ view, days, todayKey, only, anchors = true }: { view: 
           ) : (
             <ul className={styles.entries}>
               {day.entries.map((e, i) => (
-                <Entry key={`${e.kind}-${"itemId" in e ? e.itemId : e.key}-${i}`} entry={e} view={view} colors={colors} names={names} />
+                <Entry key={`${e.kind}-${"itemId" in e ? e.itemId : e.key}-${i}`} entry={e} view={view} colors={colors} />
               ))}
             </ul>
           )}
