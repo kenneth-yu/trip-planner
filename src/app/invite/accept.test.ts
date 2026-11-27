@@ -11,6 +11,7 @@ import { kenny } from "@/server/testing";
 import { GET as openLink } from "./[token]/route";
 import { GET as accept } from "./accept/route";
 import { noticeMessage } from "./notice";
+import { consentFor } from "./invite-cookies";
 
 const world = vi.hoisted(() => {
   const state: { ctx: ServiceContext | null; user: { id: string; name: string } | null } = { ctx: null, user: null };
@@ -31,7 +32,7 @@ vi.mock("@/server/auth/session", () => ({
 const mina = { id: "00000000-0000-4000-8100-000000000a01", name: "Mina Okafor" };
 
 function acceptRequest(cookie?: string, consent = true) {
-  const parts = cookie ? [`trip-invite=${cookie}`, ...(consent ? ["trip-invite-ok=1"] : [])] : [];
+  const parts = cookie ? [`trip-invite=${cookie}`, ...(consent ? [`trip-invite-ok=${consentFor(cookie)}`] : [])] : [];
   return new NextRequest("https://trips.test/invite/accept", { headers: parts.length ? { cookie: parts.join("; ") } : {} });
 }
 
@@ -99,6 +100,24 @@ describe("accepting from the cookie", () => {
     expect(await ctx.db.select().from(t.memberships).where(eq(t.memberships.userId, mina.id))).toEqual([]);
     const [invite] = await ctx.db.select().from(t.invites);
     expect(present(invite).acceptedAt).toBeNull();
+  });
+
+  it("does not accept one link on the consent given for another", async () => {
+    const ctx = present(world.ctx);
+    const first = await createInvite(ctx, TRIP_ID, kenny, { role: "editor" });
+    const second = await createInvite(ctx, TRIP_ID, kenny, { role: "editor" });
+    const request = new NextRequest("https://trips.test/invite/accept", {
+      headers: { cookie: `trip-invite=${tokenOf(second.url)}; trip-invite-ok=${consentFor(tokenOf(first.url))}` },
+    });
+    const response = await accept(request);
+    expect(response.headers.get("location")).toBe("/invite/join");
+    expect(await ctx.db.select().from(t.memberships).where(eq(t.memberships.userId, mina.id))).toEqual([]);
+  });
+
+  it("treats a malformed invite cookie as lost before looking anything up", async () => {
+    const request = new NextRequest("https://trips.test/invite/accept", { headers: { cookie: "trip-invite=not-a-token; trip-invite-ok=1" } });
+    const response = await accept(request);
+    expect(response.headers.get("location")).toBe("/invite/lost");
   });
 
   it("asks a signed out visitor to sign in and keeps the invite", async () => {

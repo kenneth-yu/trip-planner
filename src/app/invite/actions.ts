@@ -8,6 +8,8 @@ import { requestContext } from "@/server/app-context";
 import { claimInvite } from "./claim";
 import {
   CONSENT_COOKIE,
+  consentFor,
+  inviteTokenFrom,
   clearInviteCookieOptions,
   consentCookieOptions,
   INVITE_COOKIE,
@@ -17,14 +19,15 @@ import {
 
 export async function continueToSignIn(): Promise<void> {
   const jar = await cookies();
-  if (!jar.get(INVITE_COOKIE)?.value) redirect("/invite/lost");
-  jar.set(CONSENT_COOKIE, "1", consentCookieOptions);
+  const token = inviteTokenFrom(jar.get(INVITE_COOKIE)?.value);
+  if (!token) redirect("/invite/lost");
+  jar.set(CONSENT_COOKIE, consentFor(token), consentCookieOptions);
   redirect(signInPath("/invite/accept"));
 }
 
 export async function joinTrip(): Promise<void> {
   const jar = await cookies();
-  const token = jar.get(INVITE_COOKIE)?.value;
+  const token = inviteTokenFrom(jar.get(INVITE_COOKIE)?.value);
   if (!token) redirect("/invite/lost");
   const user = await currentUser();
   if (!user) redirect("/invite/join");

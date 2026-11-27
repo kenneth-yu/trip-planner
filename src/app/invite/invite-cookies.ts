@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { hashToken } from "@/server/auth/tokens";
 
 export const INVITE_COOKIE = "trip-invite";
 export const CONSENT_COOKIE = "trip-invite-ok";
@@ -22,4 +23,13 @@ export const clearNoticeCookieOptions = { ...noticeCookieOptions, maxAge: 0 };
 
 export function redirectTo(path: string): NextResponse {
   return new NextResponse(null, { status: 303, headers: { location: path } });
+}
+
+export function inviteTokenFrom(value: string | undefined): string | null {
+  const parsed = InviteToken.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+export function consentFor(token: string): string {
+  return hashToken(token);
 }

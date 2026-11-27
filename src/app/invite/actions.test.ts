@@ -10,6 +10,7 @@ import type { ServiceContext } from "@/server/services/context";
 import { continueToSignIn, joinTrip } from "./actions";
 import JoinInvitePage from "./join/page";
 import { noticeMessage } from "./notice";
+import { consentFor } from "./invite-cookies";
 
 const world = vi.hoisted(() => {
   const state: { ctx: ServiceContext | null; user: { id: string; name: string } | null; jar: Map<string, string> } = {
@@ -92,15 +93,23 @@ describe("joining through the page buttons", () => {
     expect(html).not.toContain("Join");
   });
 
+  it("sends a malformed invite cookie to the lost invite page without a lookup", async () => {
+    world.jar.set("trip-invite", "not-a-token");
+    await expect(JoinInvitePage()).rejects.toThrow("redirect:/invite/lost");
+    await expect(continueToSignIn()).rejects.toThrow("redirect:/invite/lost");
+    await expect(joinTrip()).rejects.toThrow("redirect:/invite/lost");
+  });
+
   it("sends a visitor with no invite cookie to the lost invite page", async () => {
     await expect(JoinInvitePage()).rejects.toThrow("redirect:/invite/lost");
   });
 
   it("records consent and goes to sign in on Continue", async () => {
     world.user = null;
-    world.jar.set("trip-invite", await liveToken(present(world.ctx)));
+    const token = await liveToken(present(world.ctx));
+    world.jar.set("trip-invite", token);
     await expect(continueToSignIn()).rejects.toThrow(`redirect:/sign-in?next=${encodeURIComponent("/invite/accept")}`);
-    expect(world.jar.get("trip-invite-ok")).toBe("1");
+    expect(world.jar.get("trip-invite-ok")).toBe(consentFor(token));
   });
 
   it("refuses Continue without an invite cookie", async () => {
@@ -110,8 +119,9 @@ describe("joining through the page buttons", () => {
 
   it("joins on the Join button, clears the invite cookies and sets the notice", async () => {
     const ctx = present(world.ctx);
-    world.jar.set("trip-invite", await liveToken(ctx));
-    world.jar.set("trip-invite-ok", "1");
+    const token = await liveToken(ctx);
+    world.jar.set("trip-invite", token);
+    world.jar.set("trip-invite-ok", consentFor(token));
     await expect(joinTrip()).rejects.toThrow(`redirect:/trips/${TRIP_ID}`);
     expect(world.jar.has("trip-invite")).toBe(false);
     expect(world.jar.has("trip-invite-ok")).toBe(false);
