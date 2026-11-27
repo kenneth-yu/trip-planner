@@ -1,4 +1,4 @@
-import { boolean, index, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { Difference, ProposedItem } from "@/domain/import/proposal";
 import type { FlightDetails, ItemPrivate, Location, StayDetails, TransferDetails } from "@/domain/types";
 
@@ -12,6 +12,45 @@ export const users = pgTable("users", {
   homeZone: text("home_zone").notNull().default("America/New_York"),
   showHomeTime: boolean("show_home_time").notNull().default(true),
   createdAt: created(),
+});
+
+export const authAccounts = pgTable(
+  "auth_accounts",
+  {
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    provider: text("provider").notNull(),
+    providerAccountId: text("provider_account_id").notNull(),
+    createdAt: created(),
+  },
+  (t) => [primaryKey({ columns: [t.provider, t.providerAccountId] }), index("auth_accounts_user_idx").on(t.userId)],
+);
+
+export const authSessions = pgTable(
+  "auth_sessions",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    expires: ts("expires").notNull(),
+    createdAt: created(),
+  },
+  (t) => [index("auth_sessions_user_idx").on(t.userId)],
+);
+
+export const authVerificationTokens = pgTable(
+  "auth_verification_tokens",
+  {
+    identifier: text("identifier").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    expires: ts("expires").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.identifier, t.tokenHash] })],
+);
+
+export const rateLimits = pgTable("rate_limits", {
+  key: text("key").primaryKey(),
+  windowStart: ts("window_start").notNull(),
+  count: integer("count").notNull(),
 });
 
 export const trips = pgTable("trips", {

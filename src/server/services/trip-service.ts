@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import * as t from "../db/schema";
 import { deleteItem, loadTripAggregate, saveItem, touchTrip, tripsForUser, type DbOrTx } from "../repo/trip-repo";
+import { insertActivity } from "../repo/activity-repo";
 import type { ServiceContext } from "./context";
 import { AccessDenied, assertCanEditItem, assertCanEditTrip, projectTrip, type TripView } from "@/domain/visibility/project";
 import { inputToProposal, placeQueries } from "@/domain/import/quick-add";
@@ -85,21 +86,6 @@ export function proposalToItem(ctx: ServiceContext, tripId: string, actorId: str
   };
 }
 
-export async function logActivity(
-  db: DbOrTx,
-  entry: { tripId: string; actorId: string; action: string; itemId?: string | null; via?: string; before?: unknown; after?: unknown },
-) {
-  await db.insert(t.activity).values({
-    tripId: entry.tripId,
-    actorId: entry.actorId,
-    action: entry.action,
-    itemId: entry.itemId ?? null,
-    via: entry.via ?? "app",
-    before: entry.before ?? null,
-    after: entry.after ?? null,
-  });
-}
-
 function memberId(requester: Requester): string {
   if (requester.kind !== "member") throw new AccessDenied("Sign in to change this trip.");
   return requester.userId;
@@ -116,7 +102,7 @@ export async function quickAddItem(ctx: ServiceContext, tripId: string, requeste
     const created = proposalToItem(ctx, tripId, actorId, inputToProposal(input, agg.travelers, places), sharing);
     await saveItem(tx, created);
     await touchTrip(tx, tripId);
-    await logActivity(tx, { tripId, actorId, action: "created", itemId: created.id, after: created });
+    await insertActivity(tx, { tripId, actorId, action: "created", itemId: created.id, after: created });
     return created;
   });
   await ctx.onTripChanged(tripId);
@@ -147,7 +133,7 @@ export async function updateItem(ctx: ServiceContext, tripId: string, itemId: st
     if (after.end.at < after.start.at) throw new Error("The end is before the start.");
     await saveItem(tx, after);
     await touchTrip(tx, tripId);
-    await logActivity(tx, { tripId, actorId, action: "updated", itemId, before, after });
+    await insertActivity(tx, { tripId, actorId, action: "updated", itemId, before, after });
     return after;
   });
   await ctx.onTripChanged(tripId);
@@ -163,7 +149,7 @@ export async function removeItem(ctx: ServiceContext, tripId: string, itemId: st
     assertCanEditItem(agg, requester, before);
     await deleteItem(tx, tripId, itemId);
     await touchTrip(tx, tripId);
-    await logActivity(tx, { tripId, actorId, action: "deleted", itemId, before });
+    await insertActivity(tx, { tripId, actorId, action: "deleted", itemId, before });
   });
   await ctx.onTripChanged(tripId);
 }

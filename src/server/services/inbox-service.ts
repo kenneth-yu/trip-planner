@@ -3,7 +3,8 @@ import * as t from "../db/schema";
 import { saveItem, touchTrip, type DbOrTx } from "../repo/trip-repo";
 import type { ServiceContext } from "./context";
 import { placeContextFor } from "./place-service";
-import { logActivity, NotFound, proposalToItem, requireAggregate } from "./trip-service";
+import { NotFound, proposalToItem, requireAggregate } from "./trip-service";
+import { insertActivity } from "../repo/activity-repo";
 import { assertCanEditItem, assertCanEditTrip, canSeeItem, permissionsFor, projectTrip } from "@/domain/visibility/project";
 import { isClean, planCalendarImport, planProposals, type InboxEntryDraft } from "@/domain/import/pipeline";
 import { applyDifference, mergeRecords, sharedDifferences, type Choices } from "@/domain/import/matching";
@@ -46,7 +47,7 @@ async function insertBatch(ctx: ServiceContext, tripId: string, requester: Reque
         })),
       );
     }
-    await logActivity(tx, { tripId, actorId: requester.userId, action: "imported", via: batch.via, after: { batchId, count: drafts.length, source: batch.source } });
+    await insertActivity(tx, { tripId, actorId: requester.userId, action: "imported", via: batch.via, after: { batchId, count: drafts.length, source: batch.source } });
   });
   return { batchId, count: drafts.length };
 }
@@ -170,7 +171,7 @@ export async function approveEntry(ctx: ServiceContext, tripId: string, entryId:
     await claimEntry(tx, entryId, { state: "approved", resultItemId: item.id, decidedBy: requester.userId, decidedAt: ctx.now() });
     await saveItem(tx, item);
     await touchTrip(tx, tripId);
-    await logActivity(tx, { tripId, actorId: requester.userId, action: "created", itemId: item.id, via: `import:${row.batchId}`, after: item });
+    await insertActivity(tx, { tripId, actorId: requester.userId, action: "created", itemId: item.id, via: `import:${row.batchId}`, after: item });
     return item.id;
   });
   await ctx.onTripChanged(tripId);
@@ -211,7 +212,7 @@ export async function mergeEntry(
     await claimEntry(tx, entryId, { state: "merged", resultItemId: target.id, decidedBy: requester.userId, decidedAt: ctx.now() });
     await saveItem(tx, after);
     await touchTrip(tx, tripId);
-    await logActivity(tx, { tripId, actorId: requester.userId, action: "merged", itemId: target.id, via: `import:${row.batchId}`, before: target, after });
+    await insertActivity(tx, { tripId, actorId: requester.userId, action: "merged", itemId: target.id, via: `import:${row.batchId}`, before: target, after });
     return target.id;
   });
   await ctx.onTripChanged(tripId);
