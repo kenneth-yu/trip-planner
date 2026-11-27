@@ -50,6 +50,7 @@ function Details({ item, canSeeSensitive, names }: { item: VisibleItem; canSeeSe
       if (p.seat) rows.push(["Seat", `${who}${p.seat}`]);
       if (p.phone) rows.push(["Phone", `${who}${p.phone}`]);
       if (p.price) rows.push(["Price", `${who}${p.price.currency} ${p.price.amount}`]);
+      if (p.notes) rows.push(["From the booking", p.notes]);
     }
   }
   if (item.startIsEstimated || item.endIsEstimated) rows.push(["Times", "Estimated. Check the booking."]);

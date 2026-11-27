@@ -4,6 +4,8 @@ import { saveItem, touchTrip, type DbOrTx } from "../repo/trip-repo";
 import type { ServiceContext } from "./context";
 import { placeContextFor } from "./place-service";
 import { NotFound, proposalToItem, requireAggregate } from "./trip-service";
+import { openJson, SealError, sealJson } from "../crypto/sealed";
+import { importPayloadSchema } from "../crypto/schemas";
 import { insertActivity } from "../repo/activity-repo";
 import { assertCanEditItem, assertCanEditTrip, canSeeItem, permissionsFor, projectTrip } from "@/domain/visibility/project";
 import { isClean, planCalendarImport, planProposals, type InboxEntryDraft } from "@/domain/import/pipeline";
@@ -33,18 +35,19 @@ async function insertBatch(ctx: ServiceContext, tripId: string, requester: Reque
     await tx.insert(t.importBatches).values({ id: batchId, tripId, userId: requester.userId, source: batch.source, label: batch.label });
     if (drafts.length) {
       await tx.insert(t.importedItems).values(
-        drafts.map((d) => ({
-          id: ctx.newId(),
-          batchId,
-          tripId,
-          raw: d.raw,
-          proposed: d.proposed,
-          matchItemId: d.match?.itemId ?? null,
-          matchStrength: d.match?.strength ?? null,
-          differences: d.differences,
-          matchDifferences: d.match?.differences ?? [],
-          unparsed: d.unparsed,
-        })),
+        drafts.map((d) => {
+          const id = ctx.newId();
+          return {
+            id,
+            batchId,
+            tripId,
+            sealed: sealJson({ raw: d.raw, proposed: d.proposed, unparsed: d.unparsed }, "import", id),
+            matchItemId: d.match?.itemId ?? null,
+            matchStrength: d.match?.strength ?? null,
+            differences: d.differences,
+            matchDifferences: d.match?.differences ?? [],
+          };
+        }),
       );
     }
     await insertActivity(tx, { tripId, actorId: requester.userId, action: "imported", via: batch.via, after: { batchId, count: drafts.length, source: batch.source } });
@@ -80,6 +83,11 @@ export async function importProposals(ctx: ServiceContext, tripId: string, reque
   return insertBatch(ctx, tripId, requester, opts, planProposals(proposals, view.items));
 }
 
+function openImport(row: typeof t.importedItems.$inferSelect) {
+  if (row.sealed === null) throw new SealError("Imported record has not been sealed yet.");
+  return openJson(row.sealed, importPayloadSchema, "import", row.id);
+}
+
 export interface InboxEntry {
   id: string;
   batchId: string;
@@ -105,15 +113,16 @@ export async function listInbox(ctx: ServiceContext, tripId: string, requester: 
   return rows.map(({ e, b }) => {
     const matched = e.matchItemId ? agg.items.find((i) => i.id === e.matchItemId) : undefined;
     const visibleMatch = matched && e.matchStrength && canSeeItem(matched, requester) ? { item: matched, strength: e.matchStrength } : undefined;
+    const opened = openImport(e);
     const entry = {
       id: e.id,
       batchId: b.id,
       source: b.source,
       label: b.label,
-      proposed: e.proposed,
+      proposed: opened.proposed,
       match: visibleMatch ? { itemId: visibleMatch.item.id, strength: visibleMatch.strength, title: visibleMatch.item.title, differences: e.matchDifferences } : null,
       differences: e.differences,
-      unparsed: e.unparsed,
+      unparsed: opened.unparsed,
       createdAt: e.createdAt.toISOString(),
     };
     return { ...entry, clean: isClean(entry) };
@@ -126,7 +135,7 @@ async function loadEntry(db: DbOrTx, tripId: string, entryId: string) {
     .from(t.importedItems)
     .where(and(eq(t.importedItems.id, entryId), eq(t.importedItems.tripId, tripId), eq(t.importedItems.state, "pending")));
   if (!row) throw new NotFound("That inbox item is gone. It may already have been handled.");
-  return row;
+  return { ...row, proposed: openImport(row).proposed };
 }
 
 async function claimEntry(
