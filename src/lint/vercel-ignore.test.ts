@@ -35,10 +35,23 @@ function repoWith(commits: string[][], withStart = true): Repo {
   return { dir, shas };
 }
 
-function run(repo: Repo, env: Record<string, string> = {}): "build" | "skip" {
+interface FakeCurl {
+  body?: string;
+  exitCode?: number;
+}
+
+function fakeCurlDirectory(curl: FakeCurl): string {
+  const bin = mkdtempSync(path.join(tmpdir(), "fake-curl-"));
+  const script = curl.exitCode ? `#!/usr/bin/env bash\nexit ${curl.exitCode}\n` : `#!/usr/bin/env bash\ncat <<'JSON'\n${curl.body ?? ""}\nJSON\n`;
+  writeFileSync(path.join(bin, "curl"), script, { mode: 0o755 });
+  return bin;
+}
+
+function run(repo: Repo, env: Record<string, string> = {}, curl?: FakeCurl): "build" | "skip" {
+  const path_ = curl ? `${fakeCurlDirectory(curl)}:${process.env.PATH ?? ""}` : (process.env.PATH ?? "");
   const result = spawnSync("bash", [SCRIPT], {
     cwd: repo.dir,
-    env: { ...process.env, VERCEL_ENV: "", VERCEL_GIT_COMMIT_REF: "", VERCEL_GIT_PREVIOUS_SHA: "", ...env },
+    env: { ...process.env, PATH: path_, VERCEL_ENV: "", VERCEL_GIT_COMMIT_REF: "", VERCEL_GIT_PREVIOUS_SHA: "", VERCEL_GIT_COMMIT_SHA: "", ...env },
     encoding: "utf8",
   });
   if (result.status === 0) return "skip";
@@ -128,5 +141,41 @@ describe("Vercel ignore rule", () => {
     expect(decide("src/app/page.tsx", { VERCEL_GIT_COMMIT_REF: "owner/roles" })).toBe("skip");
     expect(decide("src/app/page.tsx", { VERCEL_GIT_COMMIT_REF: "wp/10b-core-edit" })).toBe("build");
     expect(decide("docs/UX.md", { VERCEL_GIT_COMMIT_REF: "wp/10b-core-edit" })).toBe("skip");
+  });
+});
+
+describe("Vercel ignore rule for production", () => {
+  const SHA = "0123456789abcdef0123456789abcdef01234567";
+  const approved = JSON.stringify({ state: "success", statuses: [{ context: "ci/other", state: "failure" }, { context: "deploy/approved", state: "success" }] });
+  const production = (curl: FakeCurl, sha = SHA) => run(repoWith([["src/app/page.tsx"]]), { VERCEL_ENV: "production", VERCEL_GIT_COMMIT_SHA: sha }, curl);
+
+  it("builds only when the commit carries deploy/approved set to success", () => {
+    expect(production({ body: approved })).toBe("build");
+  });
+
+  it.each([
+    ["pending", JSON.stringify({ statuses: [{ context: "deploy/approved", state: "pending" }] })],
+    ["failure", JSON.stringify({ statuses: [{ context: "deploy/approved", state: "failure" }] })],
+    ["another context", JSON.stringify({ statuses: [{ context: "deploy/approved-ish", state: "success" }, { context: "approved", state: "success" }] })],
+    ["no statuses", JSON.stringify({ state: "pending", statuses: [] })],
+    ["a rate limit answer", JSON.stringify({ message: "API rate limit exceeded", documentation_url: "https://docs.github.com" })],
+    ["a statuses field that is not a list", JSON.stringify({ statuses: "deploy/approved success" })],
+    ["a page that is not JSON", "<html>Bad gateway</html>"],
+    ["an empty answer", ""],
+  ])("skips on %s", (_name, body) => {
+    expect(production({ body })).toBe("skip");
+  });
+
+  it("skips when the API cannot be reached or answers an error", () => {
+    expect(production({ exitCode: 22 })).toBe("skip");
+    expect(production({ exitCode: 28 })).toBe("skip");
+  });
+
+  it.each(["", "abc", "0123456789ABCDEF0123456789ABCDEF01234567", `${SHA}0`, `${SHA.slice(0, 39)}g`, "../../etc/passwd"])("skips without asking GitHub when the commit id is %j", (sha) => {
+    expect(production({ body: approved }, sha)).toBe("skip");
+  });
+
+  it("applies to production only: a preview never needs the approval", () => {
+    expect(run(repoWith([["src/app/page.tsx"]]), { VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "wp/x" }, { exitCode: 22 })).toBe("build");
   });
 });
