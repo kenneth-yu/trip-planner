@@ -20,7 +20,7 @@ Fill in `.env.local`:
 | `APP_URL` | The address people open, `http://localhost:3000` locally. Emailed sign in links are built on it; required in production |
 | `DEV_SIGN_IN` | `1` to show "Demo accounts" (Kenneth, Jacob) on the sign in screen and the email link through a local outbox (never in production) |
 | `TRUST_PROXY` | `1` behind a proxy that appends the client address (Vercel). Required in production. `0` makes every client share each rate limit budget, so use it only for a single user setup |
-| `DATABASE_URL` | Postgres URL. Leave empty to use an embedded database in `.data/pglite` |
+| `DATABASE_URL` | Postgres URL. Leave empty to use an embedded database in `.data/pglite` (migrated in process). A Postgres database is migrated by `npm run db:migrate` (Vercel runs it before every build through `vercel-build`); the app never migrates Postgres on first request |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Sign in with Google and the Google Calendar mirror |
 | `AUTH_APPLE_ID`, `AUTH_APPLE_SECRET` | Optional. Shows Sign in with Apple |
 | `EMAIL_API_KEY`, `EMAIL_FROM` | Optional. Sends email sign in links through the email API (Resend). Do not set in a deployed environment until sign in rate limits (WP-02) are on main |

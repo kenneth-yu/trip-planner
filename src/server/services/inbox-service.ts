@@ -14,6 +14,8 @@ import type { CalendarEvent } from "@/domain/import/calendar-event";
 import type { Difference, ImportSource, ProposedItem } from "@/domain/import/proposal";
 import type { Finding } from "@/domain/checks/checks";
 import type { Requester } from "@/domain/types";
+import { InvalidTransition, transition } from "@/domain/state/machine";
+import { machine as inboxEntry, type InboxEntryEvent, type InboxEntryState } from "@/domain/state/inbox-entry.machine";
 
 export class NeedsDecision extends Error {
   constructor(message: string) {
@@ -129,26 +131,32 @@ export async function listInbox(ctx: ServiceContext, tripId: string, requester: 
   });
 }
 
-async function loadEntry(db: DbOrTx, tripId: string, entryId: string) {
+type StoredState = typeof t.importedItems.$inferSelect["state"];
+
+const STATE_OF_STORED: Record<StoredState, InboxEntryState> = { pending: "Pending", approved: "Approved", merged: "Merged", discarded: "Discarded" };
+const STORED_OF_STATE: Record<InboxEntryState, StoredState> = { Pending: "pending", Approved: "approved", Merged: "merged", Discarded: "discarded" };
+
+async function loadEntry(db: DbOrTx, tripId: string, entryId: string, event: InboxEntryEvent) {
   const [row] = await db
     .select()
     .from(t.importedItems)
-    .where(and(eq(t.importedItems.id, entryId), eq(t.importedItems.tripId, tripId), eq(t.importedItems.state, "pending")));
-  if (!row) throw new NotFound("That inbox item is gone. It may already have been handled.");
+    .where(and(eq(t.importedItems.id, entryId), eq(t.importedItems.tripId, tripId)));
+  if (!row) throw new NotFound("That inbox item is gone.");
+  transition(inboxEntry, STATE_OF_STORED[row.state], event);
   return { ...row, proposed: openImport(row).proposed };
 }
 
-async function claimEntry(
-  db: DbOrTx,
-  entryId: string,
-  decision: { state: "approved" | "merged" | "discarded"; decidedBy: string; decidedAt: Date; resultItemId?: string },
-) {
+async function claimEntry(db: DbOrTx, entryId: string, event: InboxEntryEvent, decision: { decidedBy: string; decidedAt: Date; resultItemId?: string }) {
+  const next = transition(inboxEntry, "Pending", event);
   const claimed = await db
     .update(t.importedItems)
-    .set(decision)
-    .where(and(eq(t.importedItems.id, entryId), eq(t.importedItems.state, "pending")))
+    .set({ ...decision, state: STORED_OF_STATE[next] })
+    .where(and(eq(t.importedItems.id, entryId), eq(t.importedItems.state, STORED_OF_STATE.Pending)))
     .returning({ id: t.importedItems.id });
-  if (!claimed.length) throw new NotFound("That inbox item is gone. It may already have been handled.");
+  if (claimed.length) return;
+  const [current] = await db.select({ state: t.importedItems.state }).from(t.importedItems).where(eq(t.importedItems.id, entryId));
+  if (!current) throw new NotFound("That inbox item is gone.");
+  throw new InvalidTransition(inboxEntry.name, STATE_OF_STORED[current.state], event);
 }
 
 export function resolveImportDifferences(proposed: ProposedItem, differences: Difference[], choices: Choices): ProposedItem {
@@ -173,11 +181,11 @@ export async function approveEntry(ctx: ServiceContext, tripId: string, entryId:
   const itemId = await ctx.db.transaction(async (tx) => {
     const agg = await requireAggregate(tx, tripId);
     assertCanEditTrip(agg, requester);
-    const row = await loadEntry(tx, tripId, entryId);
+    const row = await loadEntry(tx, tripId, entryId, "add");
     const resolved = resolveImportDifferences(row.proposed, row.differences, decision.choices ?? {});
     const proposal = decision.edits ? { ...resolved, ...decision.edits, status: "confirmed" as const, problems: [] } : resolved;
     const item = proposalToItem(ctx, tripId, requester.userId, proposal);
-    await claimEntry(tx, entryId, { state: "approved", resultItemId: item.id, decidedBy: requester.userId, decidedAt: ctx.now() });
+    await claimEntry(tx, entryId, "add", { resultItemId: item.id, decidedBy: requester.userId, decidedAt: ctx.now() });
     await saveItem(tx, item);
     await touchTrip(tx, tripId);
     await insertActivity(tx, { tripId, actorId: requester.userId, action: "created", itemId: item.id, via: `import:${row.batchId}`, after: item });
@@ -197,7 +205,8 @@ export async function mergeEntry(
   if (requester.kind !== "member") throw new NotFound();
   const itemId = await ctx.db.transaction(async (tx) => {
     const agg = await requireAggregate(tx, tripId);
-    const row = await loadEntry(tx, tripId, entryId);
+    assertCanEditTrip(agg, requester);
+    const row = await loadEntry(tx, tripId, entryId, "merge");
     const target = agg.items.find((i) => i.id === (decision.intoItemId ?? row.matchItemId));
     if (!target) throw new NotFound("There is nothing to merge this into.");
     assertCanEditItem(agg, requester, target);
@@ -218,7 +227,7 @@ export async function mergeEntry(
       updatedBy: requester.userId,
       updatedAt: ctx.now().toISOString(),
     };
-    await claimEntry(tx, entryId, { state: "merged", resultItemId: target.id, decidedBy: requester.userId, decidedAt: ctx.now() });
+    await claimEntry(tx, entryId, "merge", { resultItemId: target.id, decidedBy: requester.userId, decidedAt: ctx.now() });
     await saveItem(tx, after);
     await touchTrip(tx, tripId);
     await insertActivity(tx, { tripId, actorId: requester.userId, action: "merged", itemId: target.id, via: `import:${row.batchId}`, before: target, after });
@@ -232,14 +241,22 @@ export async function discardEntry(ctx: ServiceContext, tripId: string, entryId:
   if (requester.kind !== "member") throw new NotFound();
   const agg = await requireAggregate(ctx.db, tripId);
   assertCanEditTrip(agg, requester);
-  await loadEntry(ctx.db, tripId, entryId);
-  await claimEntry(ctx.db, entryId, { state: "discarded", decidedBy: requester.userId, decidedAt: ctx.now() });
+  await loadEntry(ctx.db, tripId, entryId, "discard");
+  await claimEntry(ctx.db, entryId, "discard", { decidedBy: requester.userId, decidedAt: ctx.now() });
 }
 
 export async function approveAllClean(ctx: ServiceContext, tripId: string, requester: Requester): Promise<number> {
   const clean = (await listInbox(ctx, tripId, requester)).filter((e) => e.clean);
-  for (const e of clean) await approveEntry(ctx, tripId, e.id, requester);
-  return clean.length;
+  let approved = 0;
+  for (const e of clean) {
+    try {
+      await approveEntry(ctx, tripId, e.id, requester);
+      approved += 1;
+    } catch (err) {
+      if (!(err instanceof InvalidTransition)) throw err;
+    }
+  }
+  return approved;
 }
 
 export async function disagreementFindings(ctx: ServiceContext, tripId: string, requester: Requester): Promise<Finding[]> {
