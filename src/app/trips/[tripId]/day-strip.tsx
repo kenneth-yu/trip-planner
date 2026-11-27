@@ -7,7 +7,6 @@ import { DAY_PANEL_ID } from "./day-panel";
 import type { StripDay } from "@/domain/timeline/trip-grid";
 
 const PLACES_KEPT = 50;
-const SETTLE_FRAMES = 8;
 const places = new Map<string, number>();
 
 function remember(url: string, scrollY: number): void {
@@ -31,38 +30,27 @@ export function DayStrip({ days, selectedKey }: { days: StripDay[]; selectedKey:
   };
   const lastUrl = useRef<string | null>(null);
   useEffect(() => {
+    const native = window.history.scrollRestoration;
+    window.history.scrollRestoration = "manual";
     lastUrl.current = here();
     const leaving = () => {
       if (lastUrl.current) remember(lastUrl.current, window.scrollY);
     };
     window.addEventListener("popstate", leaving);
-    return () => window.removeEventListener("popstate", leaving);
+    return () => {
+      window.removeEventListener("popstate", leaving);
+      window.history.scrollRestoration = native;
+    };
   }, []);
   useEffect(() => {
     const url = here();
     const restore = !tapped.current && lastUrl.current !== url ? places.get(url) : undefined;
     lastUrl.current = url;
     const el = strip.current;
-    el?.removeAttribute("data-place-restored");
-    let frame = 0;
-    let cancelled = false;
-    const stop = () => {
-      cancelled = true;
-    };
+    el?.removeAttribute("data-scroll-restored");
     if (restore !== undefined) {
       window.scrollTo({ top: restore, behavior: "auto" });
-      window.addEventListener("wheel", stop, { once: true, passive: true });
-      window.addEventListener("touchstart", stop, { once: true, passive: true });
-      window.addEventListener("keydown", stop, { once: true });
-      let frames = 0;
-      const settle = () => {
-        if (cancelled) return;
-        if (Math.abs(window.scrollY - restore) > 1) window.scrollTo({ top: restore, behavior: "auto" });
-        frames += 1;
-        if (frames < SETTLE_FRAMES) frame = requestAnimationFrame(settle);
-        else el?.setAttribute("data-place-restored", `${url}|${Math.round(restore)}`);
-      };
-      frame = requestAnimationFrame(settle);
+      if (Math.abs(window.scrollY - restore) <= 1) el?.setAttribute("data-scroll-restored", `${url}|${Math.round(window.scrollY)}`);
     }
     if (el && chosen.current) el.scrollLeft = chosen.current.offsetLeft - (el.clientWidth - chosen.current.offsetWidth) / 2;
     const panel = document.getElementById(DAY_PANEL_ID);
@@ -71,12 +59,6 @@ export function DayStrip({ days, selectedKey }: { days: StripDay[]; selectedKey:
       const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       window.scrollTo({ top: panel.getBoundingClientRect().top + window.scrollY - pinnedHeight(), behavior: reduced ? "auto" : "smooth" });
     }
-    return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener("wheel", stop);
-      window.removeEventListener("touchstart", stop);
-      window.removeEventListener("keydown", stop);
-    };
   }, [selectedKey]);
   useEffect(() => {
     const el = strip.current;

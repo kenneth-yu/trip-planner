@@ -74,13 +74,13 @@ test("the strip stays visible while a day is read, and back and forward each ret
   await page.goBack();
   await expect(page).not.toHaveURL(/day=2026-12-05/);
   await expect(strip.locator("[aria-current=date]")).toHaveAttribute("aria-label", first ?? "");
-  await expect(strip).toHaveAttribute("data-place-restored", /\|/);
-  expect(Math.abs((await settledScroll(page)) - earlier), "back returns to the place before the tap").toBeLessThanOrEqual(40);
+  await expect(strip).toHaveAttribute("data-scroll-restored", /\|/);
+  expect(Math.abs((await settledScroll(page)) - earlier), "back returns to the place before the tap").toBeLessThanOrEqual(2);
   await page.goForward();
   await expect(page).toHaveURL(/day=2026-12-05/);
   await expect(chipFor(page, "2026-12-05")).toHaveAttribute("aria-current", "date");
-  await expect(strip).toHaveAttribute("data-place-restored", /day=2026-12-05/);
-  expect(Math.abs((await settledScroll(page)) - later), "forward returns to the place it was left").toBeLessThanOrEqual(40);
+  await expect(strip).toHaveAttribute("data-scroll-restored", /day=2026-12-05/);
+  expect(Math.abs((await settledScroll(page)) - later), "forward returns to the place it was left").toBeLessThanOrEqual(2);
 });
 
 test("while a long day scrolls, its date stays pinned just under the strip", async ({ pageSignedInAs }) => {
