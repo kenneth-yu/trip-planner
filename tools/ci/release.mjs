@@ -10,7 +10,7 @@ if (!SHA || !/^[0-9a-f]{40}$/.test(SHA)) {
 }
 
 function run(command, parameters) {
-  return execFileSync(command, parameters, { encoding: "utf8", timeout: 120000 }).trim();
+  return execFileSync(command, parameters, { encoding: "utf8", timeout: 120000, stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
 function done(message) {
@@ -29,12 +29,7 @@ function refuse(message) {
 }
 
 try {
-  run("git", ["fetch", "--quiet", "origin", "main"]);
-} catch (error) {
-  refuse(`main could not be fetched, so ${SHA} cannot be checked and nothing is released (${error instanceof Error ? error.message.split("\n")[0].slice(0, 120) : "unknown error"}).`);
-}
-try {
-  run("git", ["merge-base", "--is-ancestor", SHA, "FETCH_HEAD"]);
+  run("git", ["merge-base", "--is-ancestor", SHA, "refs/remotes/origin/main"]);
 } catch (error) {
   if (error && typeof error === "object" && "status" in error && error.status === 1) refuse(`${SHA} is not part of main, so it is not released.`);
   refuse(`${SHA} could not be checked against main, so nothing is released (${error instanceof Error ? error.message.split("\n")[0].slice(0, 120) : "unknown error"}).`);

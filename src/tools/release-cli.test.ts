@@ -113,14 +113,14 @@ describe("release.mjs against a fake GitHub", () => {
     expect(harness.calls()).toEqual([]);
   });
 
-  it("refuses when main cannot be fetched, because the commit then cannot be checked", () => {
+  it("refuses when the checkout has no origin/main to check against, because the commit then cannot be checked", () => {
     const harness = makeHarness();
     const sha = mergeCommit(harness, "src/app/page.tsx", "Merge pull request #5 from kenneth-yu/wp/x\n\nSemver: patch", "v1.0.0");
-    git(harness.cwd, "remote", "set-url", "origin", path.join(harness.dir, "does-not-exist.git"));
+    git(harness.cwd, "update-ref", "-d", "refs/remotes/origin/main");
     harness.setRoutes([{ match: `commits/${sha}/pulls`, out: pulls(sha) }]);
     const result = release(harness, sha);
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("could not be fetched");
+    expect(result.stderr).toContain("could not be checked against main");
     expect(harness.calls()).toEqual([]);
   });
 
