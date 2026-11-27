@@ -45,3 +45,23 @@ test("the strip stays visible while a day is read and back returns to the previo
   await expect(page).not.toHaveURL(/day=2026-12-05/);
   await expect(strip.locator("[aria-current=date]")).toHaveAttribute("aria-label", first ?? "");
 });
+
+test("while a long day scrolls, its date stays pinned just under the strip", async ({ pageSignedInAs }) => {
+  const page = await pageSignedInAs("kenny", `/trips/${PACKED_TRIP}`);
+  const strip = page.getByRole("navigation", { name: "Days of the trip" });
+  await strip.getByRole("link", { name: /^Tue Mar 9/ }).click();
+  await expect(page).toHaveURL(/day=2027-03-09/);
+  const header = page.locator("#day-panel summary").first();
+  await expect(header).toContainText("Tue Mar 9");
+  await page.mouse.wheel(0, 700);
+  await expect
+    .poll(async () => {
+      const stripBox = await strip.boundingBox();
+      const headerBox = await header.boundingBox();
+      if (!stripBox || !headerBox) return null;
+      return Math.abs(headerBox.y - (stripBox.y + stripBox.height)) <= 1;
+    })
+    .toBe(true);
+  await expect(strip).toBeInViewport();
+  await expect(header).toBeInViewport();
+});

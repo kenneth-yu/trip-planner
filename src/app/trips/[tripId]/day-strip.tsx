@@ -20,6 +20,19 @@ export function DayStrip({ days, selectedKey }: { days: StripDay[]; selectedKey:
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     window.scrollTo({ top: panel.getBoundingClientRect().top + window.scrollY - strip.current.offsetHeight, behavior: reduced ? "auto" : "smooth" });
   }, [selectedKey]);
+  useEffect(() => {
+    const el = strip.current;
+    const section = el?.parentElement;
+    if (!el || !section) return;
+    const publish = () => section.style.setProperty("--strip-height", `${el.offsetHeight}px`);
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      section.style.removeProperty("--strip-height");
+    };
+  }, []);
   return (
     <nav ref={strip} className={styles.strip} aria-label="Days of the trip">
       {days.map((d) => {

@@ -14,7 +14,7 @@
   align-items: baseline;
   padding: 12px 0 10px;
   position: sticky;
-  top: 0;
+  top: var(--strip-height, 0px);
   z-index: 1;
   background: var(--soft);
   border-radius: 14px 14px 0 0;
