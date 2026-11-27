@@ -343,7 +343,8 @@ describe("races with item edits", () => {
     const maya = await freshTraveler(world);
     const item = await planFor(world, []);
     await removeTraveler(world.ctx, TRIP_ID, kenny, maya);
-    await expect(updateItem(world.ctx, TRIP_ID, item.id, jacob, { travelerIds: [maya] })).rejects.toThrow(UnknownTraveler);
+    await expect(updateItem(world.ctx, TRIP_ID, item.id, jacob, { travelerIds: [maya] })).rejects.toThrow("That traveler was removed. Pick someone else.");
+    await expect(updateItem(world.ctx, TRIP_ID, item.id, jacob, { travelerIds: [maya] })).rejects.toBeInstanceOf(UnknownTraveler);
   });
 
   it("two removals of the same traveler at once: one removes, the other says gone", async () => {

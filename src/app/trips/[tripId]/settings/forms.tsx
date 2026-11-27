@@ -235,6 +235,7 @@ export function TravelerList({ tripId, travelers, linkable }: { tripId: string; 
                 }}
                 onClick={() => {
                   setAdding(false);
+                  setRemoved(null);
                   setOpen(isOpen ? null : { id: row.id, mode: "actions" });
                 }}
               >
@@ -301,6 +302,7 @@ export function TravelerList({ tripId, travelers, linkable }: { tripId: string; 
           className={`quiet ${styles.add}`}
           onClick={() => {
             setOpen(null);
+            setRemoved(null);
             setAdding(true);
           }}
         >

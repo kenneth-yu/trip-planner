@@ -94,7 +94,7 @@ function rowToItem(r: typeof t.items.$inferSelect, privates: (typeof t.itemPriva
 
 export class UnknownTraveler extends Error {
   constructor() {
-    super("That item names someone who is no longer a traveler on this trip.");
+    super("That traveler was removed. Pick someone else.");
     this.name = "UnknownTraveler";
   }
 }
