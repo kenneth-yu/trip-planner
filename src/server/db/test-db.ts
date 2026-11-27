@@ -40,6 +40,22 @@ export async function closeIsolatedPostgresDbs(): Promise<void> {
   await Promise.all([...open].map((close) => close()));
 }
 
+async function migrateInOneTransaction(pool: Pool, schemaName: string): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    for (const migration of readMigrationFiles({ migrationsFolder: MIGRATIONS })) {
+      for (const statement of migration.sql) await client.query(statement.replaceAll(`"public".`, `"${schemaName}".`));
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function createIsolatedPostgresDb(url: string): Promise<IsolatedDb> {
   assertSafeTestDatabaseUrl(url, process.env.DATABASE_URL);
   const schemaName = `t_${randomUUID().replaceAll("-", "")}`;
@@ -52,9 +68,7 @@ export async function createIsolatedPostgresDb(url: string): Promise<IsolatedDb>
   };
   open.add(close);
   try {
-    for (const migration of readMigrationFiles({ migrationsFolder: MIGRATIONS })) {
-      for (const statement of migration.sql) await pool.query(statement.replaceAll(`"public".`, `"${schemaName}".`));
-    }
+    await migrateInOneTransaction(pool, schemaName);
   } catch (error) {
     await close();
     throw error;
