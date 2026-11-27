@@ -194,7 +194,5 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Fetch main
-        run: git fetch --no-tags origin main:refs/remotes/origin/main
       - name: Fail a branch that lacks commits main's tooling needs
         run: bash tools/ci/branch-current.sh origin/main tools/ci/required-commits.txt 40
