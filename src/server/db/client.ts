@@ -46,11 +46,15 @@ async function migratedInMemorySnapshot(): Promise<Blob> {
   }
 }
 
-export async function createPgliteDb(dataDir?: string): Promise<Db> {
+export async function openPgliteDb(dataDir?: string): Promise<{ db: Db; close: () => Promise<void> }> {
   const { PGlite } = await import("@electric-sql/pglite");
   const { drizzle } = await import("drizzle-orm/pglite");
   const client = dataDir ? await migratedPglite(dataDir) : new PGlite({ loadDataDir: await migratedInMemorySnapshot() });
-  return drizzle(client, { schema });
+  return { db: drizzle(client, { schema }), close: () => client.close() };
+}
+
+export async function createPgliteDb(dataDir?: string): Promise<Db> {
+  return (await openPgliteDb(dataDir)).db;
 }
 
 export async function createPostgresDb(url: string): Promise<Db> {

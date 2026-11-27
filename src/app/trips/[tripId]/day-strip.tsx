@@ -1,25 +1,63 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef } from "react";
 import styles from "./phone.module.css";
+import { DAY_PANEL_ID } from "./day-panel";
 import type { StripDay } from "@/domain/timeline/trip-grid";
 
 const CITY = [styles.city1, styles.city2, styles.city3, styles.city4, styles.city5];
 
 export function DayStrip({ days, selectedKey }: { days: StripDay[]; selectedKey: string | null }) {
   const chosen = useRef<HTMLAnchorElement>(null);
+  const strip = useRef<HTMLElement>(null);
+  const tapped = useRef(false);
+  const pinnedHeight = () => {
+    const el = strip.current;
+    return el && getComputedStyle(el).position === "sticky" ? el.offsetHeight : 0;
+  };
   useEffect(() => {
-    chosen.current?.scrollIntoView({ block: "nearest", inline: "center" });
+    const el = strip.current;
+    if (el && chosen.current) el.scrollLeft = chosen.current.offsetLeft - (el.clientWidth - chosen.current.offsetWidth) / 2;
+    const panel = document.getElementById(DAY_PANEL_ID);
+    if (!tapped.current || !panel) return;
+    tapped.current = false;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: panel.getBoundingClientRect().top + window.scrollY - pinnedHeight(), behavior: reduced ? "auto" : "smooth" });
   }, [selectedKey]);
+  useEffect(() => {
+    const el = strip.current;
+    if (!el) return;
+    const root = document.documentElement;
+    const publish = () => {
+      const height = `${pinnedHeight()}px`;
+      root.style.setProperty("--strip-height", height);
+      root.style.scrollPaddingTop = height;
+    };
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(el);
+    window.addEventListener("resize", publish);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", publish);
+      root.style.removeProperty("--strip-height");
+      root.style.removeProperty("scroll-padding-top");
+    };
+  }, []);
   return (
-    <nav className={styles.strip} aria-label="Days of the trip">
+    <nav ref={strip} className={styles.strip} aria-label="Days of the trip">
       {days.map((d) => {
         const isChosen = d.key === selectedKey;
         return (
-          <a
+          <Link
             key={d.key}
             ref={isChosen ? chosen : undefined}
             href={`?day=${d.key}`}
+            scroll={false}
+            onClick={(e) => {
+              tapped.current = !isChosen && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
+            }}
             className={`${styles.chip} ${isChosen ? styles.chosen : ""} ${d.cityIndex !== null ? CITY[d.cityIndex % CITY.length] : ""}`}
             aria-current={isChosen ? "date" : undefined}
             aria-label={`${d.month ?? d.weekday} ${d.day}${d.month ? `, ${d.weekday}` : ""}${d.city ? `, sleeping in ${d.city}` : ""}${d.needsAttention ? ", needs a look" : ""}`}
@@ -31,7 +69,7 @@ export function DayStrip({ days, selectedKey }: { days: StripDay[]; selectedKey:
               {d.busy && <span className={styles.dot} />}
               {d.needsAttention && <span className={styles.warn} />}
             </span>
-          </a>
+          </Link>
         );
       })}
     </nav>

@@ -15,7 +15,7 @@ concurrency:
 jobs:
   measure:
     name: measure
-    runs-on: [self-hosted, trip-planner]
+    runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 30
     env:
@@ -35,10 +35,6 @@ jobs:
         run: |
           echo "DATA_ENCRYPTION_KEY=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
       - run: npx next build
-      - name: Point Lighthouse at Playwright's Chromium
-        run: |
-          npx playwright install chromium
-          echo "CHROME_PATH=$(node -e "console.log(require('@playwright/test').chromium.executablePath())")" >> "$GITHUB_ENV"
       - name: Hot paths and MCP get_trip
         id: hot
         continue-on-error: true
@@ -65,11 +61,11 @@ jobs:
       - name: Lighthouse mobile
         id: lh_mobile
         continue-on-error: true
-        run: npx --yes @lhci/cli@0.15.1 autorun --config=lighthouserc.json "--collect.settings.extraHeaders=$LH_HEADERS"
+        run: npx --yes @lhci/cli@0.16.1 autorun --config=lighthouserc.json "--collect.settings.extraHeaders=$LH_HEADERS"
       - name: Lighthouse desktop
         id: lh_desktop
         continue-on-error: true
-        run: npx --yes @lhci/cli@0.15.1 autorun --config=perf/lighthouserc.desktop.json "--collect.settings.extraHeaders=$LH_HEADERS"
+        run: npx --yes @lhci/cli@0.16.1 autorun --config=perf/lighthouserc.desktop.json "--collect.settings.extraHeaders=$LH_HEADERS"
       - name: Write the summary
         id: summary
         if: ${{ !cancelled() }}
@@ -107,7 +103,7 @@ jobs:
     name: pull request comment
     needs: measure
     if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
-    runs-on: [self-hosted, trip-planner]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read

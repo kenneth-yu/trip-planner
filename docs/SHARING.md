@@ -14,27 +14,31 @@ Sharing has to be the easiest part of the app. One tap to share, nothing to expl
 * Invite and remove people, change roles
 * Turn the view link on or off, rotate it, choose whether it shows deadlines
 * Choose whether viewers see deadlines
-* Transfer ownership, delete the trip
+* Rename the trip, transfer ownership, delete the trip
 
 **Editor** (signed in)
 * Add, change, delete items they can see
 * Import from their own calendar or emails into the review inbox, and approve inbox items
 * See sensitive fields on items they can see
 * See deadlines and checks
+* Open Settings and manage travelers: add, rename, link a traveler to a member who has none, and remove a traveler who is on no item
 
 **Viewer** (invited and signed in, or anyone with the view link)
-* See Now, Day by day and Timeline
+* See Now, Trip (day by day) and Timeline
 * See deadlines only if the owner allowed it (separate switches for invited viewers and for the view link)
 * Never see sensitive fields
 * Cannot edit anything
 
 Inviting is owner only in v1.
 
+Settings: the owner decided that editors can open Settings and manage travelers, because the person adding Maya to a train is often the editor. Only the owner renames or deletes the trip, and only the owner manages members and roles. Viewers and view link visitors get the same not found answer as for a missing trip, from the page and from every action. A traveler cannot be removed while any item lists them or gives them a seat. The refusal names only items the requester can see; when everything left is hidden from the requester it says only that the traveler is still on something, with no title and no count.
+
 ## Invites
 1. Owner taps Share, picks a role (editor or viewer) and, optionally, which traveler the person is, then creates an invite link and sends it however they like. The app never sends email.
 2. Whoever opens the link signs in (an account is created by signing in) and is added to the trip with that role, then lands on the trip.
 3. A link works once and expires after 7 days. It is shown once; the owner sees pending invites without the link, can revoke them, and makes a new link instead of re-sending.
 4. Opening a link never changes the role of someone already on the trip.
+5. The owner can pick a person from "People from your trips" instead of making a plain link. The list holds only people who are members now of a trip the owner is a member of now, minus the owner and minus this trip's members. It shows names only (no emails, trip names, counts or dates), sorted by first name, then full name, then a keyed hash of the id, so order never reflects trip history. A person whose account name is an email address is not listed. Picking a name makes exactly the same single-use link as "Create invite link", not bound to that person, and adds nobody to the trip; "Send this link to Jacob." is only text. The button carries an opaque keyed token, never a user id, and the server re-derives the list on every pick and refuses anything outside it with the same text as a bad id.
 
 ## The view link
 * One switch: "Anyone with the link can see this trip", on the Share page, owner only.

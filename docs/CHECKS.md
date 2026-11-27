@@ -1,6 +1,6 @@
 # Checks and deadlines
 
-Checks are simple rules that run whenever the trip changes. Each finding is one plain sentence saying what is wrong and what to do. Each can be dismissed with "This is fine", after which it stays hidden until the items involved change.
+Checks are simple rules that run whenever the trip changes. Each finding is one plain sentence saying what is wrong and what to do. Each can be dismissed with "This is fine", after which it stays hidden until the items involved change. Dismissals belong to the trip, not a person. Every key holds the version of each item involved, so editing one of them brings the check back. "Night with nowhere to sleep" involves every stay on the trip, so changing or removing any stay brings its nights back. "Records that disagree" has no item in its key: it stays hidden until the entry is decided in the review inbox, which removes the finding.
 
 Checks run per viewer, using only the items that viewer can see (see `SHARING.md` for hidden items and busy blocks). Viewers only see checks if they can see deadlines.
 

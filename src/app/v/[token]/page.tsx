@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: PageProps<"/v/[token]">): Pro
 
 const Query = z.object({ view: z.enum(["grid"]).optional().catch(undefined), day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().catch(undefined) });
 const YOUR_TIME = "your time";
-const NO_ATTENTION = { deadlines: [], findings: [], pending: 0, pendingFrom: [], beforeTrip: false };
+const NO_ATTENTION = { deadlines: [], findings: [], dismissed: [], everyFinding: [], canEdit: false, pending: 0, pendingFrom: [], beforeTrip: false, tripStartMs: null };
 
 export default async function VisitorPage({ params, searchParams }: PageProps<"/v/[token]">) {
   const { token } = await params;
@@ -58,7 +58,7 @@ export default async function VisitorPage({ params, searchParams }: PageProps<"/
           {query.view === "grid" ? (
             <>
               <section className={pageStyles.gridWrap}>
-                <TripGridView grid={grid} selectedKey={selected} dayHref={(key) => `?view=grid&day=${key}`} />
+                <TripGridView grid={grid} selectedKey={selected} dayHref={(key) => `?view=grid&day=${key}`} checkHref={() => null} />
               </section>
               <p>
                 <Link href={here}>Back to now</Link>
@@ -66,7 +66,7 @@ export default async function VisitorPage({ params, searchParams }: PageProps<"/
             </>
           ) : (
             <>
-              <UpNext entries={upNext(view, nowMs)} attention={NO_ATTENTION} tripId={view.trip.id} linked={false} />
+              <UpNext entries={upNext(view, nowMs)} attention={NO_ATTENTION} checks={[]} tripId={view.trip.id} linked={false} />
               <DayStrip days={dayStrip(grid).map((d) => ({ ...d, needsAttention: false }))} selectedKey={selected} />
               <DayView view={view} days={days} todayKey={todayKey} only={selected ?? undefined} anchors={false} />
               {decisions.length > 0 && (

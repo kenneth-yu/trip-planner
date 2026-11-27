@@ -5,7 +5,7 @@ import { appSecret } from "../auth/tokens";
 import type { DbOrTx } from "../repo/trip-repo";
 
 export interface RateRule {
-  name: "signIn" | "inviteAccept" | "inviteLookup" | "viewLink" | "feed" | "assistant" | "quickAdd" | "placeHint" | "viewLinkChange" | "dataExport";
+  name: "signIn" | "inviteAccept" | "inviteLookup" | "viewLink" | "feed" | "assistant" | "quickAdd" | "placeHint" | "travelerAdd" | "inviteCreate" | "viewLinkChange" | "dataExport";
   limit: number;
   windowMs: number;
 }
@@ -23,6 +23,8 @@ export const RATE_RULES: Record<RateRule["name"], RateRule> = {
   quickAdd: { name: "quickAdd", limit: 30, windowMs: MINUTE },
   placeHint: { name: "placeHint", limit: 60, windowMs: MINUTE },
   viewLinkChange: { name: "viewLinkChange", limit: 20, windowMs: MINUTE },
+  travelerAdd: { name: "travelerAdd", limit: 30, windowMs: MINUTE },
+  inviteCreate: { name: "inviteCreate", limit: 30, windowMs: MINUTE },
   dataExport: { name: "dataExport", limit: 6, windowMs: 15 * MINUTE },
 };
 

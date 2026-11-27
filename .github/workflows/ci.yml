@@ -15,7 +15,7 @@ concurrency:
 jobs:
   lint:
     name: lint
-    runs-on: [self-hosted, trip-planner]
+    runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 10
     steps:
@@ -31,7 +31,7 @@ jobs:
 
   typecheck:
     name: typecheck
-    runs-on: [self-hosted, trip-planner]
+    runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 10
     steps:
@@ -47,9 +47,11 @@ jobs:
 
   test:
     name: test
-    runs-on: [self-hosted, trip-planner]
+    runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 15
+    env:
+      VITEST_MAX_WORKERS: "2"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -81,7 +83,7 @@ jobs:
 
   build:
     name: build
-    runs-on: [self-hosted, trip-planner]
+    runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 15
     env:
@@ -103,7 +105,7 @@ jobs:
 
   audit:
     name: audit
-    runs-on: [self-hosted, trip-planner]
+    runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 10
     steps:
@@ -118,7 +120,7 @@ jobs:
 
   migrations:
     name: migrations
-    runs-on: [self-hosted, trip-planner]
+    runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 10
     steps:
@@ -143,7 +145,7 @@ jobs:
 
   statecharts:
     name: statecharts
-    runs-on: [self-hosted, trip-planner]
+    runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 10
     steps:
@@ -159,7 +161,7 @@ jobs:
 
   postgres:
     name: postgres
-    runs-on: [self-hosted, trip-planner]
+    runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 15
     services:
@@ -176,6 +178,8 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+    env:
+      VITEST_MAX_WORKERS: "2"
     steps:
       - name: Point at this job's Postgres port
         run: echo "TEST_DATABASE_URL=postgres://postgres:ci-only-postgres@localhost:${{ job.services.postgres.ports[5432] }}/trip_test" >> "$GITHUB_ENV"
@@ -194,7 +198,7 @@ jobs:
 
   prod-guard:
     name: prod-guard
-    runs-on: [self-hosted, trip-planner]
+    runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 15
     services:
@@ -286,4 +290,20 @@ jobs:
           grep -q "instrumentation hook" refuse.log || { echo "::error::startup did not refuse in the instrumentation hook"; exit 1; }
           grep -q "DEV_SIGN_IN" refuse.log || { echo "::error::the refusal did not name DEV_SIGN_IN"; exit 1; }
           kill "$server"
+          exit 0
+      - name: Production refuses the review server flag
+        env:
+          REVIEW_SERVER: "1"
+          DEV_SIGN_IN: "1"
+        run: |
+          npx next start -p 3102 > review-flag.log 2>&1 &
+          for i in $(seq 1 30); do curl -s -o /dev/null localhost:3102/sign-in && break; sleep 1; done
+          code=$(curl -s -o /dev/null -w '%{http_code}' "localhost:3102/api/dev/sign-in?as=kenny")
+          echo "dev sign in with the review flag answered $code"
+          [ "$code" = "500" ] || { echo "::error::dev sign in with REVIEW_SERVER=1 answered $code, expected 500"; exit 1; }
+          home=$(curl -s -o /dev/null -w '%{http_code}' localhost:3102/sign-in)
+          echo "sign in page answered $home"
+          [ "$home" = "500" ] || { echo "::error::the sign in page answered $home, expected 500 because startup refused"; exit 1; }
+          grep -q "REVIEW_SERVER" review-flag.log || { echo "::error::the refusal did not name REVIEW_SERVER"; exit 1; }
+          for pid in $(ss -ltnp | grep ':3102 ' | sed 's/.*pid=\([0-9]*\).*/\1/'); do kill "$pid"; done
           exit 0

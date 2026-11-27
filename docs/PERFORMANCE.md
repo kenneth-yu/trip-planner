@@ -8,40 +8,40 @@ All numbers are measured on the built app (`npx next build`, then `next start`),
 
 - Hot paths and MCP: build first, then `npx vitest run --config vitest.perf.config.mts`. It starts the built app on a free port with a throwaway PGlite database, seeds the demo trips, creates a read-only assistant token, and stops everything afterwards.
 - Bundle: `npx tsx scripts/bundle-budget.ts` after the build.
-- Lighthouse: runs on the CI runner only (`npx @lhci/cli`); it is not installed locally.
+- Lighthouse: runs on the CI runner only (`npx @lhci/cli`), on GitHub-hosted ubuntu-latest with the runner's installed Chrome; it is not installed locally. The Lighthouse budgets were set from the medians of hosted runs, so they apply to that runner class; a run on other hardware (for example the self-hosted runner used for a few hours on Nov 27) is not comparable.
 - Results land in `.next/perf/` as JSON and Markdown; CI uploads them as the `perf` artifact, writes the job summary and keeps one pull request comment up to date.
 
 Budgets live in `perf/budgets.json`. A new hot path, MCP call or route with no entry fails with a message that says to add a measured budget.
 
 ## Hot paths
 
-Median of 31 samples, each the mean of 20 calls after 20 warm up calls, per call, on `src/fixtures/december-trip.json` (owner view) and the packed demo trip (`PACKED_TRIP`). `planCalendarImport` imports the fixture's 16 calendar events against the trip's visible items. Measured on a WSL2 development machine, three runs; the budget is about 2 times the slowest run, because shared CI runners are slower and noisier than this machine and a median of 31 samples inside 2 times is stable, while a real regression (an extra pass over the items, a lookup inside a loop) costs more than 2 times.
+Median of 31 samples, each the mean of 20 calls after 20 warm up calls, per call, on `src/fixtures/december-trip.json` (owner view) and the packed demo trip (`PACKED_TRIP`). `planCalendarImport` imports the fixture's 16 calendar events against the trip's visible items.
 
-| Measure | Trip | Measured (three runs) | Budget | Reason |
+Re-baselined on Nov 27 on the CI runner that enforces them: GitHub-hosted ubuntu-latest (4 vCPU), perf run on #51. Each budget is 2 times that median, rounded up, with a floor of 1 ms: below a millisecond the median moves by more than its own size with scheduler jitter on a shared VM (projectTrip failed at 0.0402 ms against 0.04 ms), while any real regression in a hot path (an extra pass over the items, a lookup inside a loop) costs well over a millisecond on these trips. The first budgets, from a WSL2 development machine, were 2 to 3 times tighter and failed on the slower runner.
+
+| Measure | Trip | Hosted median | Budget | Reason |
 |---|---|---|---|---|
-| projectTrip | december | 0.011, 0.011, 0.016 ms | 0.04 ms | Runs on every read; microsecond scale, so 2 to 3 times for timer noise |
-| projectTrip | packed | 0.066 to 0.069 ms | 0.15 ms | Same |
-| buildTripGrid | december | 8.6 to 10.5 ms | 22 ms | Home page and day strip |
-| buildTripGrid | packed | 5.1 to 5.4 ms | 12 ms | Same |
-| buildDays | december | 5.9 to 6.7 ms | 14 ms | Day by day view and MCP `get_trip` |
-| buildDays | packed | 2.4 ms | 6 ms | Same |
-| runChecks | december | 12.0 to 13.7 ms | 28 ms | Attention strip and deadlines |
-| runChecks | packed | 2.6 ms | 6 ms | Same |
-| planCalendarImport | december | 39.4 to 46.6 ms | 95 ms | Calendar import and the inbox |
-| planCalendarImport | packed | 39.8 to 44.3 ms | 90 ms | Same |
+| projectTrip | december | 0.040 ms | 1 ms | Runs on every read; floor of 1 ms against timer noise |
+| projectTrip | packed | 0.109 ms | 1 ms | Same |
+| buildTripGrid | december | 16.2 ms | 33 ms | Home page and day strip |
+| buildTripGrid | packed | 10.1 ms | 21 ms | Same |
+| buildDays | december | 10.9 ms | 22 ms | Trip view and MCP `get_trip` |
+| buildDays | packed | 4.7 ms | 10 ms | Same |
+| runChecks | december | 22.6 ms | 46 ms | Attention strip and deadlines |
+| runChecks | packed | 4.4 ms | 9 ms | Same |
+| planCalendarImport | december | 72.3 ms | 145 ms | Calendar import and the inbox |
+| planCalendarImport | packed | 71.6 ms | 144 ms | Same |
 
 These are slower than they look necessary because every time conversion goes through Luxon. Making them faster is welcome; lowering a budget needs a new measurement here.
 
 ## MCP get_trip
 
-Median of 31 calls after 5 warm up calls. In memory goes through the official MCP client over an in memory transport (service and projection, no network). HTTP is a JSON-RPC `tools/call` with a bearer token against the built app's `/api/mcp`, which adds the proxy, token lookup, a fresh MCP server per request and serialisation.
+Median of 31 calls after 5 warm up calls. In memory goes through the official MCP client over an in memory transport (service and projection, no network). HTTP is a JSON-RPC `tools/call` with a bearer token against the built app's `/api/mcp`, which adds the proxy, token lookup, a fresh MCP server per request and serialisation. Re-baselined on the hosted runner (perf run on #51): 2 times the median, rounded up to 10 ms.
 
-| Measure | Measured | Budget | Reason |
+| Measure | Hosted median | Budget | Reason |
 |---|---|---|---|
-| get_trip in memory | 28 to 30 ms (one run at 91 ms while the machine was busy) | 100 ms | A busy machine tripled the median once, so the budget sits above that run; an 80 ms slowdown in `projectTrip` made it 116 ms and failed |
-| get_trip over HTTP | 36 to 37 ms (one run at 107 ms, same busy period) | 110 ms | Same; the same 80 ms slowdown made it 121 ms and failed |
-
-An assistant waiting on a tool call should not feel it; 100 ms keeps a call well under a second even on a slow runner.
+| get_trip in memory | 55.4 ms | 120 ms | An assistant waiting on a tool call should not feel it |
+| get_trip over HTTP | 67.4 ms | 140 ms | Same, plus the request path |
 
 ## First load JavaScript per route
 
@@ -62,22 +62,24 @@ Sizes are bytes, and the kB in the CI report is 1024 bytes (137.3 kB is 140,6xx 
 | /trips/[tripId]/deadlines | 139,647 B | 150,000 B |
 | /trips/[tripId]/inbox | 140,613 B | 151,000 B |
 | /trips/[tripId]/items/[itemId] | 140,352 B | 151,000 B |
+| /trips/[tripId]/items/[itemId]/edit | 170,372 B (166.4 kB on the runner) | 183,000 B |
 | /invite/join | 136,050 B | 146,000 B |
 | /invite/lost | 139,352 B | 150,000 B |
 | /invite/problem/[kind] | 136,050 B | 146,000 B |
 | /trips/[tripId]/share | 142,153 B | 153,000 B |
 | /account | 144,486 B (141.1 kB on the runner) | 155,000 B |
 | /trips/[tripId]/settings/delete | 144,384 B (141.0 kB on the runner) | 155,000 B |
+| /trips/[tripId]/settings | 145,785 B | 156,000 B |
 | /trips/new | 139,957 B | 150,000 B |
 | /v/[token] | 143,673 B (140.3 kB on the runner) | 154,000 B |
 
-About 133 kB of every route is the React and Next.js runtime; the add form adds about 25 kB.
+About 133 kB of every route is the React and Next.js runtime; the add form adds about 25 kB, and the edit page loads the same form, so it measures the same as /add (170,372 B for both in the same build).
 
 ## Lighthouse
 
 `lighthouserc.json` (mobile) and `perf/lighthouserc.desktop.json` (desktop preset), five runs each on the December trip page, deadlines and inbox, signed in as the demo traveller: `perf/prepare-db.ts` writes a session row for the demo user into the throwaway database and the cookie is sent as a request header. The server is the built app started by `perf/serve.ts` on 127.0.0.1 in production mode with the production environment checks on (a placeholder https `APP_URL`, throwaway keys, `TRUST_PROXY=0`); the dev sign in route is not used, because production mode forbids it. `perf/summary.ts` fails the job if any run was redirected away from the page it asked for (a dropped cookie would otherwise measure the sign in page).
 
-Measured on the first CI run (Lighthouse 12.6.1, three runs per page). Per page medians, then the budget:
+Measured on the first CI run with Lighthouse 12.6.1 (`@lhci/cli` 0.15.1, three runs per page). The job now runs `@lhci/cli` 0.16.1, which bundles Lighthouse 13.6.0, to match the Chrome 157 on the runner (the older Lighthouse intermittently failed with `NO_NAVSTART`); if the medians move under the new version, the budgets are re-baselined with the 2 times the median rule. Per page medians on 12.6.1, then the budget:
 
 | Assertion | Mobile CI medians | Mobile budget | Desktop CI medians | Desktop budget |
 |---|---|---|---|---|
@@ -88,7 +90,7 @@ Measured on the first CI run (Lighthouse 12.6.1, three runs per page). Per page 
 
 Layout shift is 0 everywhere, so 0.1 is the Core Web Vitals "good" threshold, not a margin over a measurement; any real shift is visible against 0. Runs were raised from 3 to 5 and every assertion uses the median, so one noisy run on a shared runner does not fail the job. After the next CI run, re-check these medians and tighten if the margins stay large.
 
-Installability is not a Lighthouse assertion: Lighthouse 12.6.1, the version `@lhci/cli` 0.15.1 runs, has no `installable-manifest` audit, so an assertion on it can never pass. Instead `perf/manifest.perf.test.ts` fetches `/manifest.webmanifest` from the built app, requires a name, short name, start URL, a standalone, fullscreen or minimal-ui display and at least one icon, and requires every icon it names to be served with the right content type. Icon sizes (192 and 512 PNG) belong to WP-15, which should extend that test.
+Installability is not a Lighthouse assertion: Lighthouse 12.6.1 (the version measured above) has no `installable-manifest` audit, so an assertion on it can never pass. Instead `perf/manifest.perf.test.ts` fetches `/manifest.webmanifest` from the built app, requires a name, short name, start URL, a standalone, fullscreen or minimal-ui display and at least one icon, and requires every icon it names to be served with the right content type. Icon sizes (192 and 512 PNG) belong to WP-15, which should extend that test.
 
 ## Proving a budget can fail
 
