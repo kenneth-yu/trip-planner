@@ -28,7 +28,7 @@ describe("projectTrip properties", () => {
     );
   });
 
-  it("returns exactly the items the requester may see, and a busy block per hidden item marked busy", () => {
+  it("returns exactly the items the requester may see, and one busy block per distinct interval of hidden items marked busy", () => {
     fc.assert(
       fc.property(scenario, ({ agg, requester }) => {
         const oracle = oracleFor(agg, requester);
@@ -36,7 +36,9 @@ describe("projectTrip properties", () => {
         const view = projectTrip(agg, requester);
         const expectedIds = agg.items.filter((i) => oracle.seesItem(i)).map((i) => i.id).sort();
         expect(view.items.map((i) => i.id).sort()).toEqual(expectedIds);
-        expect(view.busy).toHaveLength(agg.items.filter((i) => !oracle.seesItem(i) && i.showAsBusy).length);
+        const intervals = new Set(agg.items.filter((i) => !oracle.seesItem(i) && i.showAsBusy).map((i) => `${i.start.at}|${i.end.at}`));
+        expect(view.busy).toHaveLength(intervals.size);
+        expect(new Set(view.busy.map((b) => b.key)).size).toBe(view.busy.length);
       }),
       fcParams(300),
     );
@@ -53,6 +55,46 @@ describe("projectTrip properties", () => {
         }
       }),
       fcParams(300),
+    );
+  });
+
+  it("busy blocks are placed in a zone the requester already knows, never the hidden item's", () => {
+    fc.assert(
+      fc.property(scenario, ({ agg, requester }) => {
+        if (!oracleFor(agg, requester).allowed) return;
+        const view = projectTrip(agg, requester);
+        const known = new Set([requester.homeZone, ...view.items.flatMap((i) => [i.start.zone, i.end.zone])]);
+        for (const b of view.busy) {
+          expect(known.has(b.start.zone)).toBe(true);
+          expect(known.has(b.end.zone)).toBe(true);
+        }
+      }),
+      fcParams(300),
+    );
+  });
+
+  it("shows who an item is shared with only to its creator", () => {
+    fc.assert(
+      fc.property(scenario, ({ agg, requester }) => {
+        if (!oracleFor(agg, requester).allowed || requester.kind !== "member") return;
+        for (const item of projectTrip(agg, requester).items) {
+          const source = agg.items.find((i) => i.id === item.id);
+          expect(item.visibleToUserIds).toEqual(source?.createdBy === requester.userId ? source.visibleToUserIds : []);
+        }
+      }),
+      fcParams(300),
+    );
+  });
+
+  it("a removed member gets AccessDenied even when they created or were listed on items", () => {
+    fc.assert(
+      fc.property(scenario, ({ agg }) => {
+        const removed = agg.memberships[agg.memberships.length - 1].userId;
+        const withoutThem = { ...agg, memberships: agg.memberships.filter((m) => m.userId !== removed) };
+        const requester = { kind: "member" as const, userId: removed, homeZone: "America/New_York" };
+        expect(() => projectTrip(withoutThem, requester)).toThrow(AccessDenied);
+      }),
+      fcParams(200),
     );
   });
 

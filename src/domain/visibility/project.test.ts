@@ -91,6 +91,19 @@ describe("projectTrip: hidden items", () => {
     }
   });
 
+  it("identical hidden busy items collapse to one block, so their number stays private", () => {
+    const agg = tripWithViewer();
+    agg.items.push(surprise({ id: "item-a", showAsBusy: true }), surprise({ id: "item-b", showAsBusy: true }));
+    for (const r of [owner, viewer, link]) expect(projectTrip(agg, r).busy).toHaveLength(1);
+  });
+
+  it("a busy block is placed in the zone the viewer is in, not the hidden item's zone", () => {
+    const agg = tripWithViewer();
+    agg.items.push(surprise({ showAsBusy: true, start: fromLocal("2026-12-03T19:00", "Asia/Seoul"), end: fromLocal("2026-12-03T21:00", "Asia/Seoul") }));
+    const view = projectTrip(agg, owner);
+    expect(view.busy.map((b) => [b.start.zone, b.end.zone]).flat()).not.toContain("Asia/Seoul");
+  });
+
   it("specific people: chosen members see it, others do not", () => {
     const agg = tripWithViewer();
     agg.items.push(surprise({ visibility: "specific", visibleToUserIds: [VIEWER.id] }));

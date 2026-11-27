@@ -1,3 +1,4 @@
+import { whereAt } from "../time/days";
 import type { Deadline, Item, ItemPrivate, Requester, Role, TripAggregate, Traveler, ZonedTime } from "../types";
 
 export interface VisibleDeadline extends Omit<Deadline, "confirmedBy"> {
@@ -109,11 +110,18 @@ function projectItem(item: Item, requester: Requester, perms: Permissions): Visi
 export function projectTrip(agg: TripAggregate, requester: Requester): TripView {
   const permissions = permissionsFor(agg, requester);
   const items: VisibleItem[] = [];
-  const busy: BusyBlock[] = [];
+  const hiddenBusy: Item[] = [];
   const sorted = [...agg.items].sort((a, b) => a.start.at.localeCompare(b.start.at));
   for (const item of sorted) {
     if (canSeeItem(item, requester)) items.push(projectItem(item, requester, permissions));
-    else if (item.showAsBusy) busy.push({ key: `busy-${busy.length}`, start: { ...item.start }, end: { ...item.end } });
+    else if (item.showAsBusy) hiddenBusy.push(item);
+  }
+  const busy: BusyBlock[] = [];
+  for (const item of hiddenBusy) {
+    const key = `busy-${item.start.at}-${item.end.at}`;
+    if (busy.some((b) => b.key === key)) continue;
+    const zoneAt = (at: string) => whereAt(Date.parse(at), items, requester.homeZone).zone;
+    busy.push({ key, start: { at: item.start.at, zone: zoneAt(item.start.at) }, end: { at: item.end.at, zone: zoneAt(item.end.at) } });
   }
   return {
     trip: {

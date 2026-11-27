@@ -1,6 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { fcParams, forbiddenStrings, instantMsArb, oracleFor, scenario } from "@/testing/arbitraries";
+import { runChecks } from "../checks/checks";
 import { buildDays } from "../time/days";
 import { buildDeadlineLines } from "../deadlines/deadlines";
 import { projectTrip } from "../visibility/project";
@@ -51,6 +52,9 @@ describe("view builders for any requester", () => {
         const placed = new Set(days.flatMap((d) => d.entries.flatMap((e) => ("itemId" in e ? [e.itemId] : []))));
         for (const item of view.items) expect(placed.has(item.id)).toBe(true);
         expect(days.flatMap((d) => d.entries.filter((e) => e.kind === "busy"))).toHaveLength(view.busy.length);
+        const intervals = new Set(agg.items.filter((i) => !oracleFor(agg, requester).seesItem(i) && i.showAsBusy).map((i) => `${i.start.at}|${i.end.at}`));
+        expect(view.busy).toHaveLength(intervals.size);
+        expect(runChecks(view).filter((f) => f.kind === "busy_overlap").length).toBeLessThanOrEqual(intervals.size);
       }),
       fcParams(300),
     );
