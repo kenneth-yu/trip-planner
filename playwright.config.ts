@@ -8,6 +8,7 @@ const dbDir = path.join(import.meta.dirname, ".pipeline", "scratch", "e2e", "db"
 
 export default defineConfig({
   testDir: "e2e",
+  globalSetup: "./e2e/warm-routes.ts",
   outputDir: "test-results",
   fullyParallel: false,
   workers: 1,
