@@ -6,7 +6,7 @@ import { itemToFormValues } from "@/domain/import/item-form";
 import { projectTrip } from "@/domain/visibility/project";
 import { present } from "@/testing/present";
 import { ItemForm } from "./item-form";
-import { parseFlash } from "./flash-status";
+import { parseFlash, StatusLine } from "./flash-status";
 import { FLASH_COOKIE, FLASH_TEXT } from "./flash";
 
 vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams() }));
@@ -65,6 +65,29 @@ describe("edit form", () => {
     expect(html).toContain('spellCheck="false"');
     expect(html).toContain('autoComplete="off"');
     expect(html).toContain("Booking reference");
+  });
+});
+
+describe("flash announcement", () => {
+  it("renders the one status element empty first, so the text that follows is announced", () => {
+    const before = renderToStaticMarkup(createElement(StatusLine, { text: null }));
+    const after = renderToStaticMarkup(createElement(StatusLine, { text: FLASH_TEXT.deleted }));
+    expect(before.match(/role="status"/g)).toHaveLength(1);
+    expect(before).not.toContain("Item deleted.");
+    expect(after.match(/role="status"/g)).toHaveLength(1);
+    expect(after).toContain("Item deleted.");
+  });
+
+  it("keeps the same element type and role when the text arrives, so React updates the node in place", () => {
+    const empty = StatusLine({ text: null });
+    const filled = StatusLine({ text: FLASH_TEXT.deleted });
+    expect(empty.type).toBe("p");
+    expect(filled.type).toBe(empty.type);
+    expect(filled.key).toBe(empty.key);
+    expect(filled.props.role).toBe("status");
+    expect(empty.props.role).toBe("status");
+    expect(empty.props.children).toBeNull();
+    expect(filled.props.children).toBe("Item deleted.");
   });
 });
 
