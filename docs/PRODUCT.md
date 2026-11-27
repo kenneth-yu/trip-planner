@@ -15,7 +15,7 @@ This app puts the trip in one place, shows it clearly in local time, points out 
 ## What v1 does
 
 1. Get a trip in quickly: quick add, Google Calendar import, .ics import, pasted confirmation emails, all through a review inbox.
-2. Show it four ways: Now, Day by day, Timeline, Deadlines.
+2. Show it four ways: Now, Trip (day by day), Timeline, Deadlines.
 3. Point out problems automatically (see `CHECKS.md`).
 4. Share it: invites with roles, a view link, per item visibility.
 
@@ -40,7 +40,8 @@ Each screen answers one question. If something does not help answer it, it belon
 * After the trip: a quiet summary and a link to the day by day view
 * This is what a share link opens to on a phone
 
-### Day by day
+### Trip (day by day)
+The nav calls this screen "Trip".
 **Question:** what does each day look like?
 * One section per calendar date where you are (rules in `TIME_RULES.md`)
 * Each line: time, what it is, place. Details (codes, address, phone) appear on tap.

@@ -23,4 +23,10 @@ describe("trip nav", () => {
     const editor = renderToStaticMarkup(createElement(TripNav, { tripId: TRIP_ID, canEdit: true, canManageSharing: false }));
     expect(editor).not.toContain("/share");
   });
+
+  it("names the day by day screen Trip", () => {
+    const html = renderToStaticMarkup(createElement(TripNav, { tripId: TRIP_ID, canEdit: false, canManageSharing: false }));
+    expect(html).toContain(`href="/trips/${TRIP_ID}">Trip</a>`);
+    expect(html).not.toContain("Day by day");
+  });
 });
