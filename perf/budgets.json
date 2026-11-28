@@ -64,11 +64,17 @@
     "/trips/[tripId]/add": {
       "budgetGzipBytes": 178000
     },
+    "/trips/[tripId]/activity": {
+      "budgetGzipBytes": 155000
+    },
     "/trips/[tripId]/connect": {
       "budgetGzipBytes": 151000
     },
     "/trips/[tripId]/deadlines": {
       "budgetGzipBytes": 150000
+    },
+    "/trips/[tripId]/import/google": {
+      "budgetGzipBytes": 155000
     },
     "/trips/[tripId]/inbox": {
       "budgetGzipBytes": 151000
