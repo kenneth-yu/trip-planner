@@ -1,12 +1,14 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
+import { present } from "@/testing/present";
 import { buildFixtureTrip, USERS } from "@/fixtures/december-trip";
 import { buildDemoTrip, type DemoTripSpec } from "@/fixtures/demo-trips";
 import { nightStatuses } from "../checks/checks";
+import { instantMs, localDateKey } from "../time/format";
 import { DateTime } from "../time/luxon";
 import { projectTrip, type TripView } from "../visibility/project";
 import type { Requester, TripAggregate } from "../types";
-import { sleepPlan, type SleepStretch } from "./sleep-plan";
+import { sleepPlan, type SleepPlan, type SleepStretch } from "./sleep-plan";
 
 const kenny: Requester = { kind: "member", userId: USERS.kenny.id, homeZone: "America/New_York" };
 
@@ -19,45 +21,78 @@ function trip(items: DemoTripSpec["items"]): TripAggregate {
   return buildDemoTrip({ index: 9, name: "Hong Kong in January", travelers: ["Kenneth Yu"], members: [{ user: "kenny", role: "owner" }], items });
 }
 
-const outbound = (departLocal: string, arriveLocal: string) => ({
-  input: { type: "flight" as const, flightNumber: "CX845", fromAirport: "JFK", toAirport: "HKG", departLocal, arriveLocal },
+const flight = (fromAirport: string, toAirport: string, departLocal: string, arriveLocal: string, flightNumber = "CX845") => ({
+  input: { type: "flight" as const, flightNumber, fromAirport, toAirport, departLocal, arriveLocal },
 });
-const inbound = { input: { type: "flight" as const, flightNumber: "CX846", fromAirport: "HKG", toAirport: "JFK", departLocal: "2026-01-27T16:00", arriveLocal: "2026-01-27T19:00" } };
-const hongKongStay = { input: { type: "stay" as const, name: "Harbour Hotel", city: "Hong Kong", checkInDate: "2026-01-16", checkInTime: "15:00", checkOutDate: "2026-01-27", checkOutTime: "11:00" } };
+const outbound = (departLocal: string, arriveLocal: string) => flight("JFK", "HKG", departLocal, arriveLocal);
+const inbound = flight("HKG", "JFK", "2027-01-27T16:00", "2027-01-27T18:30", "CX846");
+const hongKongStay = { input: { type: "stay" as const, name: "Harbour Hotel", city: "Hong Kong", checkInDate: "2027-01-16", checkInTime: "15:00", checkOutDate: "2027-01-27", checkOutTime: "11:00" } };
 
-const worked = () => trip([outbound("2026-01-15T09:00", "2026-01-16T14:00"), inbound]);
+const worked = () => trip([outbound("2027-01-15T09:00", "2027-01-16T14:00"), inbound]);
 
-function onlyStretch(plan: ReturnType<typeof sleepPlan>): SleepStretch {
+function onlyStretch(plan: SleepPlan): SleepStretch {
   expect(plan.stretches).toHaveLength(1);
   return plan.stretches[0];
 }
 
-describe("the owner's worked example: Jan 15 to 27 in Hong Kong", () => {
+function everyText(plan: SleepPlan): string[] {
+  return [
+    ...plan.stretches.flatMap((s) => [s.title, s.datesLine, s.arrivalLine ?? "", s.departureLine ?? "", ...s.warnings]),
+    ...plan.planeNights.flatMap((p) => [p.line, p.explanation]),
+    ...(plan.summary ? [plan.summary.heading, ...plan.summary.stretchLines.map((l) => l.line), ...plan.summary.skippedLines] : []),
+  ];
+}
+
+describe("the owner's worked example: Jan 15 to 27, 2027, in Hong Kong", () => {
   const plan = sleepPlan(viewOf(worked(), true));
   const block = onlyStretch(plan);
 
-  it("needs eleven beds in Hong Kong, check in Fri Jan 16, check out Tue Jan 27", () => {
+  it("needs eleven beds in Hong Kong, check in Sat Jan 16, check out Wed Jan 27", () => {
     expect(block.city).toBe("Hong Kong");
     expect(block.nights).toHaveLength(11);
-    expect(block.nights[0]).toBe("2026-01-16");
-    expect(block.nights.at(-1)).toBe("2026-01-26");
-    expect(block.checkIn).toBe("2026-01-16");
-    expect(block.checkOut).toBe("2026-01-27");
+    expect(block.nights[0]).toBe("2027-01-16");
+    expect(block.nights.at(-1)).toBe("2027-01-26");
+    expect(block.checkIn).toBe("2027-01-16");
+    expect(block.checkOut).toBe("2027-01-27");
     expect(block.title).toBe("Hong Kong, 11 nights");
-    expect(block.datesLine).toBe("Check in Fri Jan 16, check out Tue Jan 27");
+    expect(block.datesLine).toBe("Check in Sat Jan 16, check out Wed Jan 27");
+  });
+
+  it("gives the headline: the count, the dates, and the nights you can skip", () => {
+    expect(plan.summary).toEqual({
+      nights: 11,
+      checkIn: "2027-01-16",
+      checkOut: "2027-01-27",
+      cities: ["Hong Kong"],
+      heading: "You need a place to stay: 11 nights",
+      stretchLines: [{ city: "Hong Kong", checkIn: "2027-01-16", checkOut: "2027-01-27", line: "Hong Kong: check in Sat Jan 16, check out Wed Jan 27" }],
+      skippedLines: [
+        "No bed needed on Fri Jan 15: you're on the plane overnight and land Sat Jan 16 at about 2:00pm Hong Kong time.",
+        "Coming home, you land in New York on Wed Jan 27 at about 6:30pm, the same day you leave Hong Kong. No night on the plane.",
+      ],
+    });
   });
 
   it("says when you land and when you fly out, in local time with home time in brackets", () => {
-    expect(block.arrivalLine).toBe("You land Fri Jan 16, about 2:00pm Hong Kong time (1:00am New York).");
-    expect(block.departureLine).toBe("You fly out Tue Jan 27, 4:00pm Hong Kong time (3:00am New York).");
+    expect(block.arrivalLine).toBe("You land Sat Jan 16, about 2:00pm Hong Kong time (1:00am New York).");
+    expect(block.departureLine).toBe("You fly out Wed Jan 27, 4:00pm Hong Kong time (3:00am New York).");
   });
 
   it("warns only about the long gap before the flight, because ready at 3:30pm is after the 3:00pm check in", () => {
     expect(block.warnings).toEqual(["Check-out is usually 11:00am and you leave for the airport around 1:00pm. Ask for a late check-out, or plan 2 hours with your bags."]);
   });
 
-  it("puts the night of Thu Jan 15 on the plane, with no bed", () => {
-    expect(plan.planeNights).toEqual([{ night: "2026-01-15", line: "Thu Jan 15: on the plane. No bed needed." }]);
+  it("keeps the skipped night as data: an overnight flight landing about 2:00pm Hong Kong time", () => {
+    expect(plan.planeNights).toHaveLength(1);
+    expect(plan.planeNights[0]).toMatchObject({
+      night: "2027-01-15",
+      reason: "overnight_flight",
+      landsIsEstimated: true,
+      landsCity: "Hong Kong",
+      line: "Fri Jan 15: on the plane. No bed needed.",
+      explanation: "You are on the plane overnight and land Sat Jan 16, about 2:00pm Hong Kong time (1:00am New York).",
+    });
+    expect(plan.planeNights[0].lands).toMatchObject({ zone: "Asia/Hong_Kong" });
   });
 
   it("lists the plane night before the stretch, in date order", () => {
@@ -65,25 +100,54 @@ describe("the owner's worked example: Jan 15 to 27 in Hong Kong", () => {
   });
 
   it("drops the word about when the arrival time is not an estimate", () => {
-    const exact = onlyStretch(sleepPlan(viewOf(worked())));
-    expect(exact.arrivalLine).toBe("You land Fri Jan 16, 2:00pm Hong Kong time (1:00am New York).");
+    const exact = sleepPlan(viewOf(worked()));
+    expect(onlyStretch(exact).arrivalLine).toBe("You land Sat Jan 16, 2:00pm Hong Kong time (1:00am New York).");
+    expect(exact.summary?.skippedLines[0]).toBe("No bed needed on Fri Jan 15: you're on the plane overnight and land Sat Jan 16 at 2:00pm Hong Kong time.");
+  });
+
+  it("names every weekday against the January 2027 calendar", () => {
+    const calendar: Record<string, string> = { "15": "Fri", "16": "Sat", "17": "Sun", "21": "Thu", "26": "Tue", "27": "Wed" };
+    const texts = [
+      ...everyText(plan),
+      ...everyText(sleepPlan(viewOf(trip([outbound("2027-01-15T22:00", "2027-01-17T03:00"), inbound])))),
+    ];
+    const seen = texts.flatMap((t) => Array.from(t.matchAll(/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun) Jan (\d+)\b/g)));
+    expect(seen.length).toBeGreaterThan(8);
+    for (const m of seen) expect(calendar[m[2]], `${m[0]} in 2027`).toBe(m[1]);
+  });
+});
+
+describe("shrinking when a stay covers some nights", () => {
+  it("counts only what is left: six nights from Thu Jan 21", () => {
+    const part = { input: { ...hongKongStay.input, checkOutDate: "2027-01-21" } };
+    const plan = sleepPlan(viewOf(trip([outbound("2027-01-15T09:00", "2027-01-16T14:00"), part, inbound]), true));
+    expect(plan.summary?.heading).toBe("You need a place to stay: 6 nights");
+    expect(plan.summary?.stretchLines[0].line).toBe("Hong Kong: check in Thu Jan 21, check out Wed Jan 27");
+  });
+
+  it("disappears when every night is covered, leaving no summary and no stretch", () => {
+    const plan = sleepPlan(viewOf(trip([outbound("2027-01-15T09:00", "2027-01-16T14:00"), hongKongStay, inbound])));
+    expect(plan.stretches).toEqual([]);
+    expect(plan.summary).toBeNull();
+    expect(plan.planeNights.map((p) => p.night)).toEqual(["2027-01-15"]);
   });
 });
 
 describe("arrival that crosses midnight", () => {
-  const late = trip([outbound("2026-01-15T22:00", "2026-01-17T03:00"), inbound]);
+  const late = trip([outbound("2027-01-15T22:00", "2027-01-17T03:00"), inbound]);
   const plan = sleepPlan(viewOf(late));
   const block = onlyStretch(plan);
 
   it("moves the check in to the night before, so the room is ready when you arrive", () => {
-    expect(block.warnings[0]).toBe("You get there around 4:30am on Sat Jan 17. Book from the night of Fri Jan 16, so the room is yours when you arrive.");
-    expect(block.checkIn).toBe("2026-01-16");
-    expect(block.nights[0]).toBe("2026-01-16");
+    expect(block.warnings[0]).toBe("You get there around 4:30am on Sun Jan 17. Book from the night of Sat Jan 16, so the room is yours when you arrive.");
+    expect(block.checkIn).toBe("2027-01-16");
+    expect(block.nights[0]).toBe("2027-01-16");
     expect(block.nights).toHaveLength(11);
   });
 
   it("no longer counts that night as on the plane", () => {
-    expect(plan.planeNights.map((p) => p.night)).toEqual(["2026-01-15"]);
+    expect(plan.planeNights.map((p) => p.night)).toEqual(["2027-01-15"]);
+    expect(plan.summary?.skippedLines[0]).toContain("No bed needed on Fri Jan 15:");
   });
 
   it("keeps at most two warnings, arrival first", () => {
@@ -94,7 +158,7 @@ describe("arrival that crosses midnight", () => {
 
 describe("arriving early in the morning", () => {
   it("suggests an early check in, naming the usual 3:00pm", () => {
-    const early = trip([outbound("2026-01-15T09:00", "2026-01-16T07:00"), inbound]);
+    const early = trip([outbound("2027-01-15T09:00", "2027-01-16T07:00"), inbound]);
     expect(onlyStretch(sleepPlan(viewOf(early))).warnings[0]).toBe(
       "You get there around 8:30am, well before the usual 3:00pm check-in. Ask for an early check-in, or book the night before so the room is ready.",
     );
@@ -103,39 +167,50 @@ describe("arriving early in the morning", () => {
 
 describe("leaving very early", () => {
   it("warns when you leave for the airport before 5:00am", () => {
-    const earlyFlight = trip([outbound("2026-01-15T09:00", "2026-01-16T14:00"), { input: { ...inbound.input, departLocal: "2026-01-27T07:00", arriveLocal: "2026-01-27T09:00" } }]);
+    const earlyFlight = trip([outbound("2027-01-15T09:00", "2027-01-16T14:00"), flight("HKG", "JFK", "2027-01-27T07:00", "2027-01-27T09:00", "CX846")]);
     const block = onlyStretch(sleepPlan(viewOf(earlyFlight)));
     expect(block.warnings.at(-1)).toBe("You leave for the airport around 4:00am. Stay near the airport the last night, or check the hotel's front desk hours.");
   });
 });
 
-describe("a stay that covers the nights", () => {
-  it("leaves no stretch and no section", () => {
-    const covered = trip([outbound("2026-01-15T09:00", "2026-01-16T14:00"), hongKongStay, inbound]);
-    const plan = sleepPlan(viewOf(covered));
-    expect(plan.stretches).toEqual([]);
-    expect(plan.planeNights.map((p) => p.night)).toEqual(["2026-01-15"]);
+describe("crossing the date line", () => {
+  it("westward over two calendar dates, names both lost nights in one line", () => {
+    const plan = sleepPlan(viewOf(trip([flight("LAX", "SYD", "2027-01-15T22:00", "2027-01-17T08:30"), flight("SYD", "LAX", "2027-01-25T10:00", "2027-01-25T06:00", "QF12")]), true));
+    expect(plan.summary?.skippedLines[0]).toBe("No bed needed on Fri Jan 15 or Sat Jan 16: you cross the date line and land Sun Jan 17 at about 8:30am Sydney time.");
   });
 
-  it("shows only the nights the stay leaves open", () => {
-    const shortStay = { input: { ...hongKongStay.input, checkOutDate: "2026-01-20" } };
-    const plan = sleepPlan(viewOf(trip([outbound("2026-01-15T09:00", "2026-01-16T14:00"), shortStay, inbound])));
-    const block = onlyStretch(plan);
-    expect(block.checkIn).toBe("2026-01-20");
-    expect(block.nights).toHaveLength(7);
+  it("a day gained on the way home says there is no night on the plane", () => {
+    const plan = sleepPlan(viewOf(trip([flight("LAX", "SYD", "2027-01-15T22:00", "2027-01-17T08:30"), flight("SYD", "LAX", "2027-01-25T10:00", "2027-01-25T06:00", "QF12")]), true));
+    expect(plan.summary?.skippedLines.at(-1)).toBe("Coming home, you land in Los Angeles on Mon Jan 25 at about 6:00am, the same day you leave Sydney. No night on the plane.");
+  });
+
+  it("a day gained away from home counts that night and names the city", () => {
+    const plan = sleepPlan(viewOf(trip([flight("NRT", "HNL", "2027-01-15T20:00", "2027-01-15T09:00", "JL72"), flight("HNL", "NRT", "2027-01-20T12:00", "2027-01-21T16:00", "JL71")]), true));
+    expect(plan.summary?.skippedLines[0]).toBe("You land in Honolulu on Fri Jan 15 at about 9:00am, the same day you leave Tokyo, so you need a bed in Honolulu that night.");
+  });
+
+  it("landing on the calendar day before you left says so", () => {
+    const plan = sleepPlan(viewOf(trip([flight("NRT", "HNL", "2027-01-15T08:00", "2027-01-14T21:00", "JL72"), flight("HNL", "NRT", "2027-01-20T12:00", "2027-01-21T16:00", "JL71")]), true));
+    expect(plan.summary?.skippedLines[0]).toBe("You land in Honolulu on Thu Jan 14, the day before you left Tokyo by the calendar, so you need a bed there from the night of Thu Jan 14.");
+  });
+
+  it("a short flight inside one date says nothing", () => {
+    const plan = sleepPlan(viewOf(trip([flight("JFK", "LHR", "2027-01-15T22:00", "2027-01-16T10:00", "BA112"), flight("LHR", "JFK", "2027-01-20T10:00", "2027-01-20T10:30", "BA117")])));
+    expect(plan.summary?.skippedLines.some((l) => l.includes("Coming home"))).toBe(false);
   });
 });
 
 describe("a trip with no flights", () => {
   it("has nothing to plan", () => {
-    expect(sleepPlan(viewOf(trip([hongKongStay])))).toEqual({ stretches: [], planeNights: [], entries: [] });
+    expect(sleepPlan(viewOf(trip([hongKongStay])))).toEqual({ stretches: [], planeNights: [], entries: [], summary: null });
   });
 });
 
 describe("the December fixture, all booked", () => {
   it("lists only the nights its own check already calls open", () => {
     const view = projectTrip(buildFixtureTrip(), kenny);
-    const open = nightStatuses(view).filter((n) => n.state === "open" && n.city !== null);
+    const landing = localDateKey(present(view.items.filter((i) => i.type === "flight").sort((a, b) => instantMs(a.start) - instantMs(b.start))[0]).end);
+    const open = nightStatuses(view).filter((n) => n.state === "open" && n.city !== null && n.night >= landing);
     const plan = sleepPlan(view);
     expect(plan.stretches.flatMap((s) => s.nights).sort()).toEqual(open.map((n) => n.night).sort());
   });
@@ -203,7 +278,8 @@ describe("every night is covered, on the plane, or in exactly one stretch", () =
         } catch {
           return;
         }
-        const statuses = nightStatuses(view);
+        const landing = localDateKey(present(view.items.filter((i) => i.type === "flight").sort((a, b) => instantMs(a.start) - instantMs(b.start))[0]).end);
+        const statuses = nightStatuses(view).filter((n) => n.night >= landing);
         const plan = sleepPlan(view);
         const inStretches = plan.stretches.flatMap((s) => s.nights);
         expect(new Set(inStretches).size, "no night is in two stretches").toBe(inStretches.length);
