@@ -125,12 +125,17 @@ function processPullRequest(number) {
   }
   say(`#${number}: passes at ${raw.pr.head.sha}`);
   if (dryRun) return "merged";
-  const mergeArguments = ["pr", "merge", String(number), "--repo", REPO, "--merge", "--delete-branch", "--match-head-commit", raw.pr.head.sha];
-  if (changesApp(paths)) mergeArguments.push("--body", `Semver: ${semverOf(input.body).level}`);
+  const mergeArguments = ["api", "-X", "PUT", `repos/${REPO}/pulls/${number}/merge`, "-f", "merge_method=merge", "-f", `sha=${raw.pr.head.sha}`];
+  if (changesApp(paths)) mergeArguments.push("-f", `commit_message=Semver: ${semverOf(input.body).level}`);
   try {
     gh(mergeArguments);
   } catch (error) {
     return refused(number, "merge", error);
+  }
+  try {
+    gh(["api", "-X", "DELETE", `repos/${REPO}/git/refs/heads/${branch}`]);
+  } catch (error) {
+    say(`#${number}: merged, but the branch could not be deleted (${describe(error)}).`);
   }
   try {
     const merged = api(`repos/${REPO}/pulls/${number}`).merge_commit_sha;
@@ -144,8 +149,21 @@ function processPullRequest(number) {
   return "merged";
 }
 
+function reasonFrom(text) {
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === "object" && "message" in parsed && typeof parsed.message === "string" ? parsed.message : null;
+  } catch (error) {
+    if (error instanceof SyntaxError) return null;
+    throw error;
+  }
+}
+
 function describe(error) {
-  return error instanceof Error ? error.message.split("\n")[0].slice(0, 160) : "unknown error";
+  if (!(error instanceof Error)) return "unknown error";
+  const said = ["stdout", "stderr"].map((key) => (key in error && typeof error[key] === "string" ? error[key].trim() : ""));
+  const reason = reasonFrom(said[0]) ?? said[1].split("\n")[0];
+  return (reason || error.message.split("\n")[0]).replace(/[^\x20-\x7e]/g, "").slice(0, 200);
 }
 
 function refused(number, action, error) {

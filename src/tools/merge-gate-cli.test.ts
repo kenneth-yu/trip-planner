@@ -40,7 +40,8 @@ function routesFor(options: Options): Route[] {
     { match: `-X PATCH ${base}/issues/comments`, out: "{}" },
     { match: `-X PUT ${base}/pulls/${number}/update-branch`, out: "{}" },
     { match: `-X POST ${base}/issues/${number}/labels`, out: "[]" },
-    { match: `pr merge ${number} `, ...(options.mergeFails ? { fail: "GraphQL: Pull request is not mergeable (422)" } : { out: "" }) },
+    { match: `-X PUT ${base}/pulls/${number}/merge`, ...(options.mergeFails ? { fail: "gh: Required status check test is expected. (HTTP 405)", failBody: JSON.stringify({ message: 'Required status check "test" is expected.', status: "405" }) } : { out: "{}" }) },
+    { match: `-X DELETE ${base}/git/refs/heads/wp/${number}`, out: "" },
     { match: "workflow run", out: "" },
     { match: `${base}/commits/${head}/check-runs?per_page=1`, out: JSON.stringify({ total_count: options.checkRunsTotal ?? checks.length }) },
     { match: `${base}/commits/${head}/check-runs --jq .check_runs[] | {t:`, out: lines([{ t: "2026-11-27T10:00:00Z" }]) },
@@ -68,8 +69,8 @@ describe("merge-gate.mjs against a fake GitHub", () => {
   it("merges a passing pull request with its head sha pinned, then starts the release and main workflows", () => {
     const { result, calls } = sweep([7], [{ number: 7 }]);
     expect(result.status).toBe(0);
-    const merge = calls.find((c) => c.startsWith("pr merge 7"));
-    expect(merge).toBe(`pr merge 7 --repo ${REPO} --merge --delete-branch --match-head-commit ${headOf(7)}`);
+    expect(calls.find((c) => c.includes("/pulls/7/merge"))).toBe(`api -X PUT repos/${REPO}/pulls/7/merge -f merge_method=merge -f sha=${headOf(7)}`);
+    expect(calls).toContain(`api -X DELETE repos/${REPO}/git/refs/heads/wp/7`);
     expect(calls).toContain(`workflow run release.yml --repo ${REPO} --ref main -f sha=${"c".repeat(40)}`);
     expect(calls).toContain(`workflow run ci.yml --repo ${REPO} --ref main`);
     expect(calls).toContain(`workflow run perf.yml --repo ${REPO} --ref main`);
@@ -79,14 +80,14 @@ describe("merge-gate.mjs against a fake GitHub", () => {
     const head = headOf(7);
     const comments = [verdict("approve", "QA", head), verdict("clear", "Security", head), verdict("approve", "Product", head)];
     const { calls } = sweep([7], [{ number: 7, files: ["src/server/services/a.ts"], body: "Notes\n\nSemver: minor\n", comments }]);
-    expect(calls.find((c) => c.startsWith("pr merge 7"))).toBe(`pr merge 7 --repo ${REPO} --merge --delete-branch --match-head-commit ${head} --body Semver: minor`);
+    expect(calls.find((c) => c.includes("/pulls/7/merge"))).toBe(`api -X PUT repos/${REPO}/pulls/7/merge -f merge_method=merge -f sha=${head} -f commit_message=Semver: minor`);
   });
 
   it("does not merge, and says why, when a pull request that changes the app has no Semver line", () => {
     const head = headOf(7);
     const comments = [verdict("approve", "QA", head), verdict("clear", "Security", head), verdict("approve", "Product", head)];
     const { calls } = sweep([7], [{ number: 7, files: ["src/server/services/a.ts"], body: "no version", comments }]);
-    expect(calls.some((c) => c.startsWith("pr merge"))).toBe(false);
+    expect(calls.some((c) => c.includes("/merge -f merge_method"))).toBe(false);
     expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/comments`) && c.includes("Semver"))).toBe(true);
   });
 
@@ -96,14 +97,14 @@ describe("merge-gate.mjs against a fake GitHub", () => {
     expect(calls).toContain(`api -X PUT repos/${REPO}/pulls/7/update-branch -f expected_head_sha=${headOf(7)}`);
     expect(calls).toContain(`workflow run ci.yml --repo ${REPO} --ref wp/7`);
     expect(calls).toContain(`workflow run security.yml --repo ${REPO} --ref wp/7`);
-    expect(calls.some((c) => c.startsWith("pr merge"))).toBe(false);
+    expect(calls.some((c) => c.includes("/merge -f merge_method"))).toBe(false);
   });
 
   it("goes on to the next pull request when a merge is refused, and comments on the one that failed", () => {
     const { calls } = sweep([7, 8], [{ number: 7, mergeFails: true }, { number: 8 }]);
-    expect(calls.some((c) => c.startsWith("pr merge 7"))).toBe(true);
-    expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/comments`) && c.includes("refused to merge"))).toBe(true);
-    expect(calls.some((c) => c.startsWith("pr merge 8"))).toBe(true);
+    expect(calls.some((c) => c.includes("/pulls/7/merge"))).toBe(true);
+    expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/comments`) && c.includes("refused to merge") && c.includes("Required status check \"test\" is expected."))).toBe(true);
+    expect(calls.some((c) => c.includes("/pulls/8/merge"))).toBe(true);
   });
 
   it("goes on to the next pull request when update-branch is refused", () => {
@@ -113,7 +114,7 @@ describe("merge-gate.mjs against a fake GitHub", () => {
     harness.run(process.execPath, [tool, "--sweep"], { GATE_OWNER: "kenneth-yu", GITHUB_ACTIONS: "true" });
     const calls = harness.calls();
     expect(calls.some((c) => c.includes("issues/7/comments") && c.includes("update the branch"))).toBe(true);
-    expect(calls.some((c) => c.startsWith("pr merge 8"))).toBe(true);
+    expect(calls.some((c) => c.includes("/pulls/8/merge"))).toBe(true);
   });
 
   it.each([
@@ -121,7 +122,7 @@ describe("merge-gate.mjs against a fake GitHub", () => {
     ["the compare result has no behind_by", { behindBy: null }],
   ])("merges nothing when %s, and says so in its comment", (_name, damage) => {
     const { calls } = sweep([7], [{ number: 7, ...damage }]);
-    expect(calls.some((c) => c.startsWith("pr merge") || c.includes("update-branch"))).toBe(false);
+    expect(calls.some((c) => c.includes("/merge -f merge_method") || c.includes("update-branch"))).toBe(false);
     expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/comments`) && c.includes("could not read everything"))).toBe(true);
   });
 
@@ -131,7 +132,7 @@ describe("merge-gate.mjs against a fake GitHub", () => {
     const result = harness.run(process.execPath, [tool, "--sweep"], { GATE_OWNER: "kenneth-yu", GITHUB_ACTIONS: "true" });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("could not be listed");
-    expect(harness.calls().some((c) => c.startsWith("pr merge"))).toBe(false);
+    expect(harness.calls().some((c) => c.includes("/merge -f merge_method"))).toBe(false);
   });
 
   it("finds its own comment by author and marker, and edits it in place", () => {
