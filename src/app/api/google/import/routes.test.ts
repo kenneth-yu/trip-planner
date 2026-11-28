@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { IMPORT_SCOPE } from "@/server/google/calendar-api";
-import { IMPORT_COOKIE, IMPORT_FLOW_COOKIE, IMPORT_FLOW_PATH, openImportToken, startImportFlow } from "@/server/google/import-oauth";
+import { IMPORT_COOKIE, IMPORT_FLOW_COOKIE, IMPORT_FLOW_PATH, IMPORT_SEEN_COOKIE, openImportToken, startImportFlow } from "@/server/google/import-oauth";
 
 const TRIP = "00000000-0000-4000-8300-000000000001";
 const USER = { id: "00000000-0000-4000-8000-0000000000a1", email: "kenny@example.test", homeZone: "America/New_York" };
@@ -133,6 +133,12 @@ describe("the import consent route", () => {
     expect(to.searchParams.get("code_challenge")).toMatch(/^[A-Za-z0-9_-]{43}$/);
   });
 
+  it("clears the marker of an earlier connection when a person starts again", async () => {
+    state.cookies.set(IMPORT_SEEN_COOKIE, { value: "1", options: {} });
+    await redirectOf(() => connect(connectRequest()));
+    expect(state.deleted).toEqual([{ name: IMPORT_SEEN_COOKIE, path: `/trips/${TRIP}/import/google` }]);
+  });
+
   it("holds the PKCE verifier and the state nonce only in a sealed cookie, never in the redirect", async () => {
     const to = await redirectOf(() => connect(connectRequest()));
     const cookie = state.cookies.get(IMPORT_FLOW_COOKIE);
@@ -168,6 +174,18 @@ describe("the import callback route", () => {
     expect(Number(cookie?.options.maxAge)).toBeLessThanOrEqual(600);
     expect(cookie?.value).not.toContain("ya29");
     expect(openImportToken(cookie?.value, USER.id, TRIP)).toBe("ya29.read");
+  });
+
+  it("leaves a plain marker that this person connected, for as long as an hour, so the page can say the permission ran out", async () => {
+    await redirectOf(() => callback(callbackRequest(`code=c&state=${validState()}`)));
+    const marker = state.cookies.get(IMPORT_SEEN_COOKIE);
+    expect(marker?.value).toBe("1");
+    expect(marker?.options).toMatchObject({ httpOnly: true, sameSite: "lax", path: page, maxAge: 3600 });
+  });
+
+  it("leaves no marker when the person did not connect", async () => {
+    await redirectOf(() => callback(callbackRequest(`error=access_denied&state=${validState()}`)));
+    expect(state.cookies.has(IMPORT_SEEN_COOKIE)).toBe(false);
   });
 
   it("sends the PKCE verifier to Google and clears the flow cookie, so the same callback cannot be used twice", async () => {

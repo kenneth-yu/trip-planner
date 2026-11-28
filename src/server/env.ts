@@ -63,6 +63,9 @@ function problems(source: Record<string, string | undefined>, deployment: Deploy
   if (source.DEV_SIGN_IN === "1" && deployment === "production") {
     found.push("DEV_SIGN_IN=1 is set on a production deployment. Remove DEV_SIGN_IN from the production environment variables");
   }
+  if (source.GOOGLE_IMPORT_FAKE === "1" && deployment === "production") {
+    found.push("GOOGLE_IMPORT_FAKE=1 is set on a production deployment. Remove GOOGLE_IMPORT_FAKE; it only serves the end to end tests");
+  }
   return found;
 }
 
