@@ -179,10 +179,14 @@ function Row({ tripId, idea, people, canEdit, open, onToggle, action, pending }:
 }
 
 export function IdeasBoard({ tripId, groups, done, canEdit, people, startAdding = false }: { tripId: string; groups: IdeaGroupData[]; done: DoneRow[]; canEdit: boolean; people: Person[]; startAdding?: boolean }) {
-  const [state, action, pending] = useActionState<IdeaState, FormData>(ideaAction, idle);
+  const [state, submit, pending] = useActionState<IdeaState, FormData>(ideaAction, idle);
   const [openId, setOpenId] = useState<string | null>(null);
   const [adding, setAdding] = useState(startAdding && canEdit);
   const toggle = (id: string) => setOpenId((now) => (now === id ? null : id));
+  const action = (form: FormData) => {
+    setOpenId(null);
+    submit(form);
+  };
   let status: ReactNode = state.status ?? "";
   if (state.status && state.undo) {
     status = (
