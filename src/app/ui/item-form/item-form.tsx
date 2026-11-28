@@ -144,6 +144,15 @@ function ItemFormBody(props: ItemFormProps & { id: string }): React.JSX.Element 
   }, [focusField, id]);
 
   const formRef = useRef<HTMLFormElement>(null);
+  const prefilledPlace = !editing && initial?.type === "stay" ? (initial.fields.place ?? "") : "";
+  const prefillHandled = useRef(false);
+
+  useEffect(() => {
+    if (!prefilledPlace || prefillHandled.current) return;
+    prefillHandled.current = true;
+    document.getElementById(`${id}-name`)?.focus();
+    void resolve("place", "place", prefilledPlace);
+  });
 
   useEffect(() => {
     if (errorCount >= 2) summaryRef.current?.focus();
