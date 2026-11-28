@@ -3,7 +3,7 @@ import { z } from "zod";
 import * as t from "../db/schema";
 import type { ServiceContext } from "./context";
 import { NotFound } from "./trip-service";
-import { TIP_KINDS, type TipKind } from "@/domain/smarts/tips";
+import { TIP_KINDS, type TipKind } from "@/domain/smarts/kinds";
 
 export interface TipPreferences {
   tipsOn: boolean;

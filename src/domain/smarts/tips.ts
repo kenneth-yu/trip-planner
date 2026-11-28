@@ -4,10 +4,9 @@ import { flightCities } from "../time/flight-card";
 import { formatClock, instantMs, localDateKey, toLocal } from "../time/format";
 import { exitMs, isDomesticFlight, leadMs, minutesMs } from "../timeline/travel-times";
 import type { TripView, VisibleItem } from "../visibility/project";
+import { TIP_KINDS, type TipKind } from "./kinds";
 
-export type TipKind = "airport" | "bags" | "sleep" | "arrival" | "border";
-
-export const TIP_KINDS: readonly TipKind[] = ["airport", "bags", "sleep", "arrival", "border"];
+export { TIP_KINDS, type TipKind };
 
 export interface SmartTip {
   key: string;
