@@ -30,6 +30,19 @@ describe("trip nav", () => {
     expect(editor).not.toContain("/share");
   });
 
+  it("gives every member an Activity link, for viewers too", () => {
+    for (const canEdit of [true, false]) {
+      const html = renderToStaticMarkup(createElement(TripNav, { tripId: TRIP_ID, canEdit, canManageSharing: false }));
+      expect(html).toContain(`<a href="/trips/${TRIP_ID}/activity">Activity</a>`);
+    }
+  });
+
+  it("marks Activity current on the activity page", () => {
+    nav.path = `/trips/${TRIP_ID}/activity`;
+    const html = renderToStaticMarkup(createElement(TripNav, { tripId: TRIP_ID, canEdit: false, canManageSharing: false }));
+    expect(html).toContain(`<a aria-current="page" href="/trips/${TRIP_ID}/activity">Activity</a>`);
+  });
+
   it("names the day by day screen Trip and marks it current on the trip page", () => {
     nav.path = `/trips/${TRIP_ID}`;
     const html = renderToStaticMarkup(createElement(TripNav, { tripId: TRIP_ID, canEdit: false, canManageSharing: false }));
