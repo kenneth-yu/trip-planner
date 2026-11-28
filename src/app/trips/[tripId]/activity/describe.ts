@@ -49,6 +49,14 @@ function sentenceFor(line: ActivityLine): Sentence {
       return { lead: `${line.by} merged a calendar record into `, title, tail: "." };
     case "undone":
       return undoneSentence(line);
+    case "idea_scheduled":
+      return { lead: `${line.by} scheduled `, title, tail: "." };
+    case "idea_done":
+      return { lead: `${line.by} marked `, title, tail: " as done." };
+    case "idea_dropped":
+      return { lead: `${line.by} dropped `, title, tail: "." };
+    case "idea_reopened":
+      return { lead: `${line.by} brought back `, title, tail: "." };
     case "imported":
       return { lead: `${line.by} brought in ${line.count === 1 ? "1 item" : `${line.count} items`} from ${line.source}.`, title: null, tail: "" };
   }
