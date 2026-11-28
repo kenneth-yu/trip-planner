@@ -1,3 +1,4 @@
+import { Pool } from "pg";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { TRIP_ID } from "@/fixtures/december-trip";
 import { present } from "@/testing/present";
@@ -50,6 +51,17 @@ beforeAll(() => {
   process.env.SESSION_SECRET = "test-secret-test-secret-test-secret-0123";
 });
 
+async function blockedOnAnItemLock(observer: Pool): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const result = await observer.query(
+      "select count(*)::int as waiting from pg_locks l join pg_stat_activity a on a.pid = l.pid where not l.granted and a.datname = current_database() and a.query like '%for update%'",
+    );
+    if (result.rows[0].waiting > 0) return;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error("The undo never blocked on the item lock.");
+}
+
 async function undoWaitsForTheWriter(write: (env: Awaited<ReturnType<typeof testContext>>, itemId: string) => Promise<unknown>) {
   const env = await testContext();
   const flight = present((await getTripView(env.ctx, TRIP_ID, kenny)).items.find((i) => i.flight?.flightNumber === "CX509"));
@@ -62,14 +74,25 @@ async function undoWaitsForTheWriter(write: (env: Awaited<ReturnType<typeof test
   const writer = write(env, flight.id);
   await reached.promise;
 
+  let settled = false;
   const undo = undoActivity(env.ctx, TRIP_ID, kenny, first.id).then(
-    () => "undone",
-    (error: unknown) => error,
+    (value) => {
+      settled = true;
+      return value;
+    },
+    (error: unknown) => {
+      settled = true;
+      return error;
+    },
   );
-  const early = await Promise.race([undo.then(() => "settled"), new Promise<string>((r) => setTimeout(() => r("waiting"), 500))]);
-  expect(early).toBe("waiting");
-
-  release.resolve();
+  const observer = new Pool({ connectionString: url, max: 1 });
+  try {
+    await blockedOnAnItemLock(observer);
+    expect(settled).toBe(false);
+  } finally {
+    release.resolve();
+    await observer.end();
+  }
   await writer;
   expect(await undo).toMatchObject({ name: "UndoRefused", reason: "changed" });
 }
