@@ -1,5 +1,7 @@
 import { Pool } from "pg";
+import { sql } from "drizzle-orm";
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { TRIP_ID } from "@/fixtures/december-trip";
 import { present } from "@/testing/present";
 import { jacob, kenny, testContext } from "../testing";
@@ -11,7 +13,7 @@ interface Pause {
   wait: Promise<void>;
 }
 
-const gate: { pause: Pause | null } = vi.hoisted(() => ({ pause: null }));
+const gate: { pause: Pause | null; capturePid: ((pid: number) => void) | null } = vi.hoisted(() => ({ pause: null, capturePid: null }));
 
 async function pauseOnce(): Promise<void> {
   const pause = gate.pause;
@@ -26,6 +28,15 @@ vi.mock("../repo/trip-repo", async (original) => {
   const real = await original<typeof import("../repo/trip-repo")>();
   return {
     ...real,
+    lockItemRow: async (...args: Parameters<typeof real.lockItemRow>) => {
+      const capture = gate.capturePid;
+      gate.capturePid = null;
+      if (capture) {
+        const result = await args[0].execute(sql`select pg_backend_pid() as pid`);
+        capture(z.object({ rows: z.array(z.object({ pid: z.number() })).min(1) }).parse(result).rows[0].pid);
+      }
+      return real.lockItemRow(...args);
+    },
     saveItem: async (...args: Parameters<typeof real.saveItem>) => {
       await pauseOnce();
       return real.saveItem(...args);
@@ -51,15 +62,13 @@ beforeAll(() => {
   process.env.SESSION_SECRET = "test-secret-test-secret-test-secret-0123";
 });
 
-async function blockedOnAnItemLock(observer: Pool): Promise<void> {
+async function blockedByAnotherTransaction(observer: Pool, pid: number): Promise<void> {
   for (let attempt = 0; attempt < 200; attempt++) {
-    const result = await observer.query(
-      "select count(*)::int as waiting from pg_locks l join pg_stat_activity a on a.pid = l.pid where not l.granted and a.datname = current_database() and a.query like '%for update%'",
-    );
-    if (result.rows[0].waiting > 0) return;
+    const result = await observer.query("select cardinality(pg_blocking_pids($1)) as blockers", [pid]);
+    if (Number(result.rows[0].blockers) > 0) return;
     await new Promise((r) => setTimeout(r, 50));
   }
-  throw new Error("The undo never blocked on the item lock.");
+  throw new Error("The undo never blocked on another transaction.");
 }
 
 async function undoWaitsForTheWriter(write: (env: Awaited<ReturnType<typeof testContext>>, itemId: string) => Promise<unknown>) {
@@ -74,6 +83,9 @@ async function undoWaitsForTheWriter(write: (env: Awaited<ReturnType<typeof test
   const writer = write(env, flight.id);
   await reached.promise;
 
+  const undoPid = new Promise<number>((resolve) => {
+    gate.capturePid = resolve;
+  });
   let settled = false;
   const undo = undoActivity(env.ctx, TRIP_ID, kenny, first.id).then(
     (value) => {
@@ -85,9 +97,9 @@ async function undoWaitsForTheWriter(write: (env: Awaited<ReturnType<typeof test
       return error;
     },
   );
-  const observer = new Pool({ connectionString: url, max: 1 });
+  const observer = new Pool({ connectionString: url, max: 1, connectionTimeoutMillis: 5000 });
   try {
-    await blockedOnAnItemLock(observer);
+    await blockedByAnotherTransaction(observer, await undoPid);
     expect(settled).toBe(false);
   } finally {
     release.resolve();
