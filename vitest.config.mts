@@ -10,7 +10,7 @@ export default defineConfig({
     environment: "node",
     maxWorkers: Number(process.env.VITEST_MAX_WORKERS ?? 4),
     globalSetup: ["src/server/db/test-global-setup.ts"],
-    setupFiles: ["src/server/db/test-setup.ts"],
+    setupFiles: ["src/testing/clock-setup.ts", "src/server/db/test-setup.ts"],
     env: { TZ: "Pacific/Kiritimati", DATA_ENCRYPTION_KEY: randomBytes(32).toString("base64") },
     coverage: {
       provider: "v8",

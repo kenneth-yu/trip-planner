@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { TRIP_ID, USERS } from "@/fixtures/december-trip";
 import { AccessDenied } from "@/domain/visibility/project";
 import { present } from "@/testing/present";
+import { tick } from "@/testing/clock";
 import type { Requester } from "@/domain/types";
 import * as t from "../db/schema";
 import { insertActivity } from "../repo/activity-repo";
@@ -34,7 +35,9 @@ const plan = { type: "plan", title: "Jantzen Tailor", city: "Hong Kong", startLo
 describe("activity lines", () => {
   it("names who did what, with You for the signed in person, newest first", async () => {
     const { ctx, flight } = await setup();
+    tick();
     await updateItem(ctx, TRIP_ID, flight.id, kenny, { title: "CX509 to Hong Kong" });
+    tick();
     await quickAddItem(ctx, TRIP_ID, jacob, plan);
     const { lines } = await listActivityLines(ctx, TRIP_ID, kenny);
     expect(lines.slice(0, 2).map((l) => [l.kind, l.by, l.title])).toEqual([
@@ -46,8 +49,11 @@ describe("activity lines", () => {
 
   it("never shows Kenny anything about Jacob's only-me item, even after it changed or was deleted", async () => {
     const { ctx } = await setup();
+    tick();
     const secret = await quickAddItem(ctx, TRIP_ID, jacob, { ...plan, title: "Ring shopping in Ginza" }, { visibility: "only_me" });
+    tick();
     await updateItem(ctx, TRIP_ID, secret.id, jacob, { title: "Ring shopping" });
+    tick();
     await removeItem(ctx, TRIP_ID, secret.id, jacob);
     for (const who of [kenny, viewer]) {
       expect(JSON.stringify(await listActivityLines(ctx, TRIP_ID, who))).not.toMatch(/Ring shopping|Ginza/);
@@ -59,6 +65,7 @@ describe("activity lines", () => {
     const { ctx, db, flight } = await setup();
     const before = flight;
     const after = { ...flight, private: [{ travelerId: null, seat: "ZQ99", confirmationCode: "PLACEHOLDER_Z" }] };
+    tick();
     await insertActivity(db, { tripId: TRIP_ID, actorId: USERS.jacob.id, action: "updated", itemId: flight.id, before, after });
     const editor = await listActivityLines(ctx, TRIP_ID, kenny);
     expect(editor.lines[0].changed).toEqual(["booking details"]);
@@ -70,6 +77,7 @@ describe("activity lines", () => {
 
   it("carries no email, user id, token or value in any line, for anyone", async () => {
     const { ctx, flight } = await setup();
+    tick();
     await updateItem(ctx, TRIP_ID, flight.id, kenny, { title: "CX509 to Hong Kong", notes: "Gate code NOTE_CANARY" });
     for (const who of [kenny, jacob, viewer]) {
       const out = JSON.stringify(await listActivityLines(ctx, TRIP_ID, who));
@@ -79,6 +87,7 @@ describe("activity lines", () => {
 
   it("refuses a view link and a non member, and shows a viewer no undo", async () => {
     const { ctx, flight } = await setup();
+    tick();
     await updateItem(ctx, TRIP_ID, flight.id, kenny, { title: "CX509 to Hong Kong" });
     await expect(listActivityLines(ctx, TRIP_ID, link)).rejects.toThrow(AccessDenied);
     await expect(listActivityLines(ctx, TRIP_ID, stranger)).rejects.toThrow(AccessDenied);
@@ -87,7 +96,9 @@ describe("activity lines", () => {
 
   it("counts a batch only by what the viewer can see, and leaves it out when nothing is visible", async () => {
     const { ctx, db } = await setup();
+    tick();
     await insertActivity(db, { tripId: TRIP_ID, actorId: USERS.jacob.id, action: "imported", via: "import:b1", after: { batchId: "b1", count: 3, source: "google_calendar" } });
+    tick();
     const secret = await quickAddItem(ctx, TRIP_ID, jacob, { ...plan, title: "Hidden one" }, { visibility: "only_me" });
     await db.update(t.activity).set({ via: "import:b1" }).where(eq(t.activity.itemId, secret.id));
     const mine = (await listActivityLines(ctx, TRIP_ID, jacob)).lines.find((l) => l.kind === "imported");
@@ -99,8 +110,11 @@ describe("activity lines", () => {
 
   it("keeps history from while an item was hidden hidden, even after it is shared", async () => {
     const { ctx } = await setup();
+    tick();
     const plan = await quickAddItem(ctx, TRIP_ID, jacob, { type: "plan", title: "Surprise dinner", city: "Tokyo", startLocal: "2026-12-04T19:00", endLocal: "2026-12-04T21:00" }, { visibility: "only_me" });
+    tick();
     await updateItem(ctx, TRIP_ID, plan.id, jacob, { title: "Surprise dinner (secret)" });
+    tick();
     await updateItem(ctx, TRIP_ID, plan.id, jacob, { visibility: "everyone" });
     const kinds = (await listActivityLines(ctx, TRIP_ID, kenny)).lines.filter((l) => l.title?.startsWith("Surprise")).map((l) => `${l.kind}:${l.title}`);
     expect(kinds).toEqual(["updated:Surprise dinner (secret)"]);
@@ -109,6 +123,7 @@ describe("activity lines", () => {
 
   it("shows an entry with a malformed snapshot without undo, reports it, and does not fail the list", async () => {
     const { ctx, db, flight } = await setup();
+    tick();
     await insertActivity(db, { tripId: TRIP_ID, actorId: USERS.jacob.id, action: "updated", itemId: flight.id, before: flight, after: { nonsense: true } });
     const logged: string[] = [];
     const original = console.error;
@@ -127,8 +142,10 @@ describe("activity lines", () => {
 
   it("says who an undo undid, from the entry it reverted", async () => {
     const { ctx, flight } = await setup();
+    tick();
     await updateItem(ctx, TRIP_ID, flight.id, jacob, { title: "Jacob's edit" });
     const edit = present((await listActivityLines(ctx, TRIP_ID, kenny)).lines.find((l) => l.kind === "updated"));
+    tick();
     await undoActivity(ctx, TRIP_ID, kenny, edit.id);
     const [undid] = (await listActivityLines(ctx, TRIP_ID, kenny)).lines;
     expect(undid).toMatchObject({ kind: "undone", undid: { kind: "updated", by: "Jacob" } });
@@ -136,6 +153,7 @@ describe("activity lines", () => {
 
   it("calls an assistant's change from an AI assistant and never names its label", async () => {
     const { ctx, db, flight } = await setup();
+    tick();
     await insertActivity(db, { tripId: TRIP_ID, actorId: USERS.jacob.id, action: "updated", itemId: flight.id, via: "assistant:Jacob's Claude", before: flight, after: { ...flight, title: "By assistant" } });
     const [line] = (await listActivityLines(ctx, TRIP_ID, kenny)).lines;
     expect(line.via).toBe("from an AI assistant");
@@ -155,24 +173,29 @@ describe("activity lines", () => {
 describe("undo", () => {
   it("puts an edited item back and is itself undoable", async () => {
     const { ctx, flight } = await setup();
+    tick();
     await updateItem(ctx, TRIP_ID, flight.id, kenny, { title: "CX509 to Hong Kong" });
     const edit = present((await listActivityLines(ctx, TRIP_ID, kenny)).lines.find((l) => l.kind === "updated"));
     expect(edit.canUndo).toBe(true);
+    tick();
     await undoActivity(ctx, TRIP_ID, kenny, edit.id);
     expect(present((await getTripView(ctx, TRIP_ID, kenny)).items.find((i) => i.id === flight.id)).title).toBe(flight.title);
     const after = (await listActivityLines(ctx, TRIP_ID, kenny)).lines;
     expect(after[0]).toMatchObject({ kind: "undone", by: "You" });
     expect(after.find((l) => l.id === edit.id)?.canUndo).toBe(false);
+    tick();
     await undoActivity(ctx, TRIP_ID, kenny, after[0].id);
     expect(present((await getTripView(ctx, TRIP_ID, kenny)).items.find((i) => i.id === flight.id)).title).toBe("CX509 to Hong Kong");
   });
 
   it("brings a deleted item back with its private rows and deadlines", async () => {
     const { ctx, stay } = await setup();
+    tick();
     await removeItem(ctx, TRIP_ID, stay.id, jacob);
     expect((await getTripView(ctx, TRIP_ID, kenny)).items.some((i) => i.id === stay.id)).toBe(false);
     const gone = present((await listActivityLines(ctx, TRIP_ID, jacob)).lines.find((l) => l.kind === "deleted"));
     expect(gone).toMatchObject({ by: "You", itemId: null, canUndo: true });
+    tick();
     const result = await undoActivity(ctx, TRIP_ID, jacob, gone.id);
     expect(result).toMatchObject({ kind: "deleted", title: "Hotel Resol Ueno" });
     const back = present((await getTripView(ctx, TRIP_ID, kenny)).items.find((i) => i.id === stay.id));
@@ -182,14 +205,17 @@ describe("undo", () => {
 
   it("removes an item that was added", async () => {
     const { ctx } = await setup();
+    tick();
     const added = await quickAddItem(ctx, TRIP_ID, jacob, plan);
     const entry = present((await listActivityLines(ctx, TRIP_ID, jacob)).lines.find((l) => l.kind === "created"));
+    tick();
     await undoActivity(ctx, TRIP_ID, jacob, entry.id);
     expect((await getTripView(ctx, TRIP_ID, kenny)).items.some((i) => i.id === added.id)).toBe(false);
   });
 
   it("offers no undo for a merge until the inbox can be restored with it, and refuses one asked for", async () => {
     const { ctx, db, flight } = await setup();
+    tick();
     await insertActivity(db, { tripId: TRIP_ID, actorId: USERS.kenny.id, action: "merged", itemId: flight.id, via: "import:b1", before: flight, after: { ...flight, title: "Merged title" } });
     await db.update(t.items).set({ title: "Merged title" }).where(eq(t.items.id, flight.id));
     const merged = present((await listActivityLines(ctx, TRIP_ID, kenny)).lines.find((l) => l.kind === "merged"));
@@ -200,8 +226,10 @@ describe("undo", () => {
 
   it("an edit racing an undo never gets lost: either the undo is refused or the edit lands on top", async () => {
     const { ctx, flight } = await setup();
+    tick();
     await updateItem(ctx, TRIP_ID, flight.id, kenny, { title: "First change" });
     const first = present((await listActivityLines(ctx, TRIP_ID, kenny)).lines.find((l) => l.title === "First change"));
+    tick();
     const outcomes = await Promise.allSettled([undoActivity(ctx, TRIP_ID, kenny, first.id), updateItem(ctx, TRIP_ID, flight.id, jacob, { title: "Racing edit" })]);
     for (const outcome of outcomes) {
       if (outcome.status === "rejected") expect(outcome.reason).toBeInstanceOf(UndoRefused);
@@ -212,21 +240,26 @@ describe("undo", () => {
 
   it("is refused when it would change who sees an item and the person did not add it", async () => {
     const { ctx } = await setup();
+    tick();
     const plan = await quickAddItem(ctx, TRIP_ID, jacob, { type: "plan", title: "Dinner", city: "Tokyo", startLocal: "2026-12-04T19:00", endLocal: "2026-12-04T21:00" });
+    tick();
     await updateItem(ctx, TRIP_ID, plan.id, jacob, { visibility: "specific", visibleToUserIds: [USERS.kenny.id, USERS.jacob.id] });
     const entry = present((await listActivityLines(ctx, TRIP_ID, kenny)).lines.find((l) => l.kind === "updated" && l.title === "Dinner"));
     expect(entry.canUndo).toBe(false);
     expect(present((await listActivityLines(ctx, TRIP_ID, jacob)).lines.find((l) => l.id === entry.id)).canUndo).toBe(true);
     await expect(undoActivity(ctx, TRIP_ID, kenny, entry.id)).rejects.toThrow("Only the person who added this can change who sees it.");
     expect(present((await getTripView(ctx, TRIP_ID, kenny)).items.find((i) => i.id === plan.id)).visibility).toBe("specific");
+    tick();
     await undoActivity(ctx, TRIP_ID, jacob, entry.id);
     expect(present((await getTripView(ctx, TRIP_ID, jacob)).items.find((i) => i.id === plan.id)).visibility).toBe("everyone");
   });
 
   it("is refused when the item changed since, and changes nothing", async () => {
     const { ctx, flight } = await setup();
+    tick();
     await updateItem(ctx, TRIP_ID, flight.id, kenny, { title: "First change" });
     const first = present((await listActivityLines(ctx, TRIP_ID, kenny)).lines.find((l) => l.title === "First change"));
+    tick();
     await updateItem(ctx, TRIP_ID, flight.id, jacob, { title: "Second change" });
     await expect(undoActivity(ctx, TRIP_ID, kenny, first.id)).rejects.toThrow(UndoRefused);
     expect(present((await getTripView(ctx, TRIP_ID, kenny)).items.find((i) => i.id === flight.id)).title).toBe("Second change");
@@ -235,10 +268,13 @@ describe("undo", () => {
 
   it("is refused for a viewer, a link, a non member and an item the person cannot see, with nothing changed", async () => {
     const { ctx, flight } = await setup();
+    tick();
     await updateItem(ctx, TRIP_ID, flight.id, kenny, { title: "CX509 to Hong Kong" });
     const entry = present((await listActivityLines(ctx, TRIP_ID, kenny)).lines.find((l) => l.kind === "updated"));
     for (const who of [viewer, link, stranger]) await expect(undoActivity(ctx, TRIP_ID, who, entry.id)).rejects.toThrow();
+    tick();
     const secret = await quickAddItem(ctx, TRIP_ID, jacob, { ...plan, title: "Surprise" }, { visibility: "only_me" });
+    tick();
     await updateItem(ctx, TRIP_ID, secret.id, jacob, { title: "Surprise 2" });
     const hidden = present((await listActivityLines(ctx, TRIP_ID, jacob)).lines.find((l) => l.kind === "updated" && l.title === "Surprise 2"));
     await expect(undoActivity(ctx, TRIP_ID, kenny, hidden.id)).rejects.toThrow();
@@ -250,6 +286,7 @@ describe("undo", () => {
     const answers = new Set<string>();
     for (const id of ["not-an-id", "00000000-0000-4000-8100-0000000000fe"]) {
       try {
+        tick();
         await undoActivity(ctx, TRIP_ID, kenny, id);
         answers.add("allowed");
       } catch (e) {
