@@ -16,8 +16,8 @@ export function useResults(): Shown {
   return shown;
 }
 
-export function InboxResults({ children }: { children: ReactNode }) {
-  const [outcome, setOutcome] = useState<Outcome | null>(null);
+export function InboxResults({ children, initial = null }: { children: ReactNode; initial?: Outcome | null }) {
+  const [outcome, setOutcome] = useState<Outcome | null>(initial);
   const status = useRef<HTMLParagraphElement>(null);
   const alert = useRef<HTMLParagraphElement>(null);
   const show = useCallback((next: Outcome | null) => {
