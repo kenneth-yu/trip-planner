@@ -75,20 +75,20 @@ describe("the activity page", () => {
   it("gives a viewer the entries without Undo, and leaves out a seat-only edit", async () => {
     const flight = await flightOf();
     await updateItem(present(world.ctx), TRIP_ID, flight.id, kenny, { title: "CX509 to Hong Kong" });
-    await insertActivity(present(world.ctx).db, { tripId: TRIP_ID, actorId: USERS.jacob.id, action: "updated", itemId: flight.id, before: flight, after: { ...flight, private: [{ travelerId: null, seat: "31Z" }] } });
+    await insertActivity(present(world.ctx).db, { tripId: TRIP_ID, actorId: USERS.jacob.id, action: "updated", itemId: flight.id, before: flight, after: { ...flight, private: [{ travelerId: null, seat: "ZQ98" }] } });
     world.requester = viewer;
     const page = await html();
     expect(page).toContain("Kenneth changed ");
     expect(page).not.toContain("Undo");
-    expect(page).not.toMatch(/booking details|31Z|seat/i);
+    expect(page).not.toMatch(/booking details|ZQ98|seat/i);
   });
 
   it("names a seat change as booking details to an editor and never shows the seat", async () => {
     const flight = await flightOf();
-    await insertActivity(present(world.ctx).db, { tripId: TRIP_ID, actorId: USERS.jacob.id, action: "updated", itemId: flight.id, before: flight, after: { ...flight, private: [{ travelerId: null, seat: "31Z" }] } });
+    await insertActivity(present(world.ctx).db, { tripId: TRIP_ID, actorId: USERS.jacob.id, action: "updated", itemId: flight.id, before: flight, after: { ...flight, private: [{ travelerId: null, seat: "ZQ98" }] } });
     const page = await html();
     expect(page).toContain("booking details");
-    expect(page).not.toMatch(/31Z|seat/i);
+    expect(page).not.toMatch(/ZQ98|seat/i);
   });
 
   it("carries nothing about a hidden item for another person", async () => {
@@ -104,6 +104,27 @@ describe("the activity page", () => {
     expect(await html()).toContain("Show older");
     expect(await html(TRIP_ID, { show: "100" })).not.toContain("Show older");
     expect(await html(TRIP_ID, { show: "<b>x</b>" })).toContain("Show older");
+  });
+});
+
+describe("undo lines in the log", () => {
+  it("name whose change was undone, what was brought back and what was removed", async () => {
+    const ctx = present(world.ctx);
+    const flight = await flightOf();
+    await updateItem(ctx, TRIP_ID, flight.id, jacob, { title: "Jacob's edit" });
+    const edit = present((await listActivityLines(ctx, TRIP_ID, kenny)).lines.find((l) => l.kind === "updated"));
+    await undoAction(noUndo, form({ tripId: TRIP_ID, activityId: edit.id }));
+    const stay = present((await getTripView(ctx, TRIP_ID, kenny)).items.find((i) => i.title === "Hotel Resol Ueno"));
+    await removeItem(ctx, TRIP_ID, stay.id, jacob);
+    const gone = present((await listActivityLines(ctx, TRIP_ID, kenny)).lines.find((l) => l.kind === "deleted"));
+    await undoAction(noUndo, form({ tripId: TRIP_ID, activityId: gone.id }));
+    const added = await quickAddItem(ctx, TRIP_ID, jacob, { type: "plan", title: "Jantzen Tailor", city: "Hong Kong", startLocal: "2026-12-05T17:00", endLocal: "2026-12-05T18:30" });
+    const made = present((await listActivityLines(ctx, TRIP_ID, kenny)).lines.find((l) => l.kind === "created" && l.itemId === added.id));
+    await undoAction(noUndo, form({ tripId: TRIP_ID, activityId: made.id }));
+    const page = (await html()).replace(/<[^>]+>/g, "");
+    expect(page).toContain("You undid Jacob&#x27;s change to");
+    expect(page).toContain("You brought back Hotel Resol Ueno.");
+    expect(page).toContain("You removed Jantzen Tailor, which Jacob added.");
   });
 });
 

@@ -31,8 +31,9 @@ test("a new trip says nothing has changed, then an added flight shows with Undo 
   await expect(page.getByText(/^You added /)).toBeVisible();
   expect(await seriousProblems(page)).toEqual([]);
 
-  await page.getByRole("button", { name: /^Undo: You added/ }).click();
   const status = page.getByRole("status");
+  await expect(status).toBeAttached();
+  await page.getByRole("button", { name: /^Undo: You added/ }).click();
   await expect(status).toContainText("Removed");
   await expect(status).toBeFocused();
   expect(await seriousProblems(page)).toEqual([]);
