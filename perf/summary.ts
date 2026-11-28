@@ -6,7 +6,7 @@ import { z } from "zod";
 export const MARKER = "<!-- trip-planner-perf -->";
 const DIR = path.join(".next", "perf");
 
-const Measurements = z.array(z.object({ name: z.string(), medianMs: z.number(), budgetMs: z.number(), samples: z.number() }));
+const Measurements = z.array(z.object({ name: z.string(), medianMs: z.number().nullable(), budgetMs: z.number(), samples: z.number(), status: z.string().optional() }));
 const Audit = z.object({ numericValue: z.number().optional() });
 const Lhr = z.object({
   requestedUrl: z.string(),
@@ -43,13 +43,18 @@ function readJson(file: string): unknown {
   return JSON.parse(readFileSync(file, "utf8"));
 }
 
+export function timingRow(m: { name: string; medianMs: number | null; budgetMs: number; samples: number; status?: string | undefined }): string {
+  if (m.medianMs === null) return `| ${m.name} | ${m.status ?? "failed"} (${m.samples} samples) | ${m.budgetMs} ms | failed |`;
+  return `| ${m.name} | ${m.medianMs.toFixed(3)} ms | ${m.budgetMs} ms | ${m.medianMs <= m.budgetMs ? "ok" : "over"} |`;
+}
+
 function timingTable(title: string, files: string[]): string {
   const rows = files.flatMap((f) => {
     const file = path.join(DIR, `${f}.json`);
     return existsSync(file) ? Measurements.parse(readJson(file)) : [];
   });
   if (!rows.length) return `### ${title}\n\nNot run.\n`;
-  const lines = rows.map((m) => `| ${m.name} | ${m.medianMs.toFixed(3)} ms | ${m.budgetMs} ms | ${m.medianMs <= m.budgetMs ? "ok" : "over"} |`);
+  const lines = rows.map(timingRow);
   return [`### ${title}`, "", "| Measure | Median | Budget | Result |", "|---|---|---|---|", ...lines, ""].join("\n");
 }
 
