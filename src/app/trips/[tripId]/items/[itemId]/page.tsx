@@ -11,6 +11,9 @@ import { itemHeading } from "./item-title";
 import { FlashStatus } from "@/app/ui/item-form/flash-status";
 import { formatDayHeader, localDateKey, toLocal } from "@/domain/time/format";
 import { itemOf } from "./item-of";
+import { loadAttention } from "@/server/attention";
+import { loadTipsForPage } from "@/server/services/smarts-service";
+import { arrangeRows, checkSources, tipSources } from "@/domain/smarts/rows";
 
 export default async function ItemPage({ params }: PageProps<"/trips/[tripId]/items/[itemId]">) {
   const { tripId, itemId } = await params;
@@ -18,6 +21,9 @@ export default async function ItemPage({ params }: PageProps<"/trips/[tripId]/it
   const item = itemOf(view, itemId);
   if (!item) notFound();
   const travelerId = await viewerTravelerId(ctx, tripId, requester);
+  const attention = await loadAttention(ctx, view, requester);
+  const shownTips = await loadTipsForPage(ctx, view, requester);
+  const smart = { rows: arrangeRows([...checkSources(attention.findings), ...tipSources(shownTips.tips)]), showIntro: false };
   const heading = itemHeading(item);
   const shared = view.items.some((other) => other.id !== item.id && itemHeading(other) === heading);
   const promptName = shared ? `${heading} on ${formatDayHeader(toLocal(item.start))}` : heading;
@@ -29,7 +35,10 @@ export default async function ItemPage({ params }: PageProps<"/trips/[tripId]/it
         </Link>
       </p>
       <FlashStatus kind="saved" tripId={tripId} focusId="item-title" />
-      <ItemDetails view={view} item={item} nowMs={ctx.now().getTime()} viewerTravelerId={travelerId} />
+      <FlashStatus kind="fixed" tripId={tripId} />
+      <FlashStatus kind="fine" tripId={tripId} />
+      <FlashStatus kind="tip_hidden" tripId={tripId} />
+      <ItemDetails view={view} item={item} nowMs={ctx.now().getTime()} viewerTravelerId={travelerId} smart={smart} />
       {view.permissions.canEdit && (
         <ItemActions tripId={tripId} itemId={itemId} heading={promptName} editHref={`/trips/${tripId}/items/${itemId}/edit`} remove={deleteItem} />
       )}

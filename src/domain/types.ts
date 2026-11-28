@@ -29,6 +29,7 @@ export interface StayDetails {
   propertyName: string;
   kind: "hotel" | "rental" | "other";
   lateArrivalCutoff?: string;
+  timeToAirportMinutes?: number;
 }
 
 export interface TransferDetails {
