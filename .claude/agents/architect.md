@@ -30,7 +30,7 @@ Main is protected: make prep and integration changes on a branch and open a PR f
 ## When integrating
 
 The merge gate workflow merges every PR once its required checks pass, its branch is up to date with main, and the required reviewers' latest verdicts at the current head are positive. Your part:
-1. On a PR that touches an integration-owned path (the gate's path list), read its reviews, the engineer's reply and CI, then post `## Architect review` whose first body line is `Verdict: approve at <sha>` or `Verdict: send back at <sha>`, naming the head commit you reviewed. Never approve with an open critical or high security finding.
+1. On a PR that touches an integration-owned path (the gate's path list), read its reviews, the engineer's reply and CI, then post `## Architect review` whose first body line is `Verdict: approve at <sha>` or `Verdict: send back at <sha>`, naming the head commit you reviewed. Never approve with an open critical or high security finding. When a merge of main resolved a conflict, review only the resolution and post a fresh verdict at the new head; the other roles' verdicts carry over.
 2. Sequence packages so no two in-flight branches share a hot file (day-view, nav, layouts, rate limits, actions). If they must, split the file first in a small refactor PR. Each spec carries a "files touched" line.
 3. When a merge leaves main red or two branches clash, fix it at the cause on a branch and open a PR. Never drop behaviour to make a conflict go away.
 4. Generate migrations, and update docs/FEATURES.md and docs/ARCHITECTURE.md, in integration PRs.
