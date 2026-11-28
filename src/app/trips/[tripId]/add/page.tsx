@@ -6,9 +6,11 @@ import { loadTripPage } from "@/server/web";
 import { listTripMembers } from "@/server/services/member-service";
 import { ItemForm } from "@/app/ui/item-form/item-form";
 import { addItem, placeHint } from "./actions";
+import { prefillFromQuery } from "./prefill";
 
-export default async function AddPage({ params }: PageProps<"/trips/[tripId]/add">) {
+export default async function AddPage({ params, searchParams }: PageProps<"/trips/[tripId]/add">) {
   const { tripId } = await params;
+  const initial = prefillFromQuery(await searchParams);
   const { ctx, requester, view } = await loadTripPage(tripId);
   if (!view.permissions.canEdit) notFound();
   const members = (await listTripMembers(ctx, tripId, requester)).filter((m) => m.userId !== view.viewerUserId);
@@ -19,6 +21,7 @@ export default async function AddPage({ params }: PageProps<"/trips/[tripId]/add
         tripId={tripId}
         travelers={view.travelers}
         members={members}
+        initial={initial}
         action={addItem}
         hint={placeHint}
         defaultBooked={view.items.some((i) => i.booked)}
