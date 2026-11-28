@@ -30,6 +30,11 @@ describe("the Travel tips section of the account page", () => {
     expect(html).not.toMatch(/checked="" value="bags"/);
   });
 
+  it("says On or Off next to the switch", () => {
+    expect(render(true, [])).toContain('<span aria-hidden="true">On</span>');
+    expect(render(false, [])).toContain('<span aria-hidden="true">Off</span>');
+  });
+
   it("shows the kinds while the switch is on and keeps them in the form, hidden, while it is off", () => {
     expect(render(true, [])).toMatch(/<fieldset>/);
     const off = render(false, ["bags"]);

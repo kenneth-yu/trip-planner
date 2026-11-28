@@ -17,6 +17,7 @@ export function TravelTipsSection({ tipsOn, kindsOff }: { tipsOn: boolean; kinds
         <label>
           <input type="checkbox" role="switch" name="tipsOn" checked={on} aria-checked={on} onChange={(e) => setOn(e.currentTarget.checked)} /> Travel tips
         </label>
+        <span aria-hidden="true">{on ? "On" : "Off"}</span>
         <fieldset hidden={!on}>
           <legend>Kinds of tips</legend>
           {LISTED_TIP_KINDS.map((kind) => (
