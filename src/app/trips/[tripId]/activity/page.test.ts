@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TRIP_ID, USERS } from "@/fixtures/december-trip";
 import type { Requester } from "@/domain/types";
 import { present } from "@/testing/present";
+import { tick } from "@/testing/clock";
 import { jacob, kenny, testContext } from "@/server/testing";
 import * as t from "@/server/db/schema";
 import { insertActivity } from "@/server/repo/activity-repo";
@@ -59,7 +60,9 @@ describe("the activity page", () => {
 
   it("shows who changed what in plain words, with Undo named for its entry", async () => {
     const flight = await flightOf();
+    tick();
     await updateItem(present(world.ctx), TRIP_ID, flight.id, kenny, { title: "CX509 to Hong Kong" });
+    tick();
     await quickAddItem(present(world.ctx), TRIP_ID, jacob, { type: "plan", title: "Jantzen Tailor", city: "Hong Kong", startLocal: "2026-12-05T17:00", endLocal: "2026-12-05T18:30" });
     const page = await html();
     expect(page).toMatch(/<h2[^>]*>(Today|[A-Z][a-z]{2} [A-Z][a-z]{2} \d+)<\/h2>/);
@@ -74,7 +77,9 @@ describe("the activity page", () => {
 
   it("gives a viewer the entries without Undo, and leaves out a seat-only edit", async () => {
     const flight = await flightOf();
+    tick();
     await updateItem(present(world.ctx), TRIP_ID, flight.id, kenny, { title: "CX509 to Hong Kong" });
+    tick();
     await insertActivity(present(world.ctx).db, { tripId: TRIP_ID, actorId: USERS.jacob.id, action: "updated", itemId: flight.id, before: flight, after: { ...flight, private: [{ travelerId: null, seat: "ZQ98" }] } });
     world.requester = viewer;
     const page = await html();
@@ -85,6 +90,7 @@ describe("the activity page", () => {
 
   it("names a seat change as booking details to an editor and never shows the seat", async () => {
     const flight = await flightOf();
+    tick();
     await insertActivity(present(world.ctx).db, { tripId: TRIP_ID, actorId: USERS.jacob.id, action: "updated", itemId: flight.id, before: flight, after: { ...flight, private: [{ travelerId: null, seat: "ZQ98" }] } });
     const page = await html();
     expect(page).toContain("booking details");
@@ -92,7 +98,9 @@ describe("the activity page", () => {
   });
 
   it("carries nothing about a hidden item for another person", async () => {
+    tick();
     const secret = await quickAddItem(present(world.ctx), TRIP_ID, jacob, { type: "plan", title: "Ring shopping in Ginza", city: "Tokyo", startLocal: "2026-12-03T17:00", endLocal: "2026-12-03T18:00" }, { visibility: "only_me" });
+    tick();
     await removeItem(present(world.ctx), TRIP_ID, secret.id, jacob);
     expect(await html()).not.toMatch(/Ring|Ginza/);
   });
@@ -111,15 +119,21 @@ describe("undo lines in the log", () => {
   it("name whose change was undone, what was brought back and what was removed", async () => {
     const ctx = present(world.ctx);
     const flight = await flightOf();
+    tick();
     await updateItem(ctx, TRIP_ID, flight.id, jacob, { title: "Jacob's edit" });
     const edit = present((await listActivityLines(ctx, TRIP_ID, kenny)).lines.find((l) => l.kind === "updated"));
+    tick();
     await undoAction(noUndo, form({ tripId: TRIP_ID, activityId: edit.id }));
     const stay = present((await getTripView(ctx, TRIP_ID, kenny)).items.find((i) => i.title === "Hotel Resol Ueno"));
+    tick();
     await removeItem(ctx, TRIP_ID, stay.id, jacob);
     const gone = present((await listActivityLines(ctx, TRIP_ID, kenny)).lines.find((l) => l.kind === "deleted"));
+    tick();
     await undoAction(noUndo, form({ tripId: TRIP_ID, activityId: gone.id }));
+    tick();
     const added = await quickAddItem(ctx, TRIP_ID, jacob, { type: "plan", title: "Jantzen Tailor", city: "Hong Kong", startLocal: "2026-12-05T17:00", endLocal: "2026-12-05T18:30" });
     const made = present((await listActivityLines(ctx, TRIP_ID, kenny)).lines.find((l) => l.kind === "created" && l.itemId === added.id));
+    tick();
     await undoAction(noUndo, form({ tripId: TRIP_ID, activityId: made.id }));
     const page = (await html()).replace(/<[^>]+>/g, "");
     expect(page).toContain("You undid Jacob&#x27;s change to");
@@ -132,8 +146,10 @@ describe("undoing from the page", () => {
   it("puts the item back and says so", async () => {
     const ctx = present(world.ctx);
     const flight = await flightOf();
+    tick();
     await updateItem(ctx, TRIP_ID, flight.id, kenny, { title: "CX509 to Hong Kong" });
     const entry = present((await listActivityLines(ctx, TRIP_ID, kenny)).lines.find((l) => l.kind === "updated"));
+    tick();
     const state = await undoAction(noUndo, form({ tripId: TRIP_ID, activityId: entry.id }));
     expect(state.parts.map((p) => p.text).join("")).toBe(`${flight.title} is back to how it was before your change.`);
     expect((await flightOf()).title).toBe(flight.title);
@@ -142,8 +158,10 @@ describe("undoing from the page", () => {
   it("links the day when a deleted item comes back", async () => {
     const ctx = present(world.ctx);
     const stay = present((await getTripView(ctx, TRIP_ID, kenny)).items.find((i) => i.title === "Hotel Resol Ueno"));
+    tick();
     await removeItem(ctx, TRIP_ID, stay.id, kenny);
     const entry = present((await listActivityLines(ctx, TRIP_ID, kenny)).lines.find((l) => l.kind === "deleted"));
+    tick();
     const state = await undoAction(noUndo, form({ tripId: TRIP_ID, activityId: entry.id }));
     expect(state.parts[0].text).toBe("Hotel Resol Ueno is back on ");
     expect(state.parts[1].href).toBe(`/trips/${TRIP_ID}?day=2026-12-02`);
@@ -152,9 +170,12 @@ describe("undoing from the page", () => {
   it("says nothing was undone when it changed again, and links the item", async () => {
     const ctx = present(world.ctx);
     const flight = await flightOf();
+    tick();
     await updateItem(ctx, TRIP_ID, flight.id, kenny, { title: "First" });
     const entry = present((await listActivityLines(ctx, TRIP_ID, kenny)).lines.find((l) => l.title === "First"));
+    tick();
     await updateItem(ctx, TRIP_ID, flight.id, jacob, { title: "Second" });
+    tick();
     const state = await undoAction(noUndo, form({ tripId: TRIP_ID, activityId: entry.id }));
     expect(state.parts.map((p) => p.text).join("")).toBe("First changed again since then, so nothing was undone. Open it to change it by hand.");
     expect(state.parts[0].href).toBe(`/trips/${TRIP_ID}/items/${flight.id}`);
@@ -163,9 +184,11 @@ describe("undoing from the page", () => {
   it("tells a viewer they can no longer change this item and changes nothing", async () => {
     const ctx = present(world.ctx);
     const flight = await flightOf();
+    tick();
     await updateItem(ctx, TRIP_ID, flight.id, kenny, { title: "CX509 to Hong Kong" });
     const entry = present((await listActivityLines(ctx, TRIP_ID, kenny)).lines.find((l) => l.kind === "updated"));
     world.requester = viewer;
+    tick();
     const state = await undoAction(noUndo, form({ tripId: TRIP_ID, activityId: entry.id }));
     expect(state.parts.map((p) => p.text).join("")).toBe("You can no longer change this item.");
     expect((await flightOf()).title).toBe("CX509 to Hong Kong");
