@@ -147,7 +147,7 @@ export function ItemDetails({ view, item, nowMs, viewerTravelerId, smart }: { vi
         {(item.startIsEstimated || item.endIsEstimated) && <div className={styles.sub}>Times are estimated. Check the booking.</div>}
         {item.type === "stay" && item.stay?.timeToAirportMinutes ? <div className={styles.sub}>{aboutToAirport(item.stay.timeToAirportMinutes)}</div> : null}
         {(["flight", "check_in", "check_out", "event"] as const).map((name) => (
-          <SmartRow key={name} tripId={item.tripId} row={smart?.rows.get(rowKey(item.id, name))} />
+          <SmartRow key={name} tripId={item.tripId} canEdit={view.permissions.canEdit} row={smart?.rows.get(rowKey(item.id, name))} />
         ))}
       </div>
       {(placeName || address) && (

@@ -14,7 +14,7 @@ import { UpNext } from "./up-next";
 import { WhereSleep } from "./where-sleep";
 import { sleepPlan } from "@/domain/timeline/sleep-plan";
 import { arrangeRows, checkSources, tipSources } from "@/domain/smarts/rows";
-import { loadTipsForPage } from "@/server/services/smarts-service";
+import { acknowledgeTipsIntro, loadTipsForPage } from "@/server/services/smarts-service";
 
 export default async function TripPage({ params, searchParams }: PageProps<"/trips/[tripId]">) {
   const { tripId } = await params;
@@ -25,6 +25,7 @@ export default async function TripPage({ params, searchParams }: PageProps<"/tri
   const todayKey = DateTime.fromMillis(nowMs, { zone: view.homeZone }).toISODate();
   const attention = await loadAttention(ctx, view, requester);
   const shownTips = await loadTipsForPage(ctx, view, requester);
+  if (shownTips.showIntro && requester.kind === "member") await acknowledgeTipsIntro(ctx, requester);
   const smart = { rows: arrangeRows([...checkSources(attention.findings), ...tipSources(shownTips.tips)]), showIntro: shownTips.showIntro };
   const plan = sleepPlan(view, attention.beforeTrip ? {} : { from: todayKey });
   const fullGrid = buildTripGrid(view, nowMs, plan);

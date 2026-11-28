@@ -1,6 +1,6 @@
-export type TipKind = "airport" | "bags" | "sleep" | "arrival" | "border";
+export const TIP_KINDS = ["airport", "bags", "sleep", "arrival", "border"] as const;
 
-export const TIP_KINDS: readonly TipKind[] = ["airport", "bags", "sleep", "arrival", "border"];
+export type TipKind = (typeof TIP_KINDS)[number];
 
 export const TIP_KIND_LABELS: Record<TipKind, string> = {
   airport: "When to leave for the airport",

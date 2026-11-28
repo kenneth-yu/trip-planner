@@ -35,6 +35,9 @@ export default async function ItemPage({ params }: PageProps<"/trips/[tripId]/it
         </Link>
       </p>
       <FlashStatus kind="saved" tripId={tripId} focusId="item-title" />
+      <FlashStatus kind="fixed" tripId={tripId} />
+      <FlashStatus kind="fine" tripId={tripId} />
+      <FlashStatus kind="tip_hidden" tripId={tripId} />
       <ItemDetails view={view} item={item} nowMs={ctx.now().getTime()} viewerTravelerId={travelerId} smart={smart} />
       {view.permissions.canEdit && (
         <ItemActions tripId={tripId} itemId={itemId} heading={promptName} editHref={`/trips/${tripId}/items/${itemId}/edit`} remove={deleteItem} />

@@ -11,11 +11,11 @@ export interface TipPreferences {
   introSeen: boolean;
 }
 
-const KindSchema = z.enum(["airport", "bags", "sleep", "arrival", "border"]);
+export const TipKindSchema = z.enum(TIP_KINDS);
 
 export const TipPreferencesInput = z.object({
   tipsOn: z.boolean(),
-  kindsOff: z.array(KindSchema).max(TIP_KINDS.length),
+  kindsOff: z.array(TipKindSchema).max(TIP_KINDS.length),
 });
 
 function onlyKinds(raw: string[]): TipKind[] {
@@ -45,7 +45,7 @@ export async function saveTipPreferences(ctx: ServiceContext, userId: string, in
 }
 
 export async function hideTipKind(ctx: ServiceContext, userId: string, kind: TipKind): Promise<TipPreferences> {
-  const parsed = KindSchema.parse(kind);
+  const parsed = TipKindSchema.parse(kind);
   const current = await loadTipPreferences(ctx, userId);
   return saveTipPreferences(ctx, userId, { tipsOn: current.tipsOn, kindsOff: [...current.kindsOff, parsed] });
 }

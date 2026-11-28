@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildFixtureTrip, byFlight, fixtureItem, TRAVELERS, USERS } from "@/fixtures/december-trip";
 import { present } from "@/testing/present";
-import { fromLocal } from "../time/format";
+import { fromLocal, toLocal } from "../time/format";
 import type { Item, Requester, TripAggregate } from "../types";
 import { projectTrip, type TripView } from "../visibility/project";
 import { bagTips, leaveByTips, smartTips } from "./tips";
@@ -80,6 +80,24 @@ function view(items: Item[], who: Requester = owner): TripView {
 const out: FlightSpec = { id: id(1), number: "CX841", from: "JFK", to: "HKG", leaves: "2027-01-15T09:00", fromZone: "America/New_York", lands: "2027-01-16T14:00", toZone: "Asia/Hong_Kong" };
 const back: FlightSpec = { id: id(2), number: "CX845", from: "HKG", to: "JFK", leaves: "2027-01-27T16:00", fromZone: "Asia/Hong_Kong", lands: "2027-01-27T19:00", toZone: "America/New_York" };
 const hotel = (over: Partial<StaySpec> = {}): StaySpec => ({ id: id(3), name: "Hotel Resol", city: "Hong Kong", zone: "Asia/Hong_Kong", checkIn: "2027-01-16T15:00", checkOut: "2027-01-27T11:00", ...over });
+
+describe("the days in the owner's January 2027 cases", () => {
+  it("the flight home leaves on a Wednesday, Jan 27, and the outbound lands on a Saturday, Jan 16", () => {
+    expect(toLocal(flight(back).start).toFormat("ccc LLL d")).toBe("Wed Jan 27");
+    expect(toLocal(flight(out).end).toFormat("ccc LLL d")).toBe("Sat Jan 16");
+    expect(toLocal(stay(hotel()).start).toFormat("ccc LLL d")).toBe("Sat Jan 16");
+    expect(toLocal(stay(hotel()).end).toFormat("ccc LLL d")).toBe("Wed Jan 27");
+  });
+
+  it("each tip sits on the day its test name says", () => {
+    const all = smartTips(view([flight(out), flight(back), stay(hotel({ minutes: 60 }))]));
+    const days = all.map((t) => {
+      const item = present(view([flight(out), flight(back), stay(hotel())]).items.find((i) => i.id === t.itemId));
+      return `${t.row} ${toLocal(t.row === "check_in" ? item.start : t.row === "check_out" ? item.end : item.start).toFormat("ccc LLL d")}`;
+    });
+    expect(days).toEqual(["flight Wed Jan 27"]);
+  });
+});
 
 describe("leave the hotel by (the owner's January 2027 trip)", () => {
   it("with a time to the airport of 1 hour, Wed Jan 27 says Leave the hotel by noon (UX-4 words 12:00pm that way), under the return flight", () => {
