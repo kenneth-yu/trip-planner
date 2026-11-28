@@ -6,6 +6,7 @@ import { hashToken } from "./tokens";
 import * as t from "../db/schema";
 import { testContext } from "../testing";
 import { present } from "@/testing/present";
+import { frozenNow } from "@/testing/clock";
 import { USERS } from "@/fixtures/december-trip";
 
 const DAY = 86400_000;
@@ -96,7 +97,7 @@ describe("accounts and users", () => {
 
   it("creates users with a name from the profile or the email local part and never stores a verified flag", async () => {
     const { adapter } = await setup();
-    const named = await present(adapter.createUser)({ id: "x", email: "Ada@Example.com", name: "Ada Lovelace", emailVerified: new Date() });
+    const named = await present(adapter.createUser)({ id: "x", email: "Ada@Example.com", name: "Ada Lovelace", emailVerified: frozenNow() });
     expect(named.name).toBe("Ada Lovelace");
     expect(named.email).toBe("ada@example.com");
     expect(named.emailVerified).toBeNull();

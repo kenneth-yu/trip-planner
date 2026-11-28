@@ -4,13 +4,18 @@ import { loadTripPage } from "@/server/web";
 import * as t from "@/server/db/schema";
 import { listAssistantTokens } from "@/server/services/assistant-service";
 import { revokeAssistant } from "../actions";
+import { formatShortDate, toLocal } from "@/domain/time/format";
+import { getFeedLink } from "@/server/services/feed-service";
+import { CalendarLink } from "./calendar-link";
+import { lastReadText } from "./calendar-link-text";
 import { AssistantForm, MirrorForm } from "./forms";
 
 const when = (d: Date | null) => (d ? d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : null);
 
 export default async function ConnectPage({ params }: PageProps<"/trips/[tripId]/connect">) {
   const { tripId } = await params;
-  const { ctx, user, view } = await loadTripPage(tripId);
+  const { ctx, requester, user, view } = await loadTripPage(tripId);
+  const feed = await getFeedLink(ctx, tripId, requester);
   const tokens = (await listAssistantTokens(ctx, user.id)).filter((tk) => tk.tripId === tripId);
   const [mirror] = await ctx.db.select().from(t.calendarMirrors).where(and(eq(t.calendarMirrors.tripId, tripId), eq(t.calendarMirrors.userId, user.id)));
   const [google] = await ctx.db.select().from(t.googleConnections).where(eq(t.googleConnections.userId, user.id));
@@ -43,6 +48,13 @@ export default async function ConnectPage({ params }: PageProps<"/trips/[tripId]
             ))}
           </ul>
         )}
+      </section>
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Calendar subscription</h2>
+        <CalendarLink
+          tripId={tripId}
+          status={feed ? { madeOn: formatShortDate(toLocal({ at: feed.madeAt.toISOString(), zone: user.homeZone })), lastRead: lastReadText(feed.lastReadAt, ctx.now()) } : null}
+        />
       </section>
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Google Calendar</h2>

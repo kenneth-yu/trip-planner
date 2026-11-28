@@ -1,24 +1,30 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FROZEN_NOW_MS, nowMs } from "@/testing/clock";
 import { createPgliteDb } from "../db/client";
 import * as t from "../db/schema";
 import { cachedGeocoder, FakeGeocoder, nominatimGeocoder } from "./geocoder";
 
 const HIT = { lat: 35.66, lng: 139.72, label: "Nishiazabu, Minato, Tokyo, Japan" };
 
-function blockEventLoopFor(ms: number) {
-  const until = Date.now() + ms;
-  while (Date.now() < until);
-}
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout"], now: FROZEN_NOW_MS });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("address lookup spacing", () => {
   it("keeps concurrent lookups apart by the minimum interval", async () => {
     const starts: number[] = [];
     const fakeFetch: typeof fetch = async () => {
-      starts.push(Date.now());
+      starts.push(nowMs());
       return new Response(JSON.stringify([]), { status: 200 });
     };
     const geo = nominatimGeocoder({ userAgent: "trip-planner", minIntervalMs: 60, fetchImpl: fakeFetch });
-    await Promise.all(Array.from({ length: 6 }, (_, i) => geo.lookup(`${i} Soy Street`)));
+    const lookups = Array.from({ length: 6 }, (_, i) => geo.lookup(`${i} Soy Street`));
+    await vi.runAllTimersAsync();
+    await Promise.all(lookups);
     expect(starts).toHaveLength(6);
     const gaps = starts.slice(1).map((s, i) => s - starts[i]);
     for (const gap of gaps) expect(gap).toBeGreaterThanOrEqual(60);
@@ -28,16 +34,15 @@ describe("address lookup spacing", () => {
     const starts: number[] = [];
     let calls = 0;
     const fakeFetch: typeof fetch = async () => {
-      starts.push(Date.now());
+      starts.push(nowMs());
       calls += 1;
-      if (calls === 1) blockEventLoopFor(30);
+      if (calls === 1) vi.setSystemTime(nowMs() + 30);
       return new Response(JSON.stringify([]), { status: 200 });
     };
     const geo = nominatimGeocoder({ userAgent: "trip-planner", minIntervalMs: 20, fetchImpl: fakeFetch });
-    const first = geo.lookup("1 Soy Street");
-    const second = geo.lookup("2 Soy Street");
-    const third = geo.lookup("3 Soy Street");
-    await Promise.all([first, second, third]);
+    const lookups = [geo.lookup("1 Soy Street"), geo.lookup("2 Soy Street"), geo.lookup("3 Soy Street")];
+    await vi.runAllTimersAsync();
+    await Promise.all(lookups);
     expect(starts[2] - starts[1]).toBeGreaterThanOrEqual(20);
   });
 });
@@ -50,7 +55,9 @@ describe("address lookup failures", () => {
       return calls === 1 ? new Response("", { status: 503 }) : new Response(JSON.stringify([]), { status: 200 });
     };
     const geo = nominatimGeocoder({ userAgent: "trip-planner", minIntervalMs: 5, fetchImpl: fakeFetch });
-    const results = await Promise.allSettled([geo.lookup("1 Soy Street"), geo.lookup("2 Soy Street")]);
+    const settled = Promise.allSettled([geo.lookup("1 Soy Street"), geo.lookup("2 Soy Street")]);
+    await vi.runAllTimersAsync();
+    const results = await settled;
     expect(results.map((r) => r.status)).toEqual(["rejected", "fulfilled"]);
   });
 });
