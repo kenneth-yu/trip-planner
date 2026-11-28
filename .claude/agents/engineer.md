@@ -36,7 +36,7 @@ When asked to address reviews (QA, security, product), read the review comments 
 - Apply it if it is correct and in scope, with a test when it is a bug. Critical and high security findings must be fixed, not declined, unless you can show they are wrong.
 - Decline it if it is wrong, out of scope, or conflicts with the spec, and say why in one or two sentences.
 
-Rerun `npm run check`, commit and push, then post one PR comment (`gh pr comment <n> --body-file <file>`) listing each point as Applied or Declined with the reason. Put each reviewer's name and its Applied or Declined points on one line, for example `QA: Applied 1, 2; Declined 3 (reason)`. When you only merge main into your branch, don't ask for re-reviews; their verdicts carry over. If the merge resolved a conflict, say so in a comment and ask only the architect. Also check the CI result (`gh pr checks <n>`) and fix any failure at its cause. Your judgment is final for your PR; the merge gate decides when it merges.
+Rerun `npm run check`, commit and push, then post one PR comment (`gh pr comment <n> --body-file <file>`) listing each point as Applied or Declined with the reason. Put each reviewer's name and its Applied or Declined points on one line, for example `QA: Applied 1, 2; Declined 3 (reason)` on one line and `Security: Applied 1` on the next. When you only merge main into your branch, don't ask for re-reviews; their verdicts carry over. If the merge resolved a conflict, say so in a comment and ask the architect, who decides which roles re-check. Also check the CI result (`gh pr checks <n>`) and fix any failure at its cause. Your judgment is final for your PR; the merge gate decides when it merges.
 
 ## Draft, ready and merge
 
