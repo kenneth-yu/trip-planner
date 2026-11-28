@@ -28,6 +28,7 @@ export interface ActivityLine {
   changed: string[];
   via: string | null;
   count: number | null;
+  undid: { kind: ActivityKind; by: string } | null;
   source: string | null;
   canUndo: boolean;
 }
@@ -77,9 +78,13 @@ function changedFields(before: Item | null, after: Item | null, canSeeSensitive:
   return { names, onlyHidden: names.length === 0 && hidden.length > 0 };
 }
 
+function wouldChangeWhoSees(now: Item, target: Item): boolean {
+  return now.visibility !== target.visibility || !same(now.visibleToUserIds, target.visibleToUserIds) || now.showAsBusy !== target.showAsBusy;
+}
+
 function viaLabel(via: string): string | null {
   if (via === "app") return null;
-  return via.startsWith("import:") ? "from the inbox" : "from an assistant";
+  return via.startsWith("import:") ? "from the inbox" : "from an AI assistant";
 }
 
 const SOURCE_WORDS: Record<string, string> = {
@@ -128,6 +133,12 @@ function requireMember(agg: TripAggregate, requester: Requester): string {
   return requester.userId;
 }
 
+function undone(entry: StoredActivity, entries: StoredActivity[], names: Map<string, string>, me: string): { kind: ActivityKind; by: string } | null {
+  const older = entries.slice(entries.indexOf(entry) + 1).find((x) => x.itemId === entry.itemId);
+  if (!older) return null;
+  return { kind: z.enum(["created", "updated", "deleted", "merged", "imported", "undone"]).parse(older.action), by: older.actorId === me ? "You" : (names.get(older.actorId) ?? UNNAMED) };
+}
+
 export async function listActivityLines(ctx: ServiceContext, tripId: string, requester: Requester, opts: { limit?: number } = {}): Promise<{ lines: ActivityLine[]; more: boolean }> {
   const agg = await requireAggregate(ctx.db, tripId);
   const me = requireMember(agg, requester);
@@ -164,7 +175,7 @@ export async function listActivityLines(ctx: ServiceContext, tripId: string, req
       const payload = z.object({ count: z.number(), source: z.string() }).parse(e.after);
       const count = payload.count - (hiddenFromBatch.get(e.via) ?? 0);
       if (count <= 0) continue;
-      lines.push({ id: e.id, at: e.at, kind, by, title: null, itemId: null, changed: [], via: null, count, source: SOURCE_WORDS[payload.source] ?? "somewhere else", canUndo: false });
+      lines.push({ id: e.id, at: e.at, kind, by, title: null, itemId: null, changed: [], via: null, count, source: SOURCE_WORDS[payload.source] ?? "somewhere else", canUndo: false, undid: null });
       continue;
     }
     const { before, after, ref, visible } = judge(e);
@@ -175,7 +186,8 @@ export async function listActivityLines(ctx: ServiceContext, tripId: string, req
     const now = currentItem(agg, e.itemId);
     const beforeItem = before.readable ? before.item : null;
     const afterItem = after.readable ? after.item : null;
-    const undoable = readable && UNDOABLE.includes(kind) && perms.canEdit && e.itemId !== null && latestFor.get(e.itemId) === e.id && (now ? mayEdit(agg, requester, now) : afterItem === null && beforeItem !== null && canSeeItem(beforeItem, requester));
+    const creatorRule = !(now && beforeItem && now.createdBy !== me && wouldChangeWhoSees(now, beforeItem));
+    const undoable = readable && creatorRule && UNDOABLE.includes(kind) && perms.canEdit && e.itemId !== null && latestFor.get(e.itemId) === e.id && (now ? mayEdit(agg, requester, now) : afterItem === null && beforeItem !== null && canSeeItem(beforeItem, requester));
     lines.push({
       id: e.id,
       at: e.at,
@@ -188,6 +200,7 @@ export async function listActivityLines(ctx: ServiceContext, tripId: string, req
       count: null,
       source: null,
       canUndo: undoable,
+      undid: kind === "undone" ? undone(e, entries, names, me) : null,
     });
   }
   const limit = opts.limit ?? ACTIVITY_PAGE;
@@ -231,7 +244,7 @@ export async function undoActivity(ctx: ServiceContext, tripId: string, requeste
     if (fresh[0]?.id !== entry.id) throw new UndoRefused("changed", title, now ? now.id : null);
     if (now && !mayEdit(agg, requester, now)) throw new UndoRefused("cannot_edit", title, null);
     const target = before;
-    if (now && target && now.createdBy !== me && (now.visibility !== target.visibility || !same(now.visibleToUserIds, target.visibleToUserIds) || now.showAsBusy !== target.showAsBusy)) {
+    if (now && target && now.createdBy !== me && wouldChangeWhoSees(now, target)) {
       throw new AccessDenied("Only the person who added this can change who sees it.");
     }
     try {
