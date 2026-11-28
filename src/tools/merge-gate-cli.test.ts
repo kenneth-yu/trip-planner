@@ -253,6 +253,8 @@ describe("merge-gate.mjs against a fake GitHub", () => {
       const deleted = calls.findIndex((c) => c.includes("-X DELETE") && c.includes("heads/wp/7"));
       expect(moved).toBeGreaterThan(-1);
       expect(deleted).toBeGreaterThan(moved);
+      expect(calls[moved]).toBe(`api -X PATCH repos/${REPO}/pulls/12 -f base=main`);
+      expect(calls.filter((c) => c.endsWith(" [gate]")).map((c) => c.split(" ")[3])).toEqual([`repos/${REPO}/pulls/7/merge`, `repos/${REPO}/git/refs/heads/wp/7`]);
       expect(result.stdout).toContain("#12: moved onto main, because the branch it was stacked on merged");
     });
 
@@ -296,6 +298,16 @@ describe("merge-gate.mjs against a fake GitHub", () => {
       const result = harness.run(process.execPath, [tool, "--sweep"], actions);
       expect(result.status).toBe(1);
       expect(harness.calls().some((c) => c.includes("-X DELETE"))).toBe(false);
+      expect(result.stderr.split("\n")).toContain("GitHub's API rate limit is used up (gh: API rate limit exceeded for installation. (HTTP 403)). The run stopped there; whatever was not done is tried again on the next run.");
+    });
+
+    it("stops the run when the limit is hit while listing the stacked pull requests, with nothing deleted", () => {
+      const harness = makeHarness({ pullRefs: [7] });
+      harness.setRoutes([budget(900), { match: "pulls?state=open", out: listed(7) }, { match: `${REPO_BASE}/pulls?base=`, fail: "gh: API rate limit exceeded for installation. (HTTP 403)" }, ...routesFor({ number: 7 })]);
+      const result = harness.run(process.execPath, [tool, "--sweep"], actions);
+      expect(result.status).toBe(1);
+      expect(harness.calls().some((c) => c.includes("-X DELETE") || c.includes("-X PATCH"))).toBe(false);
+      expect(result.stderr.split("\n")).toContain("GitHub's API rate limit is used up (gh: API rate limit exceeded for installation. (HTTP 403)). The run stopped there; whatever was not done is tried again on the next run.");
     });
   });
 

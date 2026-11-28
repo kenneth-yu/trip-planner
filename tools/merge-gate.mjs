@@ -20,7 +20,7 @@ let apiCalls = 0;
 
 class RateLimited extends Error {
   constructor(detail) {
-    super(`GitHub's API rate limit is used up (${detail}). Nothing was merged and nothing was commented.`);
+    super(`GitHub's API rate limit is used up (${detail}). The run stopped there; whatever was not done is tried again on the next run.`);
     this.name = "RateLimited";
   }
 }
