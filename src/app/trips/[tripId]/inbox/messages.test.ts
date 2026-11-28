@@ -103,6 +103,17 @@ describe("the line after a Google import", () => {
     expect(importedOutcome(imported, matched)).toEqual({ text, role: "status" });
   });
 
+  it.each([
+    [["12", "3", "4"], "12 events are waiting in your inbox. 3 look like things already on the trip. 4 were left out: cancelled, outside your dates, or with no readable time."],
+    [["12", "0", "1"], "12 events are waiting in your inbox. 1 was left out: cancelled, outside your dates, or with no readable time."],
+    [["12", "3", "0"], "12 events are waiting in your inbox. 3 look like things already on the trip."],
+    [["12", "3", "junk"], "12 events are waiting in your inbox. 3 look like things already on the trip."],
+    [["12", "3", "1e3"], "12 events are waiting in your inbox. 3 look like things already on the trip."],
+    [["0", "0", "2"], "0 events are waiting in your inbox. 2 were left out: cancelled, outside your dates, or with no readable time."],
+  ])("with the left out part %j", ([imported, matched, left], text) => {
+    expect(importedOutcome(imported, matched, left)).toEqual({ text, role: "status" });
+  });
+
   it.each([[undefined], ["abc"], ["-1"], ["1.5"], [["1", "2"]], ["999999999"], [""], [" 7 "], ["1e3"], ["0x10"], ["+7"], ["７"]])("shows nothing for %j", (imported) => {
     expect(importedOutcome(imported, "0")).toBeNull();
   });
