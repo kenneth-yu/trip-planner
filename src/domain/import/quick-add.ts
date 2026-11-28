@@ -91,6 +91,7 @@ export const StayInput = z.object({
   checkOutDate: localDate,
   checkOutTime: clock.optional().describe("Omit when unknown; 11:00 is used and marked estimated"),
   lateArrivalCutoff: clock.optional(),
+  timeToAirportMinutes: z.number().int().min(1).max(1439).optional().describe("About how long it takes to get from the stay to the airport, in minutes"),
   ...common,
 });
 
@@ -242,7 +243,7 @@ function buildProposal(raw: unknown, travelers: Pick<Traveler, "id" | "name">[],
         startIsEstimated: !input.checkInTime,
         endIsEstimated: !input.checkOutTime,
         location: { name: input.name, address: input.address, city: place.city },
-        stay: { propertyName: input.name, kind: input.kind ?? "hotel", lateArrivalCutoff: input.lateArrivalCutoff },
+        stay: { propertyName: input.name, kind: input.kind ?? "hotel", lateArrivalCutoff: input.lateArrivalCutoff, timeToAirportMinutes: input.timeToAirportMinutes },
         private: privates,
         deadlines: deadlinesIn(place.zone),
       };

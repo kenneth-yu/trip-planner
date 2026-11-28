@@ -1,0 +1,1 @@
+ALTER TABLE "items" ADD COLUMN "booked" boolean DEFAULT true NOT NULL;
