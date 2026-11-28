@@ -20,5 +20,5 @@
 }
 
 .status:empty {
-  display: none;
+  margin: 0;
 }

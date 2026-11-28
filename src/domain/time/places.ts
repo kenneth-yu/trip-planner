@@ -8,6 +8,7 @@ export interface Airport {
   city: string;
   country: string;
   zone: Zone;
+  longitude: number | null;
 }
 
 const RawAirport = z.object({
@@ -16,6 +17,7 @@ const RawAirport = z.object({
   city: z.string().optional(),
   country: z.string().optional(),
   tz: z.string().optional(),
+  longitude: z.number().optional(),
 });
 
 const byIata = new Map<string, Airport>();
@@ -30,6 +32,7 @@ for (const a of z.array(RawAirport).parse(rawAirports)) {
     city: a.city,
     country: a.country ?? "",
     zone: a.tz,
+    longitude: a.longitude ?? null,
   };
   byIata.set(airport.iata, airport);
   const cityKey = normalize(airport.city);

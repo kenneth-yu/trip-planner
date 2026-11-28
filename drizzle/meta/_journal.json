@@ -57,6 +57,13 @@
       "when": 1795759838711,
       "tag": "0007_invite_traveler",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795839347555,
+      "tag": "0008_travel_tips_settings",
+      "breakpoints": true
     }
   ]
 }

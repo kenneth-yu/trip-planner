@@ -12,6 +12,7 @@ export function TripNav({ tripId, canEdit, canManageSharing }: { tripId: string;
     ...(canEdit ? [{ href: `${base}/add`, label: "Add" }] : []),
     { href: `${base}/deadlines`, label: "Deadlines" },
     ...(canEdit ? [{ href: `${base}/inbox`, label: "Review inbox" }] : []),
+    { href: `${base}/activity`, label: "Activity" },
     { href: `${base}/connect`, label: "Connect" },
     ...(canManageSharing ? [{ href: `${base}/share`, label: "Share" }] : []),
   ];

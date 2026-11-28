@@ -97,6 +97,33 @@ describe("release.mjs against a fake GitHub", () => {
     expect(harness.calls()).toEqual([]);
   });
 
+  it("refuses a commit that is not part of main, without tagging or releasing anything", () => {
+    const harness = makeHarness();
+    mergeCommit(harness, "src/app/page.tsx", "Merge pull request #4 from kenneth-yu/wp/y\n\nSemver: patch", "v1.0.0");
+    git(harness.cwd, "switch", "-q", "-c", "side");
+    const target = path.join(harness.cwd, "src/app/side.tsx");
+    writeFileSync(target, "x\n");
+    git(harness.cwd, "add", "-A");
+    git(harness.cwd, "commit", "-qm", "Merge pull request #5 from kenneth-yu/wp/x\n\nSemver: major");
+    const sha = git(harness.cwd, "rev-parse", "HEAD");
+    harness.setRoutes([{ match: `commits/${sha}/pulls`, out: pulls(sha) }, { match: "git/refs", out: "{}" }, { match: "release create", out: "" }]);
+    const result = release(harness, sha);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("is not part of main");
+    expect(harness.calls()).toEqual([]);
+  });
+
+  it("refuses when the checkout has no origin/main to check against, because the commit then cannot be checked", () => {
+    const harness = makeHarness();
+    const sha = mergeCommit(harness, "src/app/page.tsx", "Merge pull request #5 from kenneth-yu/wp/x\n\nSemver: patch", "v1.0.0");
+    git(harness.cwd, "update-ref", "-d", "refs/remotes/origin/main");
+    harness.setRoutes([{ match: `commits/${sha}/pulls`, out: pulls(sha) }]);
+    const result = release(harness, sha);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("could not be checked against main");
+    expect(harness.calls()).toEqual([]);
+  });
+
   it("refuses a sha that is not a full commit id", () => {
     const harness = makeHarness();
     expect(harness.run(process.execPath, [tool], { SHA: "abc", GH_REPO: REPO }).status).toBe(1);

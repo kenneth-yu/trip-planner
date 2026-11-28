@@ -138,6 +138,18 @@ export function lastCodeCommit(commits, verifiedMerges) {
   return code.length > 0 ? code[code.length - 1] : null;
 }
 
+export function pushStart(commits, codeSha, runsFor) {
+  const from = commits.findIndex((commit) => commit.sha === codeSha);
+  if (from < 0) return null;
+  for (const commit of commits.slice(from)) {
+    const starts = runsFor(commit.sha)
+      .map((run) => Date.parse(run.started_at))
+      .filter((value) => Number.isFinite(value));
+    if (starts.length > 0) return Math.min(...starts);
+  }
+  return null;
+}
+
 function reasonsForVerdicts(input, paths) {
   const needed = new Set(requiredReviewers(paths));
   const required = REVIEWERS.filter((r) => needed.has(r.key));
@@ -216,6 +228,8 @@ export function evaluate(input) {
 function need(condition, message) {
   if (!condition) throw new GateDataError(message);
 }
+
+export const HOLD_LABELS = CONFIG.holdLabels;
 
 export function buildInput(raw, reviewerLogin, repo) {
   const { pr, files, comments, commits, checkRuns, checkRunsTotal, compare } = raw;
