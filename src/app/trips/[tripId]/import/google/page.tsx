@@ -9,7 +9,7 @@ import * as t from "@/server/db/schema";
 import { GoogleApiError, GoogleAuthorizationError, type ListedCalendar } from "@/server/google/calendar-api";
 import { IMPORT_CLOSED, IMPORT_CONNECT_PATH, importIsRateLimited, importOAuthConfig, importPagePath, importReader } from "@/server/google/import-guard";
 import { defaultImportRange } from "@/server/google/import";
-import { IMPORT_COOKIE, openImportHeld } from "@/server/google/import-oauth";
+import { IMPORT_COOKIE, IMPORT_SEEN_COOKIE, openImportHeld } from "@/server/google/import-oauth";
 import { loadTripPage } from "@/server/web";
 import { ImportForm } from "./forms";
 
@@ -44,10 +44,13 @@ export default async function GoogleImportPage({ params, searchParams }: PagePro
       <div className={styles.narrow}>
         <h2 className={styles.sectionTitle}>Import from Google Calendar</h2>
         <p className={styles.muted}>{IMPORT_CLOSED}</p>
+        <a href={`/trips/${tripId}/inbox`}>Back to the review inbox</a>
       </div>
     );
   }
-  const held = openImportHeld((await cookies()).get(IMPORT_COOKIE)?.value, user.id, tripId);
+  const jar = await cookies();
+  const held = openImportHeld(jar.get(IMPORT_COOKIE)?.value, user.id, tripId);
+  const ranOut = !held && jar.get(IMPORT_SEEN_COOKIE) !== undefined && typeof consent !== "string";
   const listing = await listingFor(held?.accessToken ?? null);
   const notice = typeof consent === "string" ? CONSENT_MESSAGES[consent] : undefined;
   if (listing.kind === "calendars") {
@@ -69,6 +72,7 @@ export default async function GoogleImportPage({ params, searchParams }: PagePro
     <div className={styles.narrow}>
       <h2 className={styles.sectionTitle}>Import from Google Calendar</h2>
       {notice && <p role="alert">{notice}</p>}
+      {ranOut && <p role="alert">{CONSENT_MESSAGES.expired}</p>}
       {listing.kind === "unavailable" && (
         <>
           <p role="alert">Google did not answer. Try again in a few minutes.</p>
