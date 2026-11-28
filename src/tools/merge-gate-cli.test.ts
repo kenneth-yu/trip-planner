@@ -16,6 +16,9 @@ interface Options {
   checkRunsTotal?: number;
   comments?: unknown[];
   mergeFails?: boolean;
+  mergeFailMessage?: string;
+  headRef?: string;
+  deleteFails?: boolean;
 }
 
 function routesFor(options: Options): Route[] {
@@ -27,7 +30,7 @@ function routesFor(options: Options): Route[] {
   const pr = {
     state: "open",
     base: { ref: "main" },
-    head: { sha: head, ref: `wp/${number}`, repo: { full_name: REPO } },
+    head: { sha: head, ref: options.headRef ?? `wp/${number}`, repo: { full_name: REPO } },
     draft: false,
     changed_files: files.length,
     commits: 1,
@@ -40,7 +43,8 @@ function routesFor(options: Options): Route[] {
     { match: `-X PATCH ${base}/issues/comments`, out: "{}" },
     { match: `-X PUT ${base}/pulls/${number}/update-branch`, out: "{}" },
     { match: `-X POST ${base}/issues/${number}/labels`, out: "[]" },
-    { match: `pr merge ${number} `, ...(options.mergeFails ? { fail: "GraphQL: Pull request is not mergeable (422)" } : { out: "" }) },
+    { match: `-X PUT ${base}/pulls/${number}/merge`, ...(options.mergeFails ? { fail: "gh: refused (HTTP 405)", failBody: JSON.stringify({ message: options.mergeFailMessage ?? 'Required status check "test" is expected.', status: "405" }) } : { out: "{}" }) },
+    { match: `-X DELETE ${base}/git/refs/heads/`, ...(options.deleteFails ? { fail: "gh: Reference does not exist (HTTP 422)" } : { out: "" }) },
     { match: "workflow run", out: "" },
     { match: `${base}/commits/${head}/check-runs?per_page=1`, out: JSON.stringify({ total_count: options.checkRunsTotal ?? checks.length }) },
     { match: `${base}/commits/${head}/check-runs --jq .check_runs[] | {t:`, out: lines([{ t: "2026-11-27T10:00:00Z" }]) },
@@ -68,8 +72,8 @@ describe("merge-gate.mjs against a fake GitHub", () => {
   it("merges a passing pull request with its head sha pinned, then starts the release and main workflows", () => {
     const { result, calls } = sweep([7], [{ number: 7 }]);
     expect(result.status).toBe(0);
-    const merge = calls.find((c) => c.startsWith("pr merge 7"));
-    expect(merge).toBe(`pr merge 7 --repo ${REPO} --merge --delete-branch --match-head-commit ${headOf(7)}`);
+    expect(calls.find((c) => c.includes("/pulls/7/merge"))).toBe(`api -X PUT repos/${REPO}/pulls/7/merge -f merge_method=merge -f sha=${headOf(7)}`);
+    expect(calls).toContain(`api -X DELETE repos/${REPO}/git/refs/heads/wp/7`);
     expect(calls).toContain(`workflow run release.yml --repo ${REPO} --ref main -f sha=${"c".repeat(40)}`);
     expect(calls).toContain(`workflow run ci.yml --repo ${REPO} --ref main`);
     expect(calls).toContain(`workflow run perf.yml --repo ${REPO} --ref main`);
@@ -79,14 +83,14 @@ describe("merge-gate.mjs against a fake GitHub", () => {
     const head = headOf(7);
     const comments = [verdict("approve", "QA", head), verdict("clear", "Security", head), verdict("approve", "Product", head)];
     const { calls } = sweep([7], [{ number: 7, files: ["src/server/services/a.ts"], body: "Notes\n\nSemver: minor\n", comments }]);
-    expect(calls.find((c) => c.startsWith("pr merge 7"))).toBe(`pr merge 7 --repo ${REPO} --merge --delete-branch --match-head-commit ${head} --body Semver: minor`);
+    expect(calls.find((c) => c.includes("/pulls/7/merge"))).toBe(`api -X PUT repos/${REPO}/pulls/7/merge -f merge_method=merge -f sha=${head} -f commit_message=Semver: minor`);
   });
 
   it("does not merge, and says why, when a pull request that changes the app has no Semver line", () => {
     const head = headOf(7);
     const comments = [verdict("approve", "QA", head), verdict("clear", "Security", head), verdict("approve", "Product", head)];
     const { calls } = sweep([7], [{ number: 7, files: ["src/server/services/a.ts"], body: "no version", comments }]);
-    expect(calls.some((c) => c.startsWith("pr merge"))).toBe(false);
+    expect(calls.some((c) => c.includes("/merge -f merge_method"))).toBe(false);
     expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/comments`) && c.includes("Semver"))).toBe(true);
   });
 
@@ -96,14 +100,60 @@ describe("merge-gate.mjs against a fake GitHub", () => {
     expect(calls).toContain(`api -X PUT repos/${REPO}/pulls/7/update-branch -f expected_head_sha=${headOf(7)}`);
     expect(calls).toContain(`workflow run ci.yml --repo ${REPO} --ref wp/7`);
     expect(calls).toContain(`workflow run security.yml --repo ${REPO} --ref wp/7`);
-    expect(calls.some((c) => c.startsWith("pr merge"))).toBe(false);
+    expect(calls.some((c) => c.includes("/merge -f merge_method"))).toBe(false);
+  });
+
+  describe("deleting the branch after a merge", () => {
+    const deletes = (calls: string[]) => calls.filter((c) => c.includes("-X DELETE"));
+
+    it("deletes an ordinary branch with each segment encoded", () => {
+      const { calls } = sweep([7], [{ number: 7, headRef: "wp/20-google.import_x" }]);
+      expect(deletes(calls)).toEqual([`api -X DELETE repos/${REPO}/git/refs/heads/wp/20-google.import_x`]);
+    });
+
+    it.each(["main#x", "wp/9#x", "wp/7%2F..", "wp/../main", "wp//x", "wp/x?y", "wp/x y", "wp/\u00e9"])("never deletes anything for the branch name %s", (headRef) => {
+      const { calls, result } = sweep([7], [{ number: 7, headRef }]);
+      expect(deletes(calls)).toEqual([]);
+      expect(calls.some((c) => c.includes("/pulls/7/merge"))).toBe(true);
+      expect(result.stdout).toContain("the branch was not deleted because");
+    });
+
+    it("never deletes main", () => {
+      const { calls, result } = sweep([7], [{ number: 7, headRef: "main" }]);
+      expect(deletes(calls)).toEqual([]);
+      expect(result.stdout).toContain("it is the base branch");
+    });
+
+    it("still records the merge and starts the release when the delete fails", () => {
+      const { calls, result } = sweep([7], [{ number: 7, deleteFails: true }]);
+      expect(deletes(calls)).toHaveLength(1);
+      expect(result.stdout).toContain("#7: merged, but the branch could not be deleted");
+      expect(result.stdout).toContain("#7: merged\n");
+      expect(calls).toContain(`workflow run release.yml --repo ${REPO} --ref main -f sha=${"c".repeat(40)}`);
+      expect(calls.some((c) => c.includes("issues/7/comments") && c.includes("refused"))).toBe(false);
+    });
+  });
+
+  it("reports a head sha that changed under it (409) without a retry, and goes on", () => {
+    const { calls } = sweep([7, 8], [{ number: 7, mergeFails: true, mergeFailMessage: "Head branch was modified. Review and try the merge again." }, { number: 8 }]);
+    expect(calls.filter((c) => c.includes("/pulls/7/merge"))).toHaveLength(1);
+    expect(calls.some((c) => c.includes("issues/7/comments") && c.includes("`Head branch was modified. Review and try the merge again.`"))).toBe(true);
+    expect(calls.some((c) => c.includes("/pulls/8/merge"))).toBe(true);
+  });
+
+  it("puts GitHub's refusal text in a code span with backticks and line breaks removed, so links and mentions cannot render", () => {
+    const evil = "[click](https://evil.example) @someone `x`\nline two";
+    const { calls } = sweep([7], [{ number: 7, mergeFails: true, mergeFailMessage: evil }]);
+    const comment = calls.find((c) => c.includes("issues/7/comments") && c.includes("refused to merge")) ?? "";
+    expect(comment).toContain("`[click](https://evil.example) @someone x line two`");
+    expect(comment).not.toMatch(/``/);
   });
 
   it("goes on to the next pull request when a merge is refused, and comments on the one that failed", () => {
     const { calls } = sweep([7, 8], [{ number: 7, mergeFails: true }, { number: 8 }]);
-    expect(calls.some((c) => c.startsWith("pr merge 7"))).toBe(true);
-    expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/comments`) && c.includes("refused to merge"))).toBe(true);
-    expect(calls.some((c) => c.startsWith("pr merge 8"))).toBe(true);
+    expect(calls.some((c) => c.includes("/pulls/7/merge"))).toBe(true);
+    expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/comments`) && c.includes("refused to merge: `Required status check \"test\" is expected.`"))).toBe(true);
+    expect(calls.some((c) => c.includes("/pulls/8/merge"))).toBe(true);
   });
 
   it("goes on to the next pull request when update-branch is refused", () => {
@@ -113,7 +163,7 @@ describe("merge-gate.mjs against a fake GitHub", () => {
     harness.run(process.execPath, [tool, "--sweep"], { GATE_OWNER: "kenneth-yu", GITHUB_ACTIONS: "true" });
     const calls = harness.calls();
     expect(calls.some((c) => c.includes("issues/7/comments") && c.includes("update the branch"))).toBe(true);
-    expect(calls.some((c) => c.startsWith("pr merge 8"))).toBe(true);
+    expect(calls.some((c) => c.includes("/pulls/8/merge"))).toBe(true);
   });
 
   it.each([
@@ -121,7 +171,7 @@ describe("merge-gate.mjs against a fake GitHub", () => {
     ["the compare result has no behind_by", { behindBy: null }],
   ])("merges nothing when %s, and says so in its comment", (_name, damage) => {
     const { calls } = sweep([7], [{ number: 7, ...damage }]);
-    expect(calls.some((c) => c.startsWith("pr merge") || c.includes("update-branch"))).toBe(false);
+    expect(calls.some((c) => c.includes("/merge -f merge_method") || c.includes("update-branch"))).toBe(false);
     expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/comments`) && c.includes("could not read everything"))).toBe(true);
   });
 
@@ -131,7 +181,7 @@ describe("merge-gate.mjs against a fake GitHub", () => {
     const result = harness.run(process.execPath, [tool, "--sweep"], { GATE_OWNER: "kenneth-yu", GITHUB_ACTIONS: "true" });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("could not be listed");
-    expect(harness.calls().some((c) => c.startsWith("pr merge"))).toBe(false);
+    expect(harness.calls().some((c) => c.includes("/merge -f merge_method"))).toBe(false);
   });
 
   it("finds its own comment by author and marker, and edits it in place", () => {
