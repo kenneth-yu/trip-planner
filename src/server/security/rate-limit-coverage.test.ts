@@ -46,6 +46,10 @@ const ACTION_ALLOWLIST: Record<string, string> = {
   "src/app/trips/[tripId]/share/actions.ts#setViewerDeadlinesAction": "Owner only, checked in the service; a switch that is idempotent and changes one flag.",
   "src/app/trips/[tripId]/activity/actions.ts#undoAction": "Editors only, checked in the service; each call undoes one activity row and is refused if the item changed since, so a repeat does nothing.",
   "src/app/trips/[tripId]/import/google/actions.ts#runGoogleImport": "Refuses unless a rule in REQUEST_RULES covers the page path or the fake Google is on (importIsRateLimited), and none does yet, so it is closed in production. Needs a rule before the import is turned on.",
+  "src/app/account/travel-tips-actions.ts#saveTravelTipsAction": "Signed in and writes only the caller's own tip preferences, one row for the account; idempotent and harmless.",
+  "src/app/trips/[tripId]/smart-actions.ts#applyFixAction": "Editors only, checked in the service; the anchor must match a check that is showing now or it is refused, and each call changes the one item that check names.",
+  "src/app/trips/[tripId]/smart-actions.ts#markFineAction": "Editors only (dismissCheck checks it); idempotent, and the anchor must match a check that is showing now.",
+  "src/app/trips/[tripId]/smart-actions.ts#hideTipKindAction": "Editors only; writes one preference row for the caller and repeating it changes nothing.",
   "src/app/trips/[tripId]/actions.ts#mirrorAction": "Signed in and acts only on the caller's own mirror, but can start Google Calendar API calls with no per person limit; Google's quota is the only brake. Known gap; add a rule if it is abused.",
 };
 
