@@ -111,6 +111,7 @@ function Entry({ entry, view, colors, smart }: { entry: DayEntry; view: TripView
             {entry.kind !== "check_out" && <AddedMarker itemId={entry.itemId} />}
             {entry.kind !== "check_out" && <SharedCue item={item} />}
             {place && entry.kind === "event" && <span className={styles.sub}>{place}</span>}
+            {item && !item.booked && entry.kind !== "check_out" && <span className={styles.sub}>Not booked yet</span>}
             {item && item.flags.length > 0 && <span className={styles.flagged}>Check where this is</span>}
           </span>
       </Row>
