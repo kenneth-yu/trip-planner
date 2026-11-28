@@ -56,11 +56,11 @@ describe("the trip page and travel tips", () => {
     const first = await render();
     expect(first).toContain("Be at the airport by 5:50am.");
     expect(first).toContain("Hide tips like this");
-    expect(first).toContain("Travel tips are small suggestions");
+    expect(first).toContain("Tips like this are optional.");
     expect(first).toContain('href="/account#travel-smarts"');
     const second = await render();
     expect(second).toContain("Be at the airport by 5:50am.");
-    expect(second).not.toContain("Travel tips are small suggestions");
+    expect(second).not.toContain("Tips like this are optional.");
   });
 
   it("with tips off shows no tips and no intro, but a wrong time warning stays with its actions", async () => {
@@ -73,7 +73,7 @@ describe("the trip page and travel tips", () => {
     const after = await render();
     expect(after).not.toContain("Be at the airport by 5:50am.");
     expect(after).not.toContain("Store your bags?");
-    expect(after).not.toContain("Travel tips are small suggestions");
+    expect(after).not.toContain("Tips like this are optional.");
     expect(after).toContain("Dinner at 6:30am? Did you mean 6:30pm?");
     expect(after).toContain("Change to 6:30pm");
   });
@@ -83,7 +83,7 @@ describe("the trip page and travel tips", () => {
     const html = await render();
     expect(html).not.toContain("Be at the airport by");
     expect(html).not.toContain("Store your bags?");
-    expect(html).not.toContain("Travel tips are small suggestions");
+    expect(html).not.toContain("Tips like this are optional.");
     expect(html).not.toContain("Hide tips like this");
     expect(html).not.toContain("Change to ");
     const ctx = present(world.ctx);
