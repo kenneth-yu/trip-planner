@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fixture, TRIP_ID, USERS } from "@/fixtures/december-trip";
+import { present } from "@/testing/present";
 import { toIcs } from "@/testing/ics-fixture";
 import { testContext } from "@/server/testing";
 import { listInbox } from "@/server/services/inbox-service";
@@ -50,7 +51,7 @@ describe("the .ics upload route", () => {
     const response = await post(fileForm(calendar));
     expect(response.status).toBe(303);
     expect(location(response)).toMatch(new RegExp(`^/trips/${TRIP_ID}/import\\?done=\\d+&skipped=0&repeating=0$`));
-    const inbox = await listInbox(world.ctx as ServiceContext, TRIP_ID, kenny);
+    const inbox = await listInbox(present(world.ctx), TRIP_ID, kenny);
     expect(inbox.length).toBeGreaterThan(0);
     expect(location(response)).not.toContain("trip.ics");
   });
@@ -61,7 +62,7 @@ describe("the .ics upload route", () => {
   ])("refuses %s before reading it, and imports nothing", async (_name, headers) => {
     const response = await post(fileForm(calendar), headers);
     expect(response.status).toBe(403);
-    expect(await listInbox(world.ctx as ServiceContext, TRIP_ID, kenny)).toEqual([]);
+    expect(await listInbox(present(world.ctx), TRIP_ID, kenny)).toEqual([]);
   });
 
   it("refuses a request that says it came from another site when it sends no origin", async () => {
@@ -73,14 +74,14 @@ describe("the .ics upload route", () => {
     world.user = null;
     const response = await post(fileForm(calendar));
     expect(location(response)).toBe(`/sign-in?next=${encodeURIComponent(`/trips/${TRIP_ID}/import`)}`);
-    expect(await listInbox(world.ctx as ServiceContext, TRIP_ID, kenny)).toEqual([]);
+    expect(await listInbox(present(world.ctx), TRIP_ID, kenny)).toEqual([]);
   });
 
   it("answers a person who is not on the trip like a missing trip, and stores nothing", async () => {
     world.user = { id: "00000000-0000-4000-8100-0000000000fd", homeZone: "UTC" };
     const response = await post(fileForm(calendar));
     expect(location(response)).toBe("/not-on-your-account");
-    expect(await listInbox(world.ctx as ServiceContext, TRIP_ID, kenny)).toEqual([]);
+    expect(await listInbox(present(world.ctx), TRIP_ID, kenny)).toEqual([]);
   });
 
   it("answers a bad trip id with 404", async () => {
