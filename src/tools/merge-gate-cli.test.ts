@@ -19,6 +19,7 @@ interface Options {
   behindBy?: number | null;
   checkRunsTotal?: number;
   comments?: unknown[];
+  timeline?: unknown[];
   mergeFails?: boolean;
   mergeFailMessage?: string;
   headRef?: string;
@@ -65,6 +66,7 @@ function routesFor(options: Options): Route[] {
     { match: `${base}/compare/main...${head}`, out: JSON.stringify(options.behindBy === null ? {} : { behind_by: options.behindBy ?? 0, status: "ahead" }) },
     { match: `${base}/pulls/${number}/files`, out: lines(files.map((filename) => ({ filename }))) },
     { match: `${base}/issues/${number}/comments`, out: lines(options.comments ?? []) },
+    { match: `${base}/issues/${number}/timeline`, out: lines(options.timeline ?? []) },
     { match: `${base}/pulls/${number}/commits`, out: lines((options.commitList ?? [{ sha: head, parents: ["d".repeat(40)] }]).map((c) => ({ sha: c.sha, parents: c.parents.map((sha) => ({ sha })) }))) },
     { match: `${base}/pulls/${number} `, out: JSON.stringify(pr) },
     { match: `${base}/pulls/${number}`, out: JSON.stringify(pr) },
@@ -85,6 +87,43 @@ function sweep(numbers: number[], perPull: Options[], listing = numbers) {
 const verdict = (word: string, name: string, head: string) => ({ user: { login: "kenneth-yu", type: "User" }, updated_at: "2026-11-27T10:05:00Z", body: `## ${name} review\n\nVerdict: ${word} at ${head}` });
 
 describe("merge-gate.mjs against a fake GitHub", () => {
+  describe("a reply posted after the push", () => {
+    const first = "a".repeat(40);
+    const second = "b".repeat(40);
+    const commitList = [{ sha: first, parents: ["d".repeat(40)] }, { sha: second, parents: [first] }];
+    const at = (time: string, body: string) => ({ user: { login: "kenneth-yu", type: "User" }, updated_at: `2026-11-27T${time}Z`, body });
+    const comments = [
+      at("10:05:00", `## QA review\n\nVerdict: approve with changes at ${first}`),
+      at("10:05:01", `## Security review\n\nVerdict: clear at ${second}`),
+      at("10:05:02", `## Product review\n\nVerdict: approve at ${second}`),
+      at("10:30:00", "QA: Applied 1"),
+    ];
+    const run = (timeline: unknown[]) => sweep([7], [{ number: 7, files: ["src/server/services/a.ts"], body: "Semver: patch\n", head: second, commitList, comments, timeline }]);
+
+    it("passes when the push event of the last code is older than the reply", () => {
+      const { result, calls } = run([{ event: "committed", sha: second, committer: { date: "2026-11-27T10:20:00Z" } }]);
+      expect(result.stdout).toContain("#7: passes at");
+      expect(calls.filter((c) => c.includes("/issues/7/timeline"))).toHaveLength(1);
+    });
+
+    it("blocks when the push event is newer than the reply, which the check run time alone would have let through", () => {
+      const { result } = run([{ event: "committed", sha: second, committer: { date: "2026-11-27T10:20:00Z" } }, { event: "head_ref_force_pushed", commit_id: second, created_at: "2026-11-27T10:40:00Z" }]);
+      expect(result.stdout).toContain("#7: blocked");
+      expect(result.stdout).toContain("code was pushed after the Applied/Declined reply");
+    });
+
+    it("trusts the time GitHub recorded over the commit date", () => {
+      const { result } = run([{ event: "committed", sha: second, created_at: "2026-11-27T10:40:00Z", committer: { date: "2026-11-27T10:20:00Z" } }]);
+      expect(result.stdout).toContain("#7: blocked");
+    });
+
+    it("falls back to the check run start when the timeline has nothing about the commit", () => {
+      const { result, calls } = run([{ event: "committed", sha: first, committer: { date: "2026-11-27T10:40:00Z" } }]);
+      expect(result.stdout).toContain("#7: passes at");
+      expect(calls.some((c) => c.includes(`/commits/${second}/check-runs`))).toBe(true);
+    });
+  });
+
   it("merges a passing pull request with its head sha pinned, then starts the release and main workflows", () => {
     const { result, calls } = sweep([7], [{ number: 7 }]);
     expect(result.status).toBe(0);

@@ -159,6 +159,21 @@ export function pushStart(commits, codeSha, runsFor) {
   return null;
 }
 
+export function pushEventTime(events, codeSha) {
+  const times = events
+    .filter((event) => (event.event === "committed" && event.sha === codeSha) || (event.event === "head_ref_force_pushed" && event.commit_id === codeSha))
+    .map((event) => Date.parse(event.created_at ?? event.committer?.date))
+    .filter((value) => Number.isFinite(value));
+  return times.length > 0 ? Math.max(...times) : null;
+}
+
+function namesCode(body, commits, lastCode) {
+  const from = commits.findIndex((commit) => commit.sha === lastCode.sha);
+  if (from < 0) return false;
+  const named = body.toLowerCase().match(/\b[0-9a-f]{7,40}\b/g) ?? [];
+  return named.some((token) => commits.slice(from).some((commit) => commit.sha.startsWith(token)));
+}
+
 function carriedState(input, after) {
   if (after.every((c) => isVerifiedMerge(c, input.verifiedMerges))) return "same";
   const conflicts = input.conflictMerges ?? new Set();
@@ -216,8 +231,8 @@ function reasonsForVerdicts(input, paths) {
       else if (state === "merge-changed") changedByMerge.push(reviewer.label);
       continue;
     }
-    const reply = trusted.find((c) => c.time > comment.time && isReplyTo(reviewer.key, c.body));
-    if (!reply) {
+    const replies = trusted.filter((c) => c.time > comment.time && isReplyTo(reviewer.key, c.body));
+    if (replies.length === 0) {
       reasons.push(`The latest ${reviewer.label} verdict asks for changes ("${verdict.text}") and no reply naming ${reviewer.label} with Applied or Declined follows it. ${REPLY_FORMAT}`);
       continue;
     }
@@ -226,9 +241,11 @@ function reasonsForVerdicts(input, paths) {
       continue;
     }
     if (lastCode && !input.commits.slice(0, index + 1).includes(lastCode)) {
-      if (typeof input.lastCodePushedAt !== "number" || !Number.isFinite(input.lastCodePushedAt)) {
+      const pushedAt = [input.codePushedAt, input.lastCodePushedAt].find((value) => typeof value === "number" && Number.isFinite(value));
+      if (replies.some((reply) => namesCode(reply.body, input.commits, lastCode))) continue;
+      if (pushedAt === undefined) {
         reasons.push(`Could not tell when the latest code was pushed, so the ${reviewer.label} reply cannot be checked.`);
-      } else if (reply.time <= input.lastCodePushedAt) {
+      } else if (!replies.some((reply) => reply.time > pushedAt)) {
         reasons.push(`The ${reviewer.label} verdict is older than the head: code was pushed after the Applied/Declined reply.`);
       }
     }
@@ -301,5 +318,6 @@ export function buildInput(raw, reviewerLogin, repo) {
     verifiedMerges: raw.verifiedMerges ?? new Set(),
     conflictMerges: raw.conflictMerges ?? new Set(),
     lastCodePushedAt: raw.lastCodePushedAt ?? null,
+    codePushedAt: raw.codePushedAt ?? null,
   };
 }
