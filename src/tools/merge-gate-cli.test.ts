@@ -65,6 +65,7 @@ function routesFor(options: Options): Route[] {
     { match: `${base}/compare/main...${head}`, out: JSON.stringify(options.behindBy === null ? {} : { behind_by: options.behindBy ?? 0, status: "ahead" }) },
     { match: `${base}/pulls/${number}/files`, out: lines(files.map((filename) => ({ filename }))) },
     { match: `${base}/issues/${number}/comments`, out: lines(options.comments ?? []) },
+    { match: `${base}/issues/${number}/timeline`, out: "" },
     { match: `${base}/pulls/${number}/commits`, out: lines((options.commitList ?? [{ sha: head, parents: ["d".repeat(40)] }]).map((c) => ({ sha: c.sha, parents: c.parents.map((sha) => ({ sha })) }))) },
     { match: `${base}/pulls/${number} `, out: JSON.stringify(pr) },
     { match: `${base}/pulls/${number}`, out: JSON.stringify(pr) },

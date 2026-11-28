@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildInput, changesApp, evaluate, GateDataError, isDocsOnly, isIntegrationPath, isReplyTo, lastCodeCommit, parseVerdict, pushStart, REPLY_FORMAT, REQUIRED_CHECKS, requiredReviewers, semverOf, touchesOwnerOnly, touchesWorkflowFiles, isWorkflowRefusal, WORKFLOW_REASON } from "../../tools/merge-gate-lib.mjs";
+import { buildInput, changesApp, evaluate, GateDataError, isDocsOnly, isIntegrationPath, isReplyTo, lastCodeCommit, parseVerdict, pushEventTime, pushStart, REPLY_FORMAT, REQUIRED_CHECKS, requiredReviewers, semverOf, touchesOwnerOnly, touchesWorkflowFiles, isWorkflowRefusal, WORKFLOW_REASON } from "../../tools/merge-gate-lib.mjs";
 
 const T = (minute: number) => `2026-11-27T10:${String(minute).padStart(2, "0")}:00Z`;
 const ME = "kenneth-yu";
@@ -428,6 +428,24 @@ describe("merge gate", () => {
     });
   });
 
+  describe("the push event of the last code", () => {
+    const events = [
+      { event: "committed", sha: sha("a"), at: "2026-11-27T09:00:00Z" },
+      { event: "committed", sha: sha("b"), at: "2026-11-27T10:00:00Z" },
+      { event: "head_ref_force_pushed", commit_id: sha("b"), at: "2026-11-27T10:05:00Z" },
+    ];
+
+    it("takes the latest event that is about the commit", () => {
+      expect(pushEventTime(events, sha("b"))).toBe(Date.parse("2026-11-27T10:05:00Z"));
+      expect(pushEventTime(events, sha("a"))).toBe(Date.parse("2026-11-27T09:00:00Z"));
+    });
+
+    it("is null when no event is about the commit or the time is unreadable", () => {
+      expect(pushEventTime(events, sha("z"))).toBeNull();
+      expect(pushEventTime([{ event: "committed", sha: sha("a"), at: "never" }], sha("a"))).toBeNull();
+    });
+  });
+
   describe("when the last code was pushed", () => {
     const runs = (startedAt: string) => [{ started_at: startedAt }, { started_at: "2026-11-27T12:00:00Z" }];
     const commits = [commit("a"), { sha: sha("m"), parents: [sha("a"), "main-tip"] }, { sha: sha("n"), parents: [sha("m"), "main-tip"] }];
@@ -600,6 +618,36 @@ describe("merge gate", () => {
       const comments = [withChanges[0], withChanges[1], product, say(23, "QA: Applied all\nSecurity: Applied all")];
       const commits = [commit("a"), commit("b")];
       expect(evaluate(pull({ comments, commits, lastCodePushedAt: null })).reasons[0]).toMatch(/Could not tell when the latest code was pushed/);
+    });
+
+    describe("a reply posted right after the push", () => {
+      const product = say(21, `## Product review\n\nVerdict: approve${at("b")}`);
+      const commits = [commit("a"), commit("b")];
+      const reply = (body: string) => [withChanges[0], withChanges[1], product, say(23, body)];
+      const both = "QA: Applied all\nSecurity: Applied all";
+
+      it("counts when it came before CI started, going by the push event", () => {
+        const input = { comments: reply(both), commits, lastCodePushedAt: Date.parse(T(25)), codePushedAt: Date.parse(T(22)) };
+        expect(evaluate(pull(input)).ok).toBe(true);
+      });
+
+      it("counts when it names the pushed commit, even if the push time says it is older", () => {
+        const input = { comments: reply(`${both}\nFixed at ${sha("b").slice(0, 9)}`), commits, lastCodePushedAt: Date.parse(T(25)), codePushedAt: Date.parse(T(25)) };
+        expect(evaluate(pull(input)).ok).toBe(true);
+      });
+
+      it("does not count a reply that names an older commit and is older than the push", () => {
+        const input = { comments: reply(`${both}\nSeen at ${sha("a").slice(0, 9)}`), commits, lastCodePushedAt: null, codePushedAt: Date.parse(T(25)) };
+        expect(evaluate(pull(input)).reasons).toEqual([
+          "The QA verdict is older than the head: code was pushed after the Applied/Declined reply.",
+          "The Security verdict is older than the head: code was pushed after the Applied/Declined reply.",
+        ]);
+      });
+
+      it("uses the check run time only when the push event is unknown", () => {
+        expect(evaluate(pull({ comments: reply(both), commits, lastCodePushedAt: Date.parse(T(25)), codePushedAt: null })).ok).toBe(false);
+        expect(evaluate(pull({ comments: reply(both), commits, lastCodePushedAt: Date.parse(T(20)), codePushedAt: null })).ok).toBe(true);
+      });
     });
 
     it("needs no time check when the verdict reviewed the latest code", () => {

@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { buildInput, changesApp, evaluate, GateDataError, HOLD_LABELS, isWorkflowRefusal, lastCodeCommit, pushStart, semverOf, WORKFLOW_REASON } from "./merge-gate-lib.mjs";
+import { buildInput, changesApp, evaluate, GateDataError, HOLD_LABELS, isWorkflowRefusal, lastCodeCommit, pushEventTime, pushStart, semverOf, WORKFLOW_REASON } from "./merge-gate-lib.mjs";
 
 const REPO = "kenneth-yu/trip-planner";
 const MARKER = "<!-- merge-gate -->";
@@ -132,6 +132,13 @@ function checkRunPages(sha) {
   return { total: pages.length > 0 ? pages[0].total : null, runs: pages.flatMap((page) => (Array.isArray(page.runs) ? page.runs : [])) };
 }
 
+function timelineEvents(number) {
+  return apiList(
+    `repos/${REPO}/issues/${number}/timeline?per_page=100`,
+    '.[] | select(.event == "committed" or .event == "head_ref_force_pushed") | {event, sha, commit_id, at: (.committer.date // .created_at)}',
+  );
+}
+
 let whoAmI = null;
 
 function me() {
@@ -166,8 +173,9 @@ function gather(number) {
   }
   const normalized = commits.map((c) => ({ sha: c.sha, parents: c.parents.map((p) => p.sha) }));
   const lastCode = lastCodeCommit(normalized, verifiedMerges);
-  const lastCodePushedAt = lastCode ? pushStart(normalized, lastCode.sha, (sha) => (sha === head ? checkRuns : checkRunPages(sha).runs)) : null;
-  return { pr, files, comments, commits, checkRuns, checkRunsTotal, compare, verifiedMerges, conflictMerges, lastCodePushedAt };
+  const codePushedAt = lastCode && normalized.length > 1 ? pushEventTime(timelineEvents(number), lastCode.sha) : null;
+  const lastCodePushedAt = lastCode && codePushedAt === null ? pushStart(normalized, lastCode.sha, (sha) => (sha === head ? checkRuns : checkRunPages(sha).runs)) : null;
+  return { pr, files, comments, commits, checkRuns, checkRunsTotal, compare, verifiedMerges, conflictMerges, lastCodePushedAt, codePushedAt };
 }
 
 function commentAuthor() {
