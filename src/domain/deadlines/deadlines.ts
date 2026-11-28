@@ -16,7 +16,7 @@ export interface DeadlineLine {
   needsConfirming: boolean;
 }
 
-const PHRASE: Record<DeadlineKind, string> = {
+export const DEADLINE_PHRASE: Record<DeadlineKind, string> = {
   free_cancellation: "becomes non refundable",
   partial_refund: "stops giving any refund",
   change: "can no longer be changed for free",
@@ -47,8 +47,8 @@ export function buildDeadlineLines(view: TripView, nowMs: number): DeadlineLine[
           itemId: item.id,
           at: d.at.at,
           sentence: passed
-            ? `${itemLabel(item)} ${PHRASE[d.kind].replace("becomes", "became").replace("stops", "stopped").replace("can no longer", "could no longer")}`
-            : `${itemLabel(item)} ${PHRASE[d.kind]} ${formatTimeUntil(nowMs, atMs)}`,
+            ? `${itemLabel(item)} ${DEADLINE_PHRASE[d.kind].replace("becomes", "became").replace("stops", "stopped").replace("can no longer", "could no longer")}`
+            : `${itemLabel(item)} ${DEADLINE_PHRASE[d.kind]} ${formatTimeUntil(nowMs, atMs)}`,
           exact: deadlineExact(d.at, itemCity(item), view.homeZone),
           warning: !passed && atMs - nowMs <= WARNING_WINDOW_MS,
           passed,
