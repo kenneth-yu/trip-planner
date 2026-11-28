@@ -29,8 +29,8 @@ test("connecting the fake Google lists the person's calendars with the dates fil
   await kenny.getByRole("link", { name: "Connect Google Calendar" }).click();
   await expect(kenny).toHaveURL(new RegExp(`${PAGE}$`));
   await expect(kenny.locator("fieldset label")).toHaveText(["kenny primary", "kenny primary (from Gmail)", "shared China"]);
-  await expect(kenny.getByLabel("From")).toHaveValue("2026-11-30");
-  await expect(kenny.getByLabel("To")).toHaveValue("2026-12-17");
+  await expect(kenny.getByLabel("From", { exact: true })).toHaveValue("2026-11-30");
+  await expect(kenny.getByLabel("To", { exact: true })).toHaveValue("2026-12-17");
   await expect(kenny.getByRole("button", { name: "Import" })).toBeEnabled();
   expect(await seriousViolations(kenny)).toEqual([]);
 });
