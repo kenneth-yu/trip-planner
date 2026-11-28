@@ -8,6 +8,19 @@ import { buildFixtureTrip, TRIP_ID, USERS } from "@/fixtures/december-trip";
 import { buildDemoTrip, DEMO_TRIPS } from "@/fixtures/demo-trips";
 import type { TripAggregate } from "@/domain/types";
 
+const PACKED_TRIP_ID = "00000000-0000-4000-8300-000000000103";
+
+const DEMO_IDEAS = [
+  { id: "00000000-0000-4000-8600-000000000001", title: "Fushimi Inari at sunrise", city: "Kyoto", note: "Go early, before the crowds." },
+  { id: "00000000-0000-4000-8600-000000000002", title: "Ramen near the hotel", city: "Tokyo", note: "" },
+  { id: "00000000-0000-4000-8600-000000000003", title: "Buy a good umbrella", city: null, note: "" },
+];
+
+async function insertDemoIdeas(tx: DbOrTx, agg: TripAggregate) {
+  if (agg.trip.id !== PACKED_TRIP_ID) return;
+  await tx.insert(t.ideas).values(DEMO_IDEAS.map((idea) => ({ ...idea, tripId: agg.trip.id, createdBy: agg.trip.ownerId })));
+}
+
 export interface SeedResult {
   tripId: string;
   viewLinkToken: string;
@@ -74,7 +87,10 @@ export async function seedEverything(
       skipped.push(agg.trip.name);
       continue;
     }
-    await db.transaction((tx) => insertTrip(tx, agg, { withItems: true, viewLinkToken: agg.trip.id === TRIP_ID ? generateToken("tpv") : null }));
+    await db.transaction(async (tx) => {
+      await insertTrip(tx, agg, { withItems: true, viewLinkToken: agg.trip.id === TRIP_ID ? generateToken("tpv") : null });
+      await insertDemoIdeas(tx, agg);
+    });
     created.push(agg.trip.name);
   }
   return { created, skipped };
