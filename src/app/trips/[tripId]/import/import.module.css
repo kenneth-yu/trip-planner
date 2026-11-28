@@ -29,3 +29,9 @@
   padding: 0;
   margin-bottom: 8px;
 }
+
+.rowLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}

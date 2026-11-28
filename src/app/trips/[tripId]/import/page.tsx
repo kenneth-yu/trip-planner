@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import styles from "../../../ui/page.module.css";
+import importStyles from "./import.module.css";
 import { appUrl } from "@/server/app-context";
 import { importOAuthConfig, importPagePath } from "@/server/google/import-guard";
 import { loadTripPage } from "@/server/web";
@@ -33,7 +34,9 @@ export default async function ImportPage({ params, searchParams }: PageProps<"/t
       {googleLink && (
         <section className={styles.section}>
           <p>
-            <Link href={googleLink}>Google Calendar</Link>
+            <Link href={googleLink} className={importStyles.rowLink}>
+              Google Calendar
+            </Link>
           </p>
           <p className={styles.muted}>Pick calendars and dates. Read only.</p>
         </section>
