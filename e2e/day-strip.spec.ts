@@ -14,6 +14,24 @@ async function gapUnderStrip(strip: Locator, target: Locator): Promise<number | 
   return targetBox.y - (stripBox.y + stripBox.height);
 }
 
+function settledScroll(page: Page): Promise<number> {
+  return page.evaluate(
+    () =>
+      new Promise<number>((resolve) => {
+        let last = window.scrollY;
+        let still = 0;
+        const tick = () => {
+          const y = window.scrollY;
+          still = y === last ? still + 1 : 0;
+          last = y;
+          if (still >= 12) resolve(Math.round(y));
+          else requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }),
+  );
+}
+
 function atPageEnd(page: Page): Promise<boolean> {
   return page.evaluate(() => window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2);
 }
@@ -38,23 +56,103 @@ test("tapping a day keeps the chosen day just under the strip, with its rows in 
   await expect(panel.locator("a").first()).toBeInViewport();
 });
 
-test("the strip stays visible while a day is read, and back and forward keep the day and the place", async ({ pageSignedInAs }) => {
+test("the strip stays visible while a day is read, and back and forward each return to their own place", async ({ pageSignedInAs }) => {
   const page = await pageSignedInAs("kenny", `/trips/${DECEMBER_TRIP}`);
   const strip = stripOf(page);
   const first = await strip.locator("[aria-current=date]").getAttribute("aria-label");
+  const scrollY = () => page.evaluate(() => Math.round(window.scrollY));
   await chipFor(page, "2026-12-05").scrollIntoViewIfNeeded();
-  const before = await page.evaluate(() => window.scrollY);
+  await page.mouse.wheel(0, 120);
+  await expect.poll(scrollY).toBeGreaterThan(60);
+  const earlier = await scrollY();
   await chipFor(page, "2026-12-05").click();
   await expect(page).toHaveURL(/day=2026-12-05/);
   await page.mouse.wheel(0, 400);
   await expect(strip).toBeInViewport();
+  await expect.poll(scrollY).toBeGreaterThan(earlier + 40);
+  const later = await settledScroll(page);
   await page.goBack();
   await expect(page).not.toHaveURL(/day=2026-12-05/);
   await expect(strip.locator("[aria-current=date]")).toHaveAttribute("aria-label", first ?? "");
-  await expect.poll(() => page.evaluate((earlier) => Math.abs(window.scrollY - earlier), before), { message: "back keeps the earlier place" }).toBeLessThanOrEqual(40);
+  await expect(strip).toHaveAttribute("data-scroll-restored", /\|/);
+  expect(Math.abs((await settledScroll(page)) - earlier), "back returns to the place before the tap").toBeLessThanOrEqual(2);
   await page.goForward();
   await expect(page).toHaveURL(/day=2026-12-05/);
   await expect(chipFor(page, "2026-12-05")).toHaveAttribute("aria-current", "date");
+  await expect(strip).toHaveAttribute("data-scroll-restored", /day=2026-12-05/);
+  expect(Math.abs((await settledScroll(page)) - later), "forward returns to the place it was left").toBeLessThanOrEqual(2);
+});
+
+test("back from an item's details returns to the earlier place on the trip page", async ({ pageSignedInAs }) => {
+  const page = await pageSignedInAs("kenny", `/trips/${PACKED_TRIP}`);
+  await chipFor(page, "2027-03-09").click();
+  await expect(page).toHaveURL(/day=2027-03-09/);
+  await page.mouse.wheel(0, 500);
+  const earlier = await settledScroll(page);
+  expect(earlier).toBeGreaterThan(100);
+  const row = page.locator("#day-panel a[href*='/items/']").last();
+  await row.scrollIntoViewIfNeeded();
+  const leftAt = await settledScroll(page);
+  await row.click();
+  await expect(page).toHaveURL(/\/items\//);
+  await page.goBack();
+  await expect(page).toHaveURL(/day=2027-03-09/);
+  await expect(stripOf(page)).toHaveAttribute("data-scroll-restored", /day=2027-03-09/);
+  expect(Math.abs((await settledScroll(page)) - leftAt), "back from the details page returns to where the row was tapped").toBeLessThanOrEqual(2);
+});
+
+test("going Forward into the details and Back again returns to the same place", async ({ pageSignedInAs }) => {
+  const page = await pageSignedInAs("kenny", `/trips/${PACKED_TRIP}`);
+  await chipFor(page, "2027-03-09").click();
+  await expect(page).toHaveURL(/day=2027-03-09/);
+  await page.mouse.wheel(0, 500);
+  const row = page.locator("#day-panel a[href*='/items/']").last();
+  await row.scrollIntoViewIfNeeded();
+  const leftAt = await settledScroll(page);
+  await row.click();
+  await expect(page).toHaveURL(/\/items\//);
+  await page.goBack();
+  await expect(page).toHaveURL(/day=2027-03-09/);
+  await expect(stripOf(page)).toHaveAttribute("data-scroll-restored", /day=2027-03-09/);
+  await page.goForward();
+  await expect(page).toHaveURL(/\/items\//);
+  await page.goBack();
+  await expect(page).toHaveURL(/day=2027-03-09/);
+  await expect(stripOf(page)).toHaveAttribute("data-scroll-restored", /day=2027-03-09/);
+  expect(Math.abs((await settledScroll(page)) - leftAt), "the second Back returns to the same place").toBeLessThanOrEqual(2);
+});
+
+test("a reload keeps the place, because the browser restores it again once the page is going away", async ({ pageSignedInAs }) => {
+  const page = await pageSignedInAs("kenny", `/trips/${PACKED_TRIP}`);
+  await chipFor(page, "2027-03-09").click();
+  await expect(page).toHaveURL(/day=2027-03-09/);
+  await page.mouse.wheel(0, 500);
+  const before = await settledScroll(page);
+  expect(before).toBeGreaterThan(100);
+  await page.reload();
+  await expect(stripOf(page)).toBeVisible();
+  await expect.poll(async () => Math.abs((await settledScroll(page)) - before), { message: "the reload keeps the place" }).toBeLessThanOrEqual(2);
+});
+
+test("a Back that leaves the strip mounted does not make a later fresh mount restore an old place", async ({ pageSignedInAs }) => {
+  const page = await pageSignedInAs("kenny", `/trips/${PACKED_TRIP}`);
+  const router = () => page.evaluate(() => typeof Reflect.get(Reflect.get(window, "next") ?? {}, "router")?.push === "function");
+  await chipFor(page, "2027-03-09").click();
+  await expect(page).toHaveURL(/day=2027-03-09/);
+  await page.mouse.wheel(0, 500);
+  await chipFor(page, "2027-03-10").click();
+  await expect(page).toHaveURL(/day=2027-03-10/);
+  await page.goBack();
+  await expect(page).toHaveURL(/day=2027-03-09/);
+  await expect(stripOf(page)).toHaveAttribute("data-scroll-restored", /day=2027-03-09/);
+  expect(await router(), "the app router is reachable from the page").toBe(true);
+  const itemHref = await page.locator("#day-panel a[href*='/items/']").first().getAttribute("href");
+  await page.evaluate((href) => Reflect.get(Reflect.get(window, "next"), "router").push(href), itemHref);
+  await expect(page).toHaveURL(/\/items\//);
+  await page.evaluate((url) => Reflect.get(Reflect.get(window, "next"), "router").push(url), `/trips/${PACKED_TRIP}?day=2027-03-09`);
+  await expect(page).toHaveURL(/day=2027-03-09/);
+  await expect(stripOf(page)).toBeVisible();
+  await expect(stripOf(page)).not.toHaveAttribute("data-scroll-restored", /.+/);
 });
 
 test("while a long day scrolls, its date stays pinned just under the strip", async ({ pageSignedInAs }) => {

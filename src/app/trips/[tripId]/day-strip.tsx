@@ -6,9 +6,38 @@ import styles from "./phone.module.css";
 import { DAY_PANEL_ID } from "./day-panel";
 import type { StripDay } from "@/domain/timeline/trip-grid";
 
+const PLACES_KEPT = 50;
 const places = new Map<string, number>();
 
+function remember(url: string, scrollY: number): void {
+  places.delete(url);
+  places.set(url, scrollY);
+  const oldest = places.keys().next();
+  if (places.size > PLACES_KEPT && !oldest.done) places.delete(oldest.value);
+}
+
 const here = () => `${window.location.pathname}${window.location.search}`;
+
+let traversalUrl: string | null = null;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("popstate", () => {
+    traversalUrl = here();
+  });
+  document.addEventListener(
+    "click",
+    () => {
+      traversalUrl = null;
+    },
+    true,
+  );
+}
+
+function consumeTraversal(): boolean {
+  const arrived = traversalUrl !== null && traversalUrl === here();
+  traversalUrl = null;
+  return arrived;
+}
 
 const CITY = [styles.city1, styles.city2, styles.city3, styles.city4, styles.city5];
 
@@ -21,26 +50,54 @@ export function DayStrip({ days, selectedKey }: { days: StripDay[]; selectedKey:
     return el && getComputedStyle(el).position === "sticky" ? el.offsetHeight : 0;
   };
   const lastUrl = useRef<string | null>(null);
+  const arrivedByTraversal = useRef(false);
   useEffect(() => {
+    arrivedByTraversal.current = consumeTraversal();
+    const native = window.history.scrollRestoration;
+    window.history.scrollRestoration = "manual";
     lastUrl.current = here();
     const leaving = () => {
-      if (lastUrl.current) places.set(lastUrl.current, window.scrollY);
+      if (lastUrl.current) remember(lastUrl.current, window.scrollY);
+    };
+    const scrolled = () => remember(here(), window.scrollY);
+    const pagehide = () => {
+      window.history.scrollRestoration = native;
+    };
+    const pageshow = (event: PageTransitionEvent) => {
+      if (event.persisted) window.history.scrollRestoration = "manual";
     };
     window.addEventListener("popstate", leaving);
-    return () => window.removeEventListener("popstate", leaving);
+    window.addEventListener("scroll", scrolled, { passive: true });
+    window.addEventListener("pagehide", pagehide);
+    window.addEventListener("pageshow", pageshow);
+    return () => {
+      window.removeEventListener("popstate", leaving);
+      window.removeEventListener("scroll", scrolled);
+      window.removeEventListener("pagehide", pagehide);
+      window.removeEventListener("pageshow", pageshow);
+      window.history.scrollRestoration = native;
+    };
   }, []);
   useEffect(() => {
+    consumeTraversal();
     const url = here();
-    const restore = !tapped.current && lastUrl.current !== url ? places.get(url) : undefined;
+    const arrived = arrivedByTraversal.current;
+    arrivedByTraversal.current = false;
+    const restore = !tapped.current && (lastUrl.current !== url || arrived) ? places.get(url) : undefined;
     lastUrl.current = url;
-    if (restore !== undefined) window.scrollTo({ top: restore, behavior: "auto" });
     const el = strip.current;
+    el?.removeAttribute("data-scroll-restored");
+    if (restore !== undefined) {
+      window.scrollTo({ top: restore, behavior: "auto" });
+      if (Math.abs(window.scrollY - restore) <= 1) el?.setAttribute("data-scroll-restored", `${url}|${Math.round(window.scrollY)}`);
+    }
     if (el && chosen.current) el.scrollLeft = chosen.current.offsetLeft - (el.clientWidth - chosen.current.offsetWidth) / 2;
     const panel = document.getElementById(DAY_PANEL_ID);
-    if (!tapped.current || !panel) return;
-    tapped.current = false;
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    window.scrollTo({ top: panel.getBoundingClientRect().top + window.scrollY - pinnedHeight(), behavior: reduced ? "auto" : "smooth" });
+    if (tapped.current && panel) {
+      tapped.current = false;
+      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.scrollTo({ top: panel.getBoundingClientRect().top + window.scrollY - pinnedHeight(), behavior: reduced ? "auto" : "smooth" });
+    }
   }, [selectedKey]);
   useEffect(() => {
     const el = strip.current;
@@ -73,14 +130,14 @@ export function DayStrip({ days, selectedKey }: { days: StripDay[]; selectedKey:
             href={`?day=${d.key}`}
             scroll={false}
             onClick={(e) => {
-              places.set(here(), window.scrollY);
+              remember(here(), window.scrollY);
               tapped.current = !isChosen && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
             }}
             className={`${styles.chip} ${isChosen ? styles.chosen : ""} ${d.cityIndex !== null ? CITY[d.cityIndex % CITY.length] : ""}`}
             aria-current={isChosen ? "date" : undefined}
-            aria-label={`${d.weekday} ${d.month ?? ""} ${d.day}${d.city ? `, sleeping in ${d.city}` : ""}${d.needsAttention ? ", needs a look" : ""}`}
+            aria-label={`${d.month ?? d.weekday} ${d.day}${d.month ? `, ${d.weekday}` : ""}${d.city ? `, sleeping in ${d.city}` : ""}${d.needsAttention ? ", needs a look" : ""}`}
           >
-            {d.month ?? d.weekday}
+            {d.month ?? d.weekday}{" "}
             <b>{d.day}</b>
             <span className={styles.bar} />
             <span className={styles.dots}>

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import * as t from "../db/schema";
-import { deleteItem, loadTripAggregate, saveItem, touchTrip, tripsForUser, UnknownTraveler, type DbOrTx } from "../repo/trip-repo";
+import { deleteItem, loadTripAggregate, lockItemRow, saveItem, touchTrip, tripsForUser, UnknownTraveler, type DbOrTx } from "../repo/trip-repo";
 import { insertActivity } from "../repo/activity-repo";
 import type { ServiceContext } from "./context";
 import { AccessDenied, assertCanEditItem, assertCanEditTrip, canSeeItem, projectTrip, type TripView } from "@/domain/visibility/project";
@@ -142,7 +142,7 @@ const ItemId = z.string().uuid();
 
 async function lockItem(tx: DbOrTx, tripId: string, itemId: string): Promise<void> {
   if (!ItemId.safeParse(itemId).success) throw new NotFound();
-  await tx.execute(sql`select id from items where id = ${itemId} and trip_id = ${tripId} for update`);
+  await lockItemRow(tx, tripId, itemId);
 }
 
 export async function updateItem(ctx: ServiceContext, tripId: string, itemId: string, requester: Requester, rawPatch: ItemPatch): Promise<Item> {
