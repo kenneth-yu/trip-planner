@@ -195,3 +195,27 @@
   color: var(--muted);
   text-decoration: none;
 }
+
+.needBed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 52px;
+  border-radius: 10px;
+  color: var(--text);
+  text-decoration: none;
+  background: repeating-linear-gradient(135deg, transparent 0 6px, var(--hatch) 6px 7px);
+  border: 1px solid var(--hatch);
+}
+
+.onPlane {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 52px;
+  color: var(--muted);
+  font-size: var(--size-small);
+  text-decoration: none;
+}
