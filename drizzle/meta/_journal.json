@@ -64,6 +64,13 @@
       "when": 1795839347555,
       "tag": "0008_travel_tips_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795858052756,
+      "tag": "0009_items_booked",
+      "breakpoints": true
     }
   ]
 }
