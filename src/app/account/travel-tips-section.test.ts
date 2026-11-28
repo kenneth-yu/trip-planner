@@ -8,12 +8,16 @@ vi.mock("./travel-tips-actions", () => ({ saveTravelTipsAction: async () => ({ s
 const render = (tipsOn: boolean, kindsOff: Parameters<typeof TravelTipsSection>[0]["kindsOff"]) => renderToStaticMarkup(createElement(TravelTipsSection, { tipsOn, kindsOff }));
 
 describe("the Travel tips section of the account page", () => {
-  it("is reachable at #travel-smarts and has the switch, five kinds and the note about warnings", () => {
+  it("is reachable at #travel-smarts and has the switch, the two kinds that have tips and the note about warnings", () => {
     const html = render(true, []);
     expect(html).toContain('id="travel-smarts"');
-    expect(html).toContain("Show travel tips");
-    expect(html.match(/name="kind"/g)).toHaveLength(5);
+    expect(html).toContain("Travel smarts");
+    expect(html).toContain("> Travel tips</label>");
+    expect(html.match(/name="kind"/g)).toHaveLength(2);
     expect(html).toContain("always show");
+    expect(html).toContain("choose This is fine on it");
+    expect(html).not.toContain("Border crossings");
+    expect(html).not.toContain("Plans right after a long flight");
   });
 
   it("reflects what is saved", () => {
