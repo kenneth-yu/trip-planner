@@ -3,7 +3,8 @@ import { buildFixtureTrip, TRIP_ID, USERS } from "@/fixtures/december-trip";
 import { buildDemoTrip, PACKED_TRIP } from "@/fixtures/demo-trips";
 import { present } from "@/testing/present";
 import { parseIcs } from "../import/ics";
-import { fromLocal } from "../time/format";
+import { fromLocal, instantMs } from "../time/format";
+import { itemHeading } from "../time/item-heading";
 import type { Item, Requester, TripAggregate } from "../types";
 import { projectTrip } from "../visibility/project";
 import { buildFeed } from "./ics-writer";
@@ -61,6 +62,69 @@ describe("the feed's shape", () => {
     const parsed = parseIcs(feed);
     expect(parsed.events.length).toBe(eventsOf(feed).length);
     expect(parsed.events.map((e) => e.summary)).toContain("NH159 to Tokyo");
+  });
+});
+
+describe("times survive a round trip through the .ics importer", () => {
+  const instantOf = (time: { dateTime?: string }) => Date.parse(time.dateTime ?? "");
+
+  function expectInstants(agg: TripAggregate, requester: Requester, titles: string[]) {
+    const view = projectTrip(agg, requester);
+    const parsed = parseIcs(buildFeed(view, opts)).events;
+    for (const title of titles) {
+      const item = present(view.items.find((i) => i.title === title || i.flight?.flightNumber === title));
+      const event = present(parsed.find((e) => e.summary === itemHeading(item)), title);
+      expect(instantOf(event.start), `${title} start`).toBe(instantMs(item.start));
+      expect(instantOf(event.end), `${title} end`).toBe(instantMs(item.end));
+    }
+  }
+
+  it("keeps every flight's departure and arrival instant, in New York, Tokyo, Hong Kong and Shenzhen", () => {
+    expectInstants(buildFixtureTrip(), jacob, ["NH159", "CX509", "CX520", "NH160"]);
+  });
+
+  it("keeps the instants of plans in Hong Kong", () => {
+    expectInstants(buildFixtureTrip(), jacob, ["Jantzen Tailor", "Sun Kai Tat"]);
+  });
+
+  it("keeps the instants of a plan before, and a plan after, the November clocks going back in New York", () => {
+    const agg = buildFixtureTrip();
+    const base = present(agg.items.find((i) => i.type === "plan"));
+    const make = (id: string, title: string, from: string, to: string): Item => ({ ...base, id, title, start: fromLocal(from, NY), end: fromLocal(to, NY), deadlines: [], private: [], location: { name: "Park", city: "New York" } });
+    agg.items.push(make("fall-before", "Late walk before the change", "2026-11-01T00:30", "2026-11-01T00:50"), make("fall-after", "Breakfast after the change", "2026-11-01T03:00", "2026-11-01T04:00"), make("fall-across", "Night out across the change", "2026-10-31T23:30", "2026-11-01T03:30"));
+    expectInstants(agg, jacob, ["Late walk before the change", "Breakfast after the change", "Night out across the change"]);
+    const text = feedFor(agg, jacob);
+    const newYork = text.split("BEGIN:VTIMEZONE\r\nTZID:America/New_York\r\n")[1]?.split("END:VTIMEZONE")[0] ?? "";
+    expect(newYork).toContain("BEGIN:STANDARD\r\nDTSTART:20261101T020000\r\nTZOFFSETFROM:-0400\r\nTZOFFSETTO:-0500\r\n");
+  });
+});
+
+describe("text a person typed", () => {
+  const plan = (agg: TripAggregate) => present(agg.items.find((i) => i.type === "plan"));
+
+  it("cannot start a new line, whatever kind of line break it holds", () => {
+    const agg = buildFixtureTrip();
+    plan(agg).title = "Lunch\rATTENDEE:mailto:x@example.test\nBEGIN:VEVENT\u2028END:VCALENDAR\u0085DESCRIPTION:hi\r\nX:y\u0000\u0007\u001b[2J\u007f";
+    const text = feedFor(agg, jacob);
+    expect(text.replace(/\r\n/g, "")).not.toMatch(/[\r\n\u0085\u2028\u2029\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/);
+    expect(unfolded(text)).toContain("SUMMARY:Lunch\\nATTENDEE:mailto:x@example.test\\nBEGIN:VEVENT\\nEND:VCALENDAR\\nDESCRIPTION:hi\\nX:y[2J\r\n");
+    expect(unfolded(text)).not.toMatch(/\r\nATTENDEE/);
+    expect(text.split("BEGIN:VEVENT\r\n").length - 1).toBe(eventsOf(feedFor(buildFixtureTrip(), jacob)).length);
+  });
+
+  it("cannot reach the calendar through a place name or an address either", () => {
+    const agg = buildFixtureTrip();
+    const item = plan(agg);
+    item.location = { name: "Cafe\rX-INJECTED:1", address: "1 Road\u2028X-INJECTED:2", city: "Tokyo" };
+    expect(unfolded(feedFor(agg, jacob))).not.toMatch(/\r\nX-INJECTED/);
+  });
+
+  it("leaves a trailing slash on the app address out of every link", () => {
+    for (const appUrl of ["https://trips.test/", "https://trips.test///"]) {
+      const text = unfolded(buildFeed(projectTrip(buildFixtureTrip(), jacob), { ...opts, appUrl }));
+      expect(text).toContain(`Open in Trip planner: https://trips.test/trips/${TRIP_ID}/items/`);
+      expect(text).not.toContain("trips.test//");
+    }
   });
 });
 

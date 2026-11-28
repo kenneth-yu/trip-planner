@@ -59,6 +59,26 @@ describe("the calendar feed, for any trip and any member", () => {
     );
   });
 
+  it("cannot be made to start a new line, or carry a control character, by anything a person types", () => {
+    const risky = fc.string({ unit: fc.constantFrom("a", "b", ",", ";", "\\", "\r", "\n", "\u0085", "\u2028", "\u2029", "\u0000", "\u0007", "\u001b", "\u007f", "X", ":", " "), maxLength: 40 });
+    fc.assert(
+      fc.property(scenario, risky, risky, risky, ({ agg, requester, kind }, title, place, name) => {
+        if (kind !== "member" || !oracleFor(agg, requester).allowed) return;
+        for (const item of agg.items) {
+          item.title = `${item.title}${title}`;
+          item.location = { name: `${item.location?.name ?? ""}${place}`, address: `${item.location?.address ?? ""}${place}`, city: item.location?.city };
+        }
+        const text = buildFeed({ ...projectTrip(agg, requester), trip: { id: agg.trip.id, name: `${agg.trip.name}${name}` } }, opts);
+        expect(text.replace(/\r\n/g, "")).not.toMatch(/[\r\n\u0085\u2028\u2029\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/);
+        for (const line of unfolded(text).split("\r\n")) {
+          if (line === "") continue;
+          expect(line).toMatch(/^(BEGIN|END|VERSION|PRODID|CALSCALE|METHOD|X-WR-CALNAME|REFRESH-INTERVAL|X-PUBLISHED-TTL|TZID|DTSTART|DTEND|TZOFFSETFROM|TZOFFSETTO|TZNAME|UID|DTSTAMP|SUMMARY|LOCATION|DESCRIPTION|CLASS|TRANSP)[:;]/);
+        }
+      }),
+      fcParams(200),
+    );
+  });
+
   it("keeps every line within 75 octets and every event id unique", () => {
     fc.assert(
       fc.property(scenario, ({ agg, requester, kind }) => {

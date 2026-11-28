@@ -17,7 +17,13 @@ const PRODUCT = "-//Trip planner//Calendar subscription//EN";
 const UID_DOMAIN = "trip-planner";
 
 function escapeText(text: string): string {
-  return text.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+  return text
+    .replace(/\r\n|[\r\u0085\u2028\u2029]/g, "\n")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .replace(/\n/g, "\\n");
 }
 
 function fold(line: string): string[] {
@@ -218,7 +224,7 @@ function zonesOf(events: Event[]): Map<Zone, { from: number; to: number }> {
 }
 
 export function buildFeed(view: TripView, opts: FeedOptions): string {
-  const events = eventsFor(view, opts);
+  const events = eventsFor(view, { ...opts, appUrl: opts.appUrl.replace(/\/+$/, "") });
   const stampedAt = stamp(opts.generatedAt);
   const lines = [
     "BEGIN:VCALENDAR",
