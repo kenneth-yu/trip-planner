@@ -57,10 +57,12 @@ export interface GuardOptions {
 const REQUEST_HEADERS = { accept: "text/calendar, text/plain;q=0.9, */*;q=0.1", "user-agent": "trip-planner-calendar-import" };
 const REDIRECTS = new Set([301, 302, 303, 307, 308]);
 
+const WEBCAL = /^webcals?:\/\//i;
+
 function parseTarget(raw: string): URL {
   let url: URL;
   try {
-    url = new URL(raw);
+    url = new URL(raw.trim().replace(WEBCAL, "https://"));
   } catch (e) {
     if (e instanceof TypeError) throw new FetchRefused("invalid");
     throw e;

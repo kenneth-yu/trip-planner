@@ -9,7 +9,7 @@ import { kenny } from "@/server/testing";
 import { POST } from "./route";
 import { PROBLEM_TEXT, ProblemCode, problemFor } from "./problems";
 import { FetchRefused } from "@/server/import/fetch-guard";
-import { InputProblem } from "@/domain/import/problem";
+import { IcsProblem } from "@/domain/import/ics";
 
 const world = vi.hoisted(() => {
   const state: { ctx: ServiceContext | null; user: { id: string; homeZone: string } | null } = { ctx: null, user: null };
@@ -98,6 +98,39 @@ describe("the .ics upload route", () => {
     expect(location(response)).toBe(`/trips/${TRIP_ID}/import?problem=${code}`);
   });
 
+  it("reads an upload with no declared length only up to the cap, then stops", async () => {
+    let pulled = 0;
+    const chunk = new Uint8Array(512 * 1024);
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        if (pulled > 40) controller.close();
+        else controller.enqueue(chunk);
+      },
+    });
+    const init: RequestInit & { duplex: "half" } = {
+      method: "POST",
+      body,
+      duplex: "half",
+      headers: { origin: "https://trips.test", host: "trips.test", "content-type": "multipart/form-data; boundary=x" },
+    };
+    const request = new Request(`https://trips.test/trips/${TRIP_ID}/import/ics`, init);
+    expect(request.headers.get("content-length")).toBeNull();
+    const response = await POST(request, { params: Promise.resolve({ tripId: TRIP_ID }) });
+    expect(location(response)).toBe(`/trips/${TRIP_ID}/import?problem=too_big`);
+    expect(pulled).toBeLessThan(10);
+  });
+
+  it("a body that is not a form goes back to the page, not to an error", async () => {
+    const request = new Request(`https://trips.test/trips/${TRIP_ID}/import/ics`, {
+      method: "POST",
+      body: "not a multipart body",
+      headers: { origin: "https://trips.test", host: "trips.test", "content-type": "multipart/form-data; boundary=x" },
+    });
+    const response = await POST(request, { params: Promise.resolve({ tripId: TRIP_ID }) });
+    expect(location(response)).toBe(`/trips/${TRIP_ID}/import?problem=no_file`);
+  });
+
   it("a link is refused while its rate limit rule does not exist, and nothing is fetched", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     const form = new FormData();
@@ -120,8 +153,8 @@ describe("problem codes", () => {
     expect(problemFor(new FetchRefused("scheme"))).toBe("link_invalid");
     expect(problemFor(new FetchRefused("timeout"))).toBe("link_slow");
     expect(problemFor(new FetchRefused("size"))).toBe("too_big");
-    expect(problemFor(new InputProblem("We could not read that file as a calendar."))).toBe("not_calendar");
-    expect(problemFor(new InputProblem("That calendar is bigger than 2 MB."))).toBe("too_big");
+    expect(problemFor(new IcsProblem("not_calendar"))).toBe("not_calendar");
+    expect(problemFor(new IcsProblem("too_big"))).toBe("too_big");
     expect(problemFor(new Error("database exploded"))).toBeNull();
   });
 });

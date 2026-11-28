@@ -40,7 +40,7 @@ async function refusal(run: () => Promise<unknown>): Promise<FetchRefused> {
 }
 
 describe("which addresses count as public", () => {
-  it.each(["93.184.216.34", "8.8.8.8", "1.1.1.1", "172.15.255.255", "172.32.0.1", "100.63.255.255", "100.128.0.1", "2606:2800:220:1:248:1893:25c8:1946", "2001:4860:4860::8888"])("allows %s", (address) => {
+  it.each(["93.184.216.34", "8.8.8.8", "1.1.1.1", "172.15.255.255", "172.32.0.1", "100.63.255.255", "100.128.0.1", "2606:2800:220:1:248:1893:25c8:1946", "2001:4860:4860::8888", "2a00:1450:4001:81b::200e", "2400:cb00:2049:1::a29f:1804", "3ffe::1", "2001:200::1", "2002:5db8:d822::1", "64:ff9b::5db8:d822"])("allows %s", (address) => {
     expect(isPublicAddress(address)).toBe(true);
   });
 
@@ -86,6 +86,22 @@ describe("which addresses count as public", () => {
     "64:ff9b::a9fe:a9fe",
     "2002:7f00:1::",
     "2002:a9fe:a9fe::1",
+    "64:ff9b:1::1",
+    "64:ff9b:1:ffff::1",
+    "3fff::1",
+    "3fff:0fff:ffff::1",
+    "2001::1",
+    "2001:1::1",
+    "2001:10::1",
+    "2001:20::1",
+    "2620:4f:8000::1",
+    "5f00::1",
+    "100::1",
+    "4000::1",
+    "8000::1",
+    "e000::1",
+    "::2",
+    "1::1",
   ])("refuses %s", (address) => {
     expect(isPublicAddress(address)).toBe(false);
   });
@@ -195,6 +211,27 @@ describe("what the guard sends", () => {
     await fetchCalendar("https://calendar.example.test/trip.ics", { resolve: resolverTo(PUBLIC_V6, PUBLIC), transport });
     expect(seen[0]?.address).toBe(PUBLIC_V6);
     expect(seen[0]?.family).toBe(6);
+  });
+});
+
+describe("webcal links", () => {
+  it.each(["webcal://calendar.example.test/trip.ics", "WEBCAL://calendar.example.test/trip.ics", "webcals://calendar.example.test/trip.ics", "  webcal://calendar.example.test/trip.ics  "])("%j is fetched as https", async (link) => {
+    const { transport, seen } = scripted([textResponse("ok")]);
+    expect(await fetchCalendar(link, { resolve: resolverTo(PUBLIC), transport })).toBe("ok");
+    expect(seen[0]?.url.protocol).toBe("https:");
+    expect(seen[0]?.url.hostname).toBe("calendar.example.test");
+  });
+
+  it.each([
+    ["webcal://127.0.0.1/trip.ics", "address"],
+    ["webcal://user:pw@calendar.example.test/trip.ics", "credentials"],
+    ["webcal://calendar.example.test:8080/trip.ics", "port"],
+  ])("%s gets the same checks as an https link", async (link, reason) => {
+    expect((await refusal(() => fetchCalendar(link, { resolve: resolverTo(PUBLIC), transport: scripted([]).transport }))).reason).toBe(reason);
+  });
+
+  it("a webcal word in the middle of a link is not rewritten", async () => {
+    expect((await refusal(() => fetchCalendar("http://calendar.example.test/?u=webcal://x", { resolve: resolverTo(PUBLIC), transport: scripted([]).transport }))).reason).toBe("scheme");
   });
 });
 

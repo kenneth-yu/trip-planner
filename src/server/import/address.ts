@@ -71,25 +71,37 @@ function v4FromWords(high: number, low: number): string {
   return `${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`;
 }
 
+const V6_NOT_GLOBAL: readonly (readonly [number[], number])[] = [
+  [[0x2001, 0], 23],
+  [[0x2001, 0x0db8], 32],
+  [[0x2001, 0x0020], 28],
+  [[0x2620, 0x004f, 0x8000], 48],
+  [[0x3fff], 20],
+];
+
+function inV6Range(words: number[], [prefix, bits]: readonly [number[], number]): boolean {
+  let remaining = bits;
+  for (let i = 0; remaining > 0; i++) {
+    const want = prefix[i] ?? 0;
+    const have = words[i] ?? 0;
+    const take = Math.min(16, remaining);
+    const mask = (0xffff << (16 - take)) & 0xffff;
+    if ((have & mask) !== (want & mask)) return false;
+    remaining -= take;
+  }
+  return true;
+}
+
 function isPublicV6(address: string): boolean {
   const w = v6ToWords(address);
   if (!w) return false;
   const [a, b, c, d, e, f, g, h] = w;
   if (a === undefined || b === undefined || c === undefined || d === undefined || e === undefined || f === undefined || g === undefined || h === undefined) return false;
-  if (w.every((x) => x === 0)) return false;
-  if (w.slice(0, 7).every((x) => x === 0) && h === 1) return false;
-  if ((a & 0xfe00) === 0xfc00) return false;
-  if ((a & 0xffc0) === 0xfe80) return false;
-  if ((a & 0xffc0) === 0xfec0) return false;
-  if ((a & 0xff00) === 0xff00) return false;
-  if (a === 0x2001 && b === 0x0db8) return false;
-  if (a === 0x2001 && b === 0) return false;
-  if (a === 0x0100 && b === 0 && c === 0 && d === 0) return false;
-  if (a === 0 && b === 0 && c === 0 && d === 0 && e === 0 && f === 0xffff) return isPublicV4(v4FromWords(g, h));
-  if (a === 0 && b === 0 && c === 0 && d === 0 && e === 0 && f === 0) return isPublicV4(v4FromWords(g, h));
+  if (a === 0 && b === 0 && c === 0 && d === 0 && e === 0 && (f === 0xffff || f === 0)) return isPublicV4(v4FromWords(g, h));
   if (a === 0x64 && b === 0xff9b && c === 0 && d === 0 && e === 0 && f === 0) return isPublicV4(v4FromWords(g, h));
   if (a === 0x2002) return isPublicV4(v4FromWords(b, c));
-  return true;
+  if ((a & 0xe000) !== 0x2000) return false;
+  return !V6_NOT_GLOBAL.some((range) => inV6Range(w, range));
 }
 
 export function isPublicAddress(address: string): boolean {

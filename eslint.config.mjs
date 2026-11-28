@@ -28,7 +28,11 @@ const principles = { rules: { "no-comments": noComments } };
 
 const outsideLayer = (layers) => layers.flatMap((l) => [`@/${l}/*`, `**/${l}/*`]);
 
-const icalOnlyInIcs = { name: "ical.js", message: "Import ical.js only in src/domain/import/ics.ts, which turns .ics text into calendar events. Call that module instead. See docs/SECURITY.md, outbound calls." };
+const icalMessage = "Import ical.js only in src/domain/import/ics.ts, which turns .ics text into calendar events. Call that module instead. See docs/SECURITY.md, outbound calls.";
+
+const icalOnlyInIcs = { name: "ical.js", message: icalMessage };
+
+const icalSubpaths = { group: ["ical.js/*", "ical.js/**"], message: icalMessage };
 
 const luxonPath = { name: "luxon", message: "Import DateTime from src/domain/time/luxon." };
 
@@ -69,7 +73,7 @@ export default defineConfig([
       "no-empty": ["error", { allowEmptyCatch: false }],
       "no-useless-catch": "error",
       "no-console": ["error", { allow: ["error"] }],
-      "no-restricted-imports": ["error", { paths: [{ name: "luxon", message: "Import DateTime from src/domain/time/luxon, which turns on throwOnInvalid." }, icalOnlyInIcs] }],
+      "no-restricted-imports": ["error", { paths: [{ name: "luxon", message: "Import DateTime from src/domain/time/luxon, which turns on throwOnInvalid." }, icalOnlyInIcs], patterns: [icalSubpaths] }],
     },
   },
   {
@@ -78,7 +82,7 @@ export default defineConfig([
   },
   {
     files: ["src/domain/**"],
-    rules: { "no-restricted-imports": ["error", { paths: [luxonPath, icalOnlyInIcs], patterns: domainPatterns }] },
+    rules: { "no-restricted-imports": ["error", { paths: [luxonPath, icalOnlyInIcs], patterns: [...domainPatterns, icalSubpaths] }] },
   },
   {
     files: ["src/domain/import/ics.ts"],
@@ -86,7 +90,7 @@ export default defineConfig([
   },
   {
     files: ["src/domain/time/luxon.ts"],
-    rules: { "no-restricted-imports": "off" },
+    rules: { "no-restricted-imports": ["error", { paths: [icalOnlyInIcs], patterns: [icalSubpaths] }] },
   },
   {
     files: ["src/server/**"],
@@ -95,7 +99,7 @@ export default defineConfig([
         "error",
         {
           paths: [luxonPath, icalOnlyInIcs],
-          patterns: [{ group: outsideLayer(["app"]), message: "src/server must not depend on src/app. Move shared code down into src/server or src/domain. See docs/ARCHITECTURE.md, Layers." }],
+          patterns: [icalSubpaths, { group: outsideLayer(["app"]), message: "src/server must not depend on src/app. Move shared code down into src/server or src/domain. See docs/ARCHITECTURE.md, Layers." }],
         },
       ],
     },

@@ -4,8 +4,7 @@ import type { Requester } from "@/domain/types";
 import { consumeRateLimit, RATE_RULES, type RateRule } from "../security/rate-limit";
 import { importCalendarEvents } from "../services/inbox-service";
 import type { ServiceContext } from "../services/context";
-import { requireAggregate } from "../services/trip-service";
-import { NotFound } from "../services/trip-service";
+import { NotFound, requireAggregate } from "../services/trip-service";
 import { fetchCalendarText } from "./https-transport";
 
 export interface IcsOutcome {
@@ -35,6 +34,10 @@ export interface UrlImportDeps {
 }
 
 const URL_RULE_NAME: string = "icsUrl";
+
+export function urlImportAvailable(rules: Record<string, RateRule> = RATE_RULES): boolean {
+  return rules[URL_RULE_NAME] !== undefined;
+}
 
 const defaultDeps: UrlImportDeps = { fetchText: fetchCalendarText, rules: RATE_RULES };
 

@@ -2,9 +2,8 @@ import { describe, expect, it } from "vitest";
 import { fixture, TRAVELERS } from "@/fixtures/december-trip";
 import { toIcs } from "@/testing/ics-fixture";
 import type { CalendarEvent, CalendarEventTime } from "./calendar-event";
-import { MAX_ICS_CHARS, MAX_ICS_EVENTS, parseIcs } from "./ics";
+import { IcsProblem, MAX_ICS_BYTES, MAX_ICS_EVENTS, parseIcs } from "./ics";
 import { planCalendarImport } from "./pipeline";
-import { InputProblem } from "./problem";
 
 const events: CalendarEvent[] = fixture.calendarEvents;
 
@@ -81,6 +80,35 @@ describe("times", () => {
     expect(result.skipped.unreadable_time + result.skipped.no_start).toBe(1);
   });
 
+  it("the fuzzer's first counterexample, an empty start, is skipped and counted", () => {
+    const result = parseIcs("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nDTSTART:\r\nEND:VEVENT\r\nEND:VCALENDAR");
+    expect(result.events).toEqual([]);
+    expect(result.skipped.unreadable_time).toBe(1);
+  });
+
+  it.each(["SUMMARY;VALUE=DATE-TIME:", "SUMMARY;VALUE=DATE:garbage", "UID;VALUE=DURATION:", "DESCRIPTION;VALUE=BINARY;ENCODING=BASE64:!!!", "STATUS;VALUE=DATE-TIME:"])("a text field written with a strange type (%s) does not crash the import", (line) => {
+    const result = parseIcs(["BEGIN:VCALENDAR", "BEGIN:VEVENT", "UID:u", "DTSTART:20261205T100000Z", "DTEND:20261205T110000Z", line, "END:VEVENT", "END:VCALENDAR"].join("\r\n"));
+    expect(result.events.length + Object.values(result.skipped).reduce((a, b) => a + b, 0)).toBe(1);
+  });
+
+  it("a value the calendar library cannot read refuses the whole file as not a calendar", () => {
+    const text = ["BEGIN:VCALENDAR", "BEGIN:VEVENT", "UID:u", "DTSTART:20261205T100000Z", "LOCATION;VALUE=PERIOD:", "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+    expect(() => parseIcs(text)).toThrow(expect.objectContaining({ code: "not_calendar" }));
+  });
+
+  it.each([
+    ["a month that does not exist", "DTSTART:20261305T100000Z"],
+    ["a day that does not exist", "DTSTART:20260230T100000Z"],
+    ["an hour that does not exist", "DTSTART:20261205T250000Z"],
+    ["a year before 1970", "DTSTART:19000101T000000Z"],
+    ["a year after 2100", "DTSTART:30000101T000000Z"],
+    ["a date with a time zone and no time", "DTSTART;VALUE=DATE;TZID=Asia/Tokyo:2026"],
+  ])("%s is skipped and counted, not guessed", (_name, start) => {
+    const result = parseIcs(["BEGIN:VCALENDAR", "BEGIN:VEVENT", "UID:u", start, "SUMMARY:x", "END:VEVENT", "END:VCALENDAR"].join("\r\n"));
+    expect(result.events).toEqual([]);
+    expect(result.skipped.unreadable_time).toBe(1);
+  });
+
   it("a zone we do not know is skipped and counted, never guessed", () => {
     const result = parseIcs(wrap(["DTSTART;TZID=Eastern Standard Time:20261202T052500", "DTEND;TZID=Eastern Standard Time:20261202T070000"]));
     expect(result.events).toEqual([]);
@@ -132,11 +160,22 @@ describe("files that are not calendars", () => {
     ["a calendar with no events", "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR"],
     ["an unterminated calendar", "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nSUMMARY:x"],
   ])("%s is a plain refusal", (_name, text) => {
-    expect(() => parseIcs(text)).toThrow(InputProblem);
+    expect(() => parseIcs(text)).toThrow(IcsProblem);
+  });
+
+  it("counts bytes, not characters: 1.2 million two byte characters is over 2 MB", () => {
+    const text = `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nSUMMARY:${"é".repeat(1_200_000)}\r\nEND:VEVENT\r\nEND:VCALENDAR`;
+    expect(text.length).toBeLessThan(MAX_ICS_BYTES);
+    expect(() => parseIcs(text)).toThrow(expect.objectContaining({ code: "too_big" }));
+  });
+
+  it("says which refusal it was with a code", () => {
+    expect(() => parseIcs("just words")).toThrow(expect.objectContaining({ code: "not_calendar" }));
+    expect(() => parseIcs("x".repeat(MAX_ICS_BYTES + 1))).toThrow(expect.objectContaining({ code: "too_big" }));
   });
 
   it("refuses more than 2 MB of text", () => {
-    expect(() => parseIcs("x".repeat(MAX_ICS_CHARS + 1))).toThrow("That calendar is bigger than 2 MB.");
+    expect(() => parseIcs("x".repeat(MAX_ICS_BYTES + 1))).toThrow("That calendar is bigger than 2 MB.");
   });
 
   it("the refusal never echoes the file", () => {

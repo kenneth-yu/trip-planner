@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { z } from "zod";
 import styles from "../../../ui/page.module.css";
 import { loadTripPage } from "@/server/web";
+import { urlImportAvailable } from "@/server/import/ics-import";
 import { PROBLEM_TEXT, ProblemCode } from "./ics/problems";
 
 export const metadata: Metadata = { title: "Import a calendar", robots: { index: false, follow: false } };
@@ -53,19 +54,21 @@ export default async function ImportPage({ params, searchParams }: PageProps<"/t
           <button type="submit">Import file</button>
         </form>
       </section>
-      <section className={styles.section}>
-        <h3 className={styles.sectionTitle}>From a link</h3>
-        <form method="post" action={action} encType="multipart/form-data">
-          <p>
-            <label htmlFor="ics-link">Calendar link (starts with https://)</label>
-          </p>
-          <p>
-            <input id="ics-link" type="url" name="link" autoComplete="off" spellCheck={false} />
-          </p>
-          <button type="submit">Import link</button>
-        </form>
-        <p className={styles.muted}>The link is used once to fetch the calendar. It is not saved.</p>
-      </section>
+      {urlImportAvailable() && (
+        <section className={styles.section}>
+          <h3 className={styles.sectionTitle}>From a link</h3>
+          <form method="post" action={action} encType="multipart/form-data">
+            <p>
+              <label htmlFor="ics-link">Calendar link (starts with https:// or webcal://)</label>
+            </p>
+            <p>
+              <input id="ics-link" type="url" name="link" autoComplete="off" spellCheck={false} />
+            </p>
+            <button type="submit">Import link</button>
+          </form>
+          <p className={styles.muted}>The link is used once to fetch the calendar. It is not saved.</p>
+        </section>
+      )}
       <p className={styles.muted}>Everything imported goes to the review inbox first. Nothing is added to the trip until you approve it.</p>
     </div>
   );

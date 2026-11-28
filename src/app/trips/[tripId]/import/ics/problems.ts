@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { InputProblem } from "@/domain/import/problem";
+import { IcsProblem } from "@/domain/import/ics";
 import { FetchRefused, type RefusalReason } from "@/server/import/fetch-guard";
 import { TooManyUrlImports, UrlImportUnavailable } from "@/server/import/ics-import";
 
@@ -37,6 +37,6 @@ export function problemFor(error: unknown): ProblemCode | null {
   if (error instanceof FetchRefused) return REFUSAL_CODE[error.reason];
   if (error instanceof UrlImportUnavailable) return "link_off";
   if (error instanceof TooManyUrlImports) return "too_many";
-  if (error instanceof InputProblem) return error.message.includes("2 MB") ? "too_big" : "not_calendar";
+  if (error instanceof IcsProblem) return error.code;
   return null;
 }

@@ -52,11 +52,19 @@ test("a file that is not a calendar, and an empty form, say so in plain words", 
   expect(violations.filter((v) => v.impact === "serious" || v.impact === "critical")).toEqual([]);
 });
 
-test("a link is not imported until its rate limit rule exists, and nothing leaks into the address bar", async ({ pageSignedInAs }) => {
+test("the link form is not shown until its rate limit rule exists, so no control always refuses", async ({ pageSignedInAs }) => {
   const kenny = await pageSignedInAs("kenny", `/trips/${CHICAGO_TRIP}/import`);
-  await kenny.getByLabel(/Calendar link/).fill("https://calendar.example.test/private/SECRETTOKEN.ics");
-  await kenny.getByRole("button", { name: "Import link" }).click();
-  await expect(kenny.getByRole("alert")).toHaveText("Importing from a link is not turned on yet. Upload the file instead.");
-  expect(kenny.url()).not.toContain("SECRETTOKEN");
-  expect(await kenny.content()).not.toContain("SECRETTOKEN");
+  await expect(kenny.getByLabel(/Calendar file/)).toBeVisible();
+  await expect(kenny.getByLabel(/Calendar link/)).toHaveCount(0);
+  await expect(kenny.getByRole("button", { name: "Import link" })).toHaveCount(0);
+});
+
+test("the import page is one tap from the add form and from an empty inbox", async ({ pageSignedInAs }) => {
+  const kenny = await pageSignedInAs("kenny", `/trips/${CHICAGO_TRIP}/add`);
+  await kenny.getByRole("link", { name: "Import a calendar" }).click();
+  await expect(kenny).toHaveURL(new RegExp(`/trips/${CHICAGO_TRIP}/import$`));
+  await expect(kenny.getByRole("heading", { name: "Import a calendar" })).toBeVisible();
+  await kenny.goto(`/trips/00000000-0000-4000-8300-000000000101/inbox`);
+  await kenny.getByRole("link", { name: "Import a calendar" }).click();
+  await expect(kenny.getByRole("heading", { name: "Import a calendar" })).toBeVisible();
 });

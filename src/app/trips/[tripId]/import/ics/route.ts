@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { currentUser } from "@/server/auth/session";
 import { requestContext } from "@/server/app-context";
-import { MAX_ICS_CHARS } from "@/domain/import/ics";
+import { MAX_ICS_BYTES } from "@/domain/import/ics";
 import { importIcsText, importIcsUrl } from "@/server/import/ics-import";
 import { NOT_ON_ACCOUNT_PATH } from "@/server/web";
 import { NotFound } from "@/server/services/trip-service";
@@ -11,8 +11,43 @@ import { problemFor, type ProblemCode } from "./problems";
 
 export const dynamic = "force-dynamic";
 
-const MAX_BODY_BYTES = MAX_ICS_CHARS * 2 + 64 * 1024;
+const MAX_BODY_BYTES = MAX_ICS_BYTES + 64 * 1024;
 const TripId = z.string().uuid();
+
+async function readCapped(request: Request, maxBytes: number): Promise<Uint8Array<ArrayBuffer> | null> {
+  const reader = request.body?.getReader();
+  if (!reader) return new Uint8Array(0);
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
+async function readForm(request: Request): Promise<FormData | "too_big" | "unreadable"> {
+  const bytes = await readCapped(request, MAX_BODY_BYTES);
+  if (bytes === null) return "too_big";
+  try {
+    return await new Response(bytes, { headers: { "content-type": request.headers.get("content-type") ?? "" } }).formData();
+  } catch (e) {
+    if (e instanceof TypeError) return "unreadable";
+    throw e;
+  }
+}
 
 function redirectTo(path: string): Response {
   return new Response(null, { status: 303, headers: { Location: path } });
@@ -38,7 +73,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ tri
   if (!user) return redirectTo(`/sign-in?next=${encodeURIComponent(`/trips/${tripId}/import`)}`);
   const length = Number(request.headers.get("content-length"));
   if (Number.isFinite(length) && length > MAX_BODY_BYTES) return problem(tripId, "too_big");
-  const form = await request.formData();
+  const form = await readForm(request);
+  if (form === "too_big") return problem(tripId, "too_big");
+  if (form === "unreadable") return problem(tripId, "no_file");
   const ctx = await requestContext();
   const requester: Requester = { kind: "member", userId: user.id, homeZone: user.homeZone };
   const link = form.get("link");
@@ -49,7 +86,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tri
       return redirectTo(`/trips/${tripId}/import?done=${outcome.count}&skipped=${outcome.skipped}&repeating=${outcome.repeating}`);
     }
     if (!(file instanceof File) || file.size === 0) return problem(tripId, "no_file");
-    if (file.size > MAX_ICS_CHARS) return problem(tripId, "too_big");
+    if (file.size > MAX_ICS_BYTES) return problem(tripId, "too_big");
     const outcome = await importIcsText(ctx, tripId, requester, await file.text(), "Calendar file");
     return redirectTo(`/trips/${tripId}/import?done=${outcome.count}&skipped=${outcome.skipped}&repeating=${outcome.repeating}`);
   } catch (e) {

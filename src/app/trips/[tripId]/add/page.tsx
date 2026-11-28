@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import styles from "../../../ui/page.module.css";
 import { loadTripPage } from "@/server/web";
@@ -24,6 +25,9 @@ export default async function AddPage({ params }: PageProps<"/trips/[tripId]/add
         submission={randomUUID()}
         backHref={`/trips/${tripId}`}
       />
+      <p className={styles.muted}>
+        Have a calendar file? <Link href={`/trips/${tripId}/import`}>Import a calendar</Link>.
+      </p>
     </div>
   );
 }

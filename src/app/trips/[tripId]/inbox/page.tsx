@@ -1,3 +1,4 @@
+import Link from "next/link";
 import styles from "../../../ui/page.module.css";
 import { loadTripPage } from "@/server/web";
 import { listInbox } from "@/server/services/inbox-service";
@@ -25,7 +26,11 @@ export default async function InboxPage({ params }: PageProps<"/trips/[tripId]/i
     <div className={styles.narrow}>
       <InboxResults>
         {clean.length > 0 && <AddAllForm tripId={tripId} entryIds={clean} />}
-        {!entries.length && <p className={styles.muted}>Nothing waiting. Items from calendars and assistants show up here first.</p>}
+        {!entries.length && (
+          <p className={styles.muted}>
+            Nothing waiting. Items from calendars and assistants show up here first. <Link href={`/trips/${tripId}/import`}>Import a calendar</Link>.
+          </p>
+        )}
       <ul className={styles.list}>
         {entries.map((e) => {
           const p = e.proposed;
