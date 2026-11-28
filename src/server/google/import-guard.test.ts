@@ -21,6 +21,25 @@ describe("the fake Google for the end to end tests", () => {
   });
 });
 
+describe("the import guard with the fake flags set", () => {
+  const page = "/trips/x/import/google";
+
+  it("opens the import for the end to end tests when there is no real Google configuration", () => {
+    expect(importIsRateLimited("GET", page, e2e)).toBe(true);
+    expect(importIsRateLimited("POST", page, e2e)).toBe(true);
+  });
+
+  it("fails closed, staying shut until a rate rule covers it, when real Google credentials are present", () => {
+    const real = { ...e2e, GOOGLE_CLIENT_ID: "client", GOOGLE_CLIENT_SECRET: "secret" };
+    expect(importIsRateLimited("GET", page, real)).toBe(false);
+    expect(importIsRateLimited("POST", page, real)).toBe(false);
+  });
+
+  it("fails closed on a production deployment even with the flags set", () => {
+    expect(importIsRateLimited("GET", page, { ...e2e, VERCEL_ENV: "production" })).toBe(false);
+  });
+});
+
 describe("the import guard in this process", () => {
   it("opens nothing without a rate rule when the fake is off", () => {
     expect(importIsRateLimited("GET", "/trips/x/import/google")).toBe(false);

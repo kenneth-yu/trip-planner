@@ -31,6 +31,6 @@ export function importPagePath(tripId: string): string {
   return `/trips/${tripId}/import/google`;
 }
 
-export function importIsRateLimited(method: string, path: string): boolean {
-  return fakeGoogleActive() || ruleForRequest(method, path) !== null;
+export function importIsRateLimited(method: string, path: string, env: Env = process.env): boolean {
+  return fakeGoogleActive(env) || ruleForRequest(method, path) !== null;
 }
