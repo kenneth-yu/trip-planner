@@ -12,11 +12,11 @@ export interface GoogleOAuthConfig {
   redirectUri: string;
 }
 
-export function googleOAuthConfig(appUrl: string): GoogleOAuthConfig | null {
+export function googleOAuthConfig(appUrl: string, callbackPath = "/api/google/callback"): GoogleOAuthConfig | null {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   if (!clientId || !clientSecret) return null;
-  return { clientId, clientSecret, redirectUri: `${appUrl}/api/google/callback` };
+  return { clientId, clientSecret, redirectUri: `${appUrl}${callbackPath}` };
 }
 
 const OAuthStateSchema = z.object({ userId: z.string(), tripId: z.string(), exp: z.number() });
@@ -41,13 +41,13 @@ export function openState(value: string | null, userId: string, nowMs = Date.now
   return state.userId === userId && state.exp > nowMs ? state : null;
 }
 
-export function authorizationUrl(cfg: GoogleOAuthConfig, scope: string, state: string, loginHint?: string): string {
+export function authorizationUrl(cfg: GoogleOAuthConfig, scope: string, state: string, loginHint?: string, options: { offline?: boolean } = {}): string {
   const params = new URLSearchParams({
     client_id: cfg.clientId,
     redirect_uri: cfg.redirectUri,
     response_type: "code",
     scope: `openid email ${scope}`,
-    access_type: "offline",
+    access_type: options.offline === false ? "online" : "offline",
     prompt: "consent",
     include_granted_scopes: "false",
     state,
@@ -56,18 +56,18 @@ export function authorizationUrl(cfg: GoogleOAuthConfig, scope: string, state: s
   return `${AUTH_URL}?${params}`;
 }
 
-const TokenResponseSchema = z.object({
+export const TokenResponseSchema = z.object({
   access_token: z.string(),
   expires_in: z.number(),
   refresh_token: z.string().optional(),
   scope: z.string(),
   id_token: z.string().optional(),
 });
-type TokenResponse = z.infer<typeof TokenResponseSchema>;
+export type TokenResponse = z.infer<typeof TokenResponseSchema>;
 
 const IdTokenClaims = z.object({ email: z.string().optional() });
 
-async function tokenRequest(body: Record<string, string>, fetchImpl: typeof fetch): Promise<TokenResponse> {
+export async function tokenRequest(body: Record<string, string>, fetchImpl: typeof fetch): Promise<TokenResponse> {
   const res = await fetchImpl(TOKEN_URL, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(body) });
   if (!res.ok) {
     const text = await res.text();
