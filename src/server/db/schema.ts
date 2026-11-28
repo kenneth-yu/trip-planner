@@ -273,3 +273,38 @@ export const geocodeCache = pgTable("geocode_cache", {
   hit: jsonb("hit").$type<{ lat: number; lng: number; label: string } | null>(),
   createdAt: created(),
 });
+
+export const calendarFeeds = pgTable(
+  "calendar_feeds",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tripId: uuid("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull().unique(),
+    createdAt: created(),
+    lastReadAt: ts("last_read_at"),
+    revokedAt: ts("revoked_at"),
+  },
+  (t) => [index("calendar_feeds_trip_user_idx").on(t.tripId, t.userId)],
+);
+
+export const ideas = pgTable(
+  "ideas",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tripId: uuid("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    location: jsonb("location").$type<Location | null>(),
+    city: text("city"),
+    note: text("note").notNull().default(""),
+    visibility: text("visibility", { enum: ["everyone", "only_me", "specific"] }).notNull().default("everyone"),
+    visibleToUserIds: jsonb("visible_to_user_ids").$type<string[]>().notNull().default([]),
+    state: text("state", { enum: ["open", "done", "dropped"] }).notNull().default("open"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    doneBy: uuid("done_by").references(() => users.id, { onDelete: "set null" }),
+    doneAt: ts("done_at"),
+    createdAt: created(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [index("ideas_trip_state_idx").on(t.tripId, t.state)],
+);
