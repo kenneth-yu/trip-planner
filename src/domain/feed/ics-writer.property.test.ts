@@ -26,14 +26,15 @@ describe("the calendar feed, for any trip and any member", () => {
     );
   });
 
-  it("has one event for each visible item, each busy block and each deadline the member may see, and no other kind of line", () => {
+  it("has one event for each visible booked item, each busy block and each deadline the member may see, and no other kind of line", () => {
     fc.assert(
       fc.property(scenario, ({ agg, requester, kind }) => {
         if (kind !== "member" || !oracleFor(agg, requester).allowed) return;
         const view = projectTrip(agg, requester);
         const text = buildFeed(view, opts);
-        const deadlines = view.permissions.canSeeDeadlines ? view.items.reduce((sum, item) => sum + item.deadlines.length, 0) : 0;
-        expect(text.split("BEGIN:VEVENT\r\n").length - 1).toBe(view.items.length + view.busy.length + deadlines);
+        const booked = view.items.filter((item) => item.booked);
+        const deadlines = view.permissions.canSeeDeadlines ? booked.reduce((sum, item) => sum + item.deadlines.length, 0) : 0;
+        expect(text.split("BEGIN:VEVENT\r\n").length - 1).toBe(booked.length + view.busy.length + deadlines);
         for (const line of unfolded(text).split("\r\n")) {
           if (line === "") continue;
           expect(line).toMatch(/^(BEGIN|END|VERSION|PRODID|CALSCALE|METHOD|X-WR-CALNAME|REFRESH-INTERVAL|X-PUBLISHED-TTL|TZID|DTSTART|DTEND|TZOFFSETFROM|TZOFFSETTO|TZNAME|UID|DTSTAMP|SUMMARY|LOCATION|DESCRIPTION|CLASS|TRANSP)[:;]/);

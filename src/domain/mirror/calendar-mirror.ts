@@ -1,3 +1,4 @@
+import { calendarItems } from "../visibility/calendar-items";
 import type { TripView, VisibleItem } from "../visibility/project";
 import { clockSentence, flightCities } from "../time/flight-card";
 import { formatFlightDuration, toLocal } from "../time/format";
@@ -99,7 +100,7 @@ function locationFor(item: VisibleItem): string | undefined {
 
 export function buildMirrorEvents(view: TripView, opts: MirrorOptions): DesiredEvent[] {
   const props = (key: string) => ({ private: { tripPlannerKey: key, tripId: view.trip.id } });
-  const events: DesiredEvent[] = view.items.filter((item) => item.booked).map((item) => {
+  const events: DesiredEvent[] = calendarItems(view).map((item) => {
     const key = `item:${item.id}`;
     const event: MirrorEvent = {
       summary: summaryFor(item),
