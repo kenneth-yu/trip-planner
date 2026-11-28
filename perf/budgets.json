@@ -67,6 +67,9 @@
     "/trips/[tripId]/deadlines": {
       "budgetGzipBytes": 150000
     },
+    "/trips/[tripId]/import": {
+      "budgetGzipBytes": 154000
+    },
     "/trips/[tripId]/inbox": {
       "budgetGzipBytes": 151000
     },
