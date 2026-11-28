@@ -191,6 +191,36 @@ describe("what is never in the feed", () => {
   });
 });
 
+describe("items that are not booked yet", () => {
+  function withDraft(): TripAggregate {
+    const agg = buildFixtureTrip();
+    const base = present(agg.items.find((i) => i.type === "plan"));
+    agg.items.push({ ...base, id: "draft-1", title: "Dinner idea DRAFT-MARK", booked: false, start: fromLocal("2026-12-03T19:00", "Asia/Tokyo"), end: fromLocal("2026-12-03T21:00", "Asia/Tokyo"), location: { name: "DRAFT-PLACE", city: "Tokyo" }, deadlines: [] });
+    return agg;
+  }
+
+  it("never appear in the feed, not even for the person who can see them in the app", () => {
+    for (const who of [kenny, jacob]) {
+      const text = unfolded(feedFor(withDraft(), who));
+      expect(text).not.toMatch(/DRAFT-MARK|DRAFT-PLACE|draft-1/);
+    }
+    expect(unfolded(feedFor(buildFixtureTrip(), jacob))).toContain("SUMMARY:NH159 to Tokyo");
+  });
+
+  it("appear once they are booked", () => {
+    const agg = withDraft();
+    present(agg.items.find((i) => i.id === "draft-1")).booked = true;
+    expect(unfolded(feedFor(agg, jacob))).toContain("DRAFT-MARK");
+  });
+
+  it("do not bring their deadlines either", () => {
+    const agg = withDraft();
+    const draft = present(agg.items.find((i) => i.id === "draft-1"));
+    draft.deadlines = [{ id: "dl-draft", itemId: "draft-1", kind: "free_cancellation", at: fromLocal("2026-12-01T10:00", "Asia/Tokyo"), consequence: "x", source: "manual", confirmedBy: null }];
+    expect(unfolded(feedFor(agg, jacob))).not.toMatch(/dl-draft|DRAFT-MARK/);
+  });
+});
+
 describe("hidden items and busy blocks", () => {
   function withHidden(showAsBusy: boolean): TripAggregate {
     const agg = buildFixtureTrip();

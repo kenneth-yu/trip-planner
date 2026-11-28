@@ -4,6 +4,7 @@ import { formatClock, instantMs, toLocal } from "../time/format";
 import { itemHeading } from "../time/item-heading";
 import { DateTime } from "../time/luxon";
 import type { Zone, ZonedTime } from "../types";
+import { calendarItems } from "../visibility/calendar-items";
 import type { TripView, VisibleItem } from "../visibility/project";
 
 export interface FeedOptions {
@@ -155,7 +156,8 @@ function flightDescription(item: VisibleItem, appUrl: string): string {
 
 function eventsFor(view: TripView, opts: FeedOptions): Event[] {
   const events: Event[] = [];
-  for (const item of view.items) {
+  const booked = calendarItems(view);
+  for (const item of booked) {
     const uid = `item-${item.id}@${UID_DOMAIN}`;
     if (item.type === "stay") {
       const start = toLocal(item.start);
@@ -177,7 +179,7 @@ function eventsFor(view: TripView, opts: FeedOptions): Event[] {
     events.push({ uid: `busy-${hash(`${block.start.at}|${block.end.at}`)}@${UID_DOMAIN}`, summary: "Busy", start: block.start, end: block.end, busy: true });
   }
   if (view.permissions.canSeeDeadlines) {
-    for (const item of view.items) {
+    for (const item of booked) {
       for (const deadline of item.deadlines) {
         const end: ZonedTime = { at: new Date(instantMs(deadline.at) + DEADLINE_MINUTES * 60_000).toISOString(), zone: deadline.at.zone };
         events.push({
