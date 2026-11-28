@@ -2,12 +2,12 @@ export const TIP_KINDS = ["airport", "bags", "sleep", "arrival", "border"] as co
 
 export type TipKind = (typeof TIP_KINDS)[number];
 
-export const LISTED_TIP_KINDS = ["airport", "bags"] as const;
+export const LISTED_TIP_KINDS = ["airport", "bags", "sleep"] as const;
 
 export const TIP_KIND_LABELS: Record<TipKind, string> = {
   airport: "When to leave for the airport",
-  bags: "Storing bags between check-in and check-out",
-  sleep: "Sleep and time zone changes",
+  bags: "Storing bags around check-in and check-out",
+  sleep: "Sleep on long flights",
   arrival: "Plans right after a long flight",
   border: "Border crossings",
 };

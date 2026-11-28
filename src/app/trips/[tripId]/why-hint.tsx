@@ -10,7 +10,7 @@ export function WhyHint({ hint, why }: { hint: string; why: string }) {
     <div>
       <p className={styles.hint}>
         {hint}{" "}
-        <button type="button" className={styles.why} aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)}>
+        <button type="button" className={styles.why} aria-expanded={open} aria-controls={id} aria-label={`Why? ${hint}`} onClick={() => setOpen((o) => !o)}>
           Why?
         </button>
       </p>
