@@ -47,7 +47,7 @@ export async function addItem(_prev: FormState, form: FormData): Promise<FormSta
   const submission = Submission.safeParse(entries.find(([k]) => k === "submission")?.[1]);
   let landing: string;
   try {
-    const item = await quickAddItem(ctx, tripId, requester, parsed.input, parsed.sharing, { idempotencyKey: submission.success ? submission.data : undefined });
+    const item = await quickAddItem(ctx, tripId, requester, parsed.input, parsed.sharing, { idempotencyKey: submission.success ? submission.data : undefined, endEstimated: parsed.endEstimated });
     landing = `/trips/${tripId}?day=${localDateKey(item.start)}&added=${item.id}`;
   } catch (e) {
     if (e instanceof UnknownTraveler) return { errors: {}, message: e.message, values: entries };

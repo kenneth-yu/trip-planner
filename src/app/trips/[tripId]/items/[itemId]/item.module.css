@@ -205,3 +205,24 @@
     width: auto;
   }
 }
+
+.quietEdit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  width: 100%;
+  padding: 10px 16px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-decoration: none;
+}
+
+@media (min-width: 1000px) {
+  .quietEdit {
+    width: auto;
+  }
+}

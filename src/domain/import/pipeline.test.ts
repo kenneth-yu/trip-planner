@@ -86,7 +86,7 @@ describe("importing on top of the reviewed trip", () => {
   const first = planCalendarImport(events, [], ctx);
   const existing = first
     .filter((e) => !e.proposed.title.startsWith("Stay at"))
-    .map((e, i) => ({ ...e.proposed, id: `existing-${i}`, deadlines: [], flags: e.proposed.problems, visibleToUserIds: [], createdBy: null, updatedBy: null, createdAt: "", updatedAt: "", tripId: "t", visibility: "everyone" as const, showAsBusy: false }));
+    .map((e, i) => ({ ...e.proposed, id: `existing-${i}`, deadlines: [], flags: e.proposed.problems, visibleToUserIds: [], createdBy: null, updatedBy: null, createdAt: "", updatedAt: "", tripId: "t", visibility: "everyone" as const, showAsBusy: false, booked: true }));
   const again: InboxEntryDraft[] = planCalendarImport(events, existing, ctx);
 
   it("every re-imported record matches what is already there", () => {

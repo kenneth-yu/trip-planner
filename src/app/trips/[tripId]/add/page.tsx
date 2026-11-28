@@ -24,6 +24,7 @@ export default async function AddPage({ params, searchParams }: PageProps<"/trip
         initial={initial}
         action={addItem}
         hint={placeHint}
+        defaultBooked={view.items.some((i) => i.booked)}
         canChangeSharing
         submission={randomUUID()}
         backHref={`/trips/${tripId}`}

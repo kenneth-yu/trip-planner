@@ -9,6 +9,7 @@ interface DemoItem {
   by?: UserKey;
   visibility?: Visibility;
   showAsBusy?: boolean;
+  booked?: boolean;
   status?: ItemStatus;
 }
 
@@ -138,6 +139,7 @@ export function buildDemoTrip(spec: DemoTripSpec): TripAggregate {
       visibility: demo.visibility ?? "everyone",
       visibleToUserIds: [],
       showAsBusy: demo.showAsBusy ?? false,
+      booked: demo.booked ?? true,
       status: demo.status ?? p.status,
       notes: p.notes,
       flags: p.problems,
