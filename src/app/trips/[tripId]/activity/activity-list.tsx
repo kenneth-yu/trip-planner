@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef } from "react";
+import { useFormStatus } from "react-dom";
 import Link from "next/link";
 import pageStyles from "../../../ui/page.module.css";
 import styles from "./activity.module.css";
@@ -8,8 +9,17 @@ import { undoAction } from "./actions";
 import { noUndo } from "./undo-state";
 import type { Group } from "./describe";
 
+function UndoButton({ name }: { name: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <button className="quiet" aria-label={name} disabled={pending}>
+      {pending ? "Undoing" : "Undo"}
+    </button>
+  );
+}
+
 export function ActivityList({ tripId, groups, olderHref }: { tripId: string; groups: Group[]; olderHref: string | null }) {
-  const [state, action, pending] = useActionState(undoAction, noUndo);
+  const [state, action] = useActionState(undoAction, noUndo);
   const status = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
     if (state.parts.length > 0) status.current?.focus();
@@ -45,9 +55,7 @@ export function ActivityList({ tripId, groups, olderHref }: { tripId: string; gr
                   <form action={action}>
                     <input type="hidden" name="tripId" value={tripId} />
                     <input type="hidden" name="activityId" value={row.id} />
-                    <button className="quiet" aria-label={row.undoName} disabled={pending}>
-                      {pending ? "Undoing" : "Undo"}
-                    </button>
+                    <UndoButton name={row.undoName} />
                   </form>
                 )}
               </li>
@@ -57,7 +65,7 @@ export function ActivityList({ tripId, groups, olderHref }: { tripId: string; gr
       ))}
       {olderHref && (
         <p>
-          <Link className="quiet" href={olderHref}>
+          <Link className="quiet" href={olderHref} scroll={false}>
             Show older
           </Link>
         </p>

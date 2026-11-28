@@ -107,6 +107,27 @@ describe("the activity page", () => {
   });
 });
 
+describe("undo lines in the log", () => {
+  it("name whose change was undone, what was brought back and what was removed", async () => {
+    const ctx = present(world.ctx);
+    const flight = await flightOf();
+    await updateItem(ctx, TRIP_ID, flight.id, jacob, { title: "Jacob's edit" });
+    const edit = present((await listActivityLines(ctx, TRIP_ID, kenny)).lines.find((l) => l.kind === "updated"));
+    await undoAction(noUndo, form({ tripId: TRIP_ID, activityId: edit.id }));
+    const stay = present((await getTripView(ctx, TRIP_ID, kenny)).items.find((i) => i.title === "Hotel Resol Ueno"));
+    await removeItem(ctx, TRIP_ID, stay.id, jacob);
+    const gone = present((await listActivityLines(ctx, TRIP_ID, kenny)).lines.find((l) => l.kind === "deleted"));
+    await undoAction(noUndo, form({ tripId: TRIP_ID, activityId: gone.id }));
+    const added = await quickAddItem(ctx, TRIP_ID, jacob, { type: "plan", title: "Jantzen Tailor", city: "Hong Kong", startLocal: "2026-12-05T17:00", endLocal: "2026-12-05T18:30" });
+    const made = present((await listActivityLines(ctx, TRIP_ID, kenny)).lines.find((l) => l.kind === "created" && l.itemId === added.id));
+    await undoAction(noUndo, form({ tripId: TRIP_ID, activityId: made.id }));
+    const page = (await html()).replace(/<[^>]+>/g, "");
+    expect(page).toContain("You undid Jacob&#x27;s change to");
+    expect(page).toContain("You brought back Hotel Resol Ueno.");
+    expect(page).toContain("You removed Jantzen Tailor, which Jacob added.");
+  });
+});
+
 describe("undoing from the page", () => {
   it("puts the item back and says so", async () => {
     const ctx = present(world.ctx);

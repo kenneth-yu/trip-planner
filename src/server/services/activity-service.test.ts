@@ -125,6 +125,23 @@ describe("activity lines", () => {
     expect(logged.join(" ")).not.toMatch(/nonsense|CX509/);
   });
 
+  it("says who an undo undid, from the entry it reverted", async () => {
+    const { ctx, flight } = await setup();
+    await updateItem(ctx, TRIP_ID, flight.id, jacob, { title: "Jacob's edit" });
+    const edit = present((await listActivityLines(ctx, TRIP_ID, kenny)).lines.find((l) => l.kind === "updated"));
+    await undoActivity(ctx, TRIP_ID, kenny, edit.id);
+    const [undid] = (await listActivityLines(ctx, TRIP_ID, kenny)).lines;
+    expect(undid).toMatchObject({ kind: "undone", undid: { kind: "updated", by: "Jacob" } });
+  });
+
+  it("calls an assistant's change from an AI assistant and never names its label", async () => {
+    const { ctx, db, flight } = await setup();
+    await insertActivity(db, { tripId: TRIP_ID, actorId: USERS.jacob.id, action: "updated", itemId: flight.id, via: "assistant:Jacob's Claude", before: flight, after: { ...flight, title: "By assistant" } });
+    const [line] = (await listActivityLines(ctx, TRIP_ID, kenny)).lines;
+    expect(line.via).toBe("from an AI assistant");
+    expect(JSON.stringify(line)).not.toContain("Claude");
+  });
+
   it("shows the newest fifty and says there is more", async () => {
     const { ctx, db, flight } = await setup();
     for (let i = 0; i < 55; i++) await insertActivity(db, { tripId: TRIP_ID, actorId: USERS.kenny.id, action: "updated", itemId: flight.id, before: flight, after: { ...flight, title: `T${i}` } });
@@ -198,7 +215,8 @@ describe("undo", () => {
     const plan = await quickAddItem(ctx, TRIP_ID, jacob, { type: "plan", title: "Dinner", city: "Tokyo", startLocal: "2026-12-04T19:00", endLocal: "2026-12-04T21:00" });
     await updateItem(ctx, TRIP_ID, plan.id, jacob, { visibility: "specific", visibleToUserIds: [USERS.kenny.id, USERS.jacob.id] });
     const entry = present((await listActivityLines(ctx, TRIP_ID, kenny)).lines.find((l) => l.kind === "updated" && l.title === "Dinner"));
-    expect(entry.canUndo).toBe(true);
+    expect(entry.canUndo).toBe(false);
+    expect(present((await listActivityLines(ctx, TRIP_ID, jacob)).lines.find((l) => l.id === entry.id)).canUndo).toBe(true);
     await expect(undoActivity(ctx, TRIP_ID, kenny, entry.id)).rejects.toThrow("Only the person who added this can change who sees it.");
     expect(present((await getTripView(ctx, TRIP_ID, kenny)).items.find((i) => i.id === plan.id)).visibility).toBe("specific");
     await undoActivity(ctx, TRIP_ID, jacob, entry.id);
