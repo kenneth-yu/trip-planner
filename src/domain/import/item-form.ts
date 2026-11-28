@@ -54,6 +54,7 @@ export const MESSAGES = {
   name: "Enter a name.",
   title: "Enter a title.",
   price: "Enter a price like $240.",
+  toAirport: "Enter hours and minutes, like 1 hour 15 minutes.",
   tooLong: "That is too long.",
   tooMany: "Too many tries. Wait a minute and try again.",
 } as const;
@@ -184,7 +185,7 @@ interface Parse {
 
 const MAX_FLIGHT_HOURS = 48;
 
-function wholeNumber(text: string, max: number): number | null {
+function boundedWhole(text: string, max: number): number | null {
   if (text === "") return 0;
   if (!/^\d{1,3}$/.test(text)) return null;
   const value = Number(text);
@@ -216,8 +217,8 @@ function flight(e: Entries, p: Parse): void {
   if (!to) p.errors.to = MESSAGES.place;
   const date = requireDate(e, "date", p);
   const departs = requireClock(e, "departs", p);
-  const hoursPart = wholeNumber(e.get("hours"), MAX_FLIGHT_HOURS);
-  const minutesPart = wholeNumber(e.get("minutes"), 59);
+  const hoursPart = boundedWhole(e.get("hours"), MAX_FLIGHT_HOURS);
+  const minutesPart = boundedWhole(e.get("minutes"), 59);
   const byDuration = p.draft && !e.get("arrives");
   if (byDuration && hoursPart === null) p.errors.hours = MESSAGES.hours;
   if (byDuration && minutesPart === null) p.errors.minutes = MESSAGES.minutes;
@@ -254,6 +255,27 @@ function flight(e: Entries, p: Parse): void {
   });
 }
 
+function wholeNumber(raw: string | undefined): number | null {
+  if (!raw) return 0;
+  return /^\d{1,4}$/.test(raw.trim()) ? Number(raw.trim()) : null;
+}
+
+function timeToAirport(e: Entries, p: Parse): number | undefined {
+  const hours = wholeNumber(e.get("toAirportHours"));
+  const minutes = wholeNumber(e.get("toAirportMinutes"));
+  if (hours === null || minutes === null) {
+    p.errors.toAirportHours = MESSAGES.toAirport;
+    return undefined;
+  }
+  const total = hours * 60 + minutes;
+  if (total === 0) return undefined;
+  if (total >= 1440) {
+    p.errors.toAirportHours = MESSAGES.toAirport;
+    return undefined;
+  }
+  return total;
+}
+
 function stay(e: Entries, p: Parse): void {
   const name = e.get("name");
   if (!name) p.errors.name = MESSAGES.name;
@@ -274,8 +296,10 @@ function stay(e: Entries, p: Parse): void {
     const end = `${outDate}T${checkOut ?? DEFAULT_CHECK_OUT}`;
     if (end <= start) p.errors.checkOutDate = MESSAGES.checkOutBeforeCheckIn;
   }
+  const toAirport = timeToAirport(e, p);
   Object.assign(p.fields, {
     type: "stay",
+    timeToAirportMinutes: toAirport,
     name,
     ...placeQueryFor(place),
     checkInDate: inDate,
@@ -428,6 +452,9 @@ function typeFields(item: VisibleItem): Record<string, string> {
       checkOutDate: localDate(item.end),
       checkOutTime: localClock(item.end),
       checkOutEdited: item.endIsEstimated ? "0" : "1",
+      ...(item.stay?.timeToAirportMinutes
+        ? { toAirportHours: String(Math.floor(item.stay.timeToAirportMinutes / 60)), toAirportMinutes: String(item.stay.timeToAirportMinutes % 60) }
+        : {}),
     };
   }
   if (item.type === "transfer") {
