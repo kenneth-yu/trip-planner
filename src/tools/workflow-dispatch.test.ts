@@ -36,4 +36,16 @@ describe("the checks that can be started by hand on a branch", () => {
     expect(text).toMatch(/permissions:\n {2}contents: read\n {2}pull-requests: write\n/);
     expect(text).not.toMatch(/actions: write|contents: write/);
   });
+
+  it("the merge gate queues only the runs whose job will run: concurrency is on the job, not the workflow", () => {
+    const text = read("merge-gate.yml");
+    expect(text).not.toMatch(/^concurrency:/m);
+    expect(text).toMatch(/^ {4}concurrency:\n {6}group: merge-gate\n {6}cancel-in-progress: false\n/m);
+  });
+
+  it("the merge gate does not run on every push, and event runs wait for a burst to settle", () => {
+    const text = read("merge-gate.yml");
+    expect(text).not.toContain("synchronize");
+    expect(text).toMatch(/if: github\.event_name != 'schedule' && github\.event_name != 'workflow_dispatch'\n {8}run: sleep 60/);
+  });
 });
