@@ -22,6 +22,20 @@ export interface Group {
   rows: Row[];
 }
 
+function possessive(original: string): string {
+  return original === "You" ? "your" : `${original}'s`;
+}
+
+function undoneSentence(line: ActivityLine): Sentence {
+  const title = line.title;
+  const target = line.undid;
+  if (!target) return { lead: `${line.by} undid a change to `, title, tail: "." };
+  if (target.kind === "updated") return { lead: `${line.by} undid ${possessive(target.by)} change to `, title, tail: "." };
+  if (target.kind === "deleted") return { lead: `${line.by} brought back `, title, tail: "." };
+  if (target.kind === "created") return { lead: `${line.by} removed `, title, tail: `, which ${target.by === "You" ? "you" : target.by} added.` };
+  return { lead: `${line.by} undid a change to `, title, tail: "." };
+}
+
 function sentenceFor(line: ActivityLine): Sentence {
   const title = line.title;
   switch (line.kind) {
@@ -34,7 +48,7 @@ function sentenceFor(line: ActivityLine): Sentence {
     case "merged":
       return { lead: `${line.by} merged a calendar record into `, title, tail: "." };
     case "undone":
-      return { lead: `${line.by} undid a change to `, title, tail: "." };
+      return undoneSentence(line);
     case "imported":
       return { lead: `${line.by} brought in ${line.count === 1 ? "1 item" : `${line.count} items`} from ${line.source}.`, title: null, tail: "" };
   }
