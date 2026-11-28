@@ -40,7 +40,7 @@ function InboxNotice({ data, tripId }: { data: AttentionData; tripId: string }) 
   );
 }
 
-export function AttentionPanel({ data, tripId, checks }: { data: AttentionData; tripId: string; checks: OpenCheck[] }) {
+export function AttentionPanel({ data, tripId, checks, ideasOpen = 0 }: { data: AttentionData; tripId: string; checks: OpenCheck[]; ideasOpen?: number }) {
   const upcoming = data.deadlines.filter((l) => !l.passed);
   const soon = upcoming.filter((l) => l.warning);
   const later = upcoming.filter((l) => !l.warning);
@@ -49,6 +49,13 @@ export function AttentionPanel({ data, tripId, checks }: { data: AttentionData; 
   return (
     <>
       <InboxNotice data={data} tripId={tripId} />
+      {(ideasOpen > 0 || data.canEdit) && (
+        <p>
+          <Link className={styles.panelLink} href={`/trips/${tripId}/ideas`}>
+            {ideasOpen > 0 ? `Ideas: ${ideasOpen} open` : "Ideas"}
+          </Link>
+        </p>
+      )}
       {(soon.length > 0 || shownChecks.length > 0) && (
         <section className={styles.panel}>
           {soon.length > 0 && (
