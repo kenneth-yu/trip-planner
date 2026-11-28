@@ -39,7 +39,7 @@ export default async function ItemPage({ params }: PageProps<"/trips/[tripId]/it
       <SmartFlashes tripId={tripId} />
       <ItemDetails view={view} item={item} nowMs={ctx.now().getTime()} viewerTravelerId={travelerId} smart={smart} />
       {view.permissions.canEdit && (
-        <ItemActions tripId={tripId} itemId={itemId} heading={promptName} editHref={`/trips/${tripId}/items/${itemId}/edit`} remove={deleteItem} />
+        <ItemActions tripId={tripId} itemId={itemId} heading={promptName} editHref={`/trips/${tripId}/items/${itemId}/edit`} markBookedHref={item.booked ? undefined : `/trips/${tripId}/items/${itemId}/edit?booked=yes&focus=code`} remove={deleteItem} />
       )}
     </div>
   );

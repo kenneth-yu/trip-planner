@@ -53,6 +53,7 @@ describe("about how long to the airport", () => {
       visibility: "everyone",
       visibleToUserIds: [],
       showAsBusy: false,
+      booked: true,
       flags: proposal.problems,
       deadlines: [],
       createdBy: USERS.kenny.id,

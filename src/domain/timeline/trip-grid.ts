@@ -22,6 +22,7 @@ export interface SleepSpan {
   cityIndex: number;
   nights: number;
   stays: string[];
+  draft: boolean;
 }
 
 export interface TravelEntry {
@@ -30,6 +31,7 @@ export interface TravelEntry {
   kind: "departs" | "lands" | "transfer" | "missing";
   title: string;
   time: string | null;
+  draft?: boolean;
 }
 
 export interface PlanEntry {
@@ -37,6 +39,7 @@ export interface PlanEntry {
   itemId: string | null;
   title: string;
   time: string;
+  draft?: boolean;
 }
 
 export interface UnsureSpan {
@@ -95,9 +98,10 @@ function sleepSpans(stays: VisibleItem[], keys: string[], cities: string[]): Sle
       last.to = i + 1;
       last.nights += 1;
       if (!last.stays.includes(name)) last.stays.push(name);
+      last.draft = last.draft && !stay.booked;
       return;
     }
-    spans.push({ key: `sleep:${keys[i]}`, from: i, to: i + 1, city, cityIndex: cities.indexOf(city), nights: 1, stays: [name] });
+    spans.push({ key: `sleep:${keys[i]}`, from: i, to: i + 1, city, cityIndex: cities.indexOf(city), nights: 1, stays: [name], draft: !stay.booked });
   });
   return spans;
 }
@@ -143,15 +147,15 @@ function travelOn(key: string, items: VisibleItem[], gaps: { dayKey: string; to:
     if (i.type === "flight") {
       const to = flightCities(i).to ?? i.flight?.toAirport ?? "";
       if (localDateKey(i.start) === key) {
-        out.push({ key: `dep:${i.id}`, itemId: i.id, kind: "departs", title: `${i.flight?.flightNumber ?? i.title} to ${to}`, time: `leaves ${formatClock(toLocal(i.start))}` });
+        out.push({ key: `dep:${i.id}`, itemId: i.id, kind: "departs", title: `${i.flight?.flightNumber || "Flight"} to ${to}`, time: `leaves ${formatClock(toLocal(i.start))}`, draft: !i.booked });
       }
       if (localDateKey(i.end) === key) {
         const clocks = clockChange(i);
-        out.push({ key: `arr:${i.id}`, itemId: i.id, kind: "lands", title: `Land in ${to}`, time: [formatClock(toLocal(i.end)), clocks].filter(Boolean).join(", ") });
+        out.push({ key: `arr:${i.id}`, itemId: i.id, kind: "lands", title: `Land in ${to}`, time: [formatClock(toLocal(i.end)), clocks].filter(Boolean).join(", "), draft: !i.booked });
       }
     }
     if (i.type === "transfer" && isConfirmed(i) && localDateKey(i.start) === key) {
-      out.push({ key: `tr:${i.id}`, itemId: i.id, kind: "transfer", title: i.title, time: formatClock(toLocal(i.start)) });
+      out.push({ key: `tr:${i.id}`, itemId: i.id, kind: "transfer", title: i.title, time: formatClock(toLocal(i.start)), draft: !i.booked });
     }
   }
   for (const g of gaps.filter((g) => g.dayKey === key)) {
@@ -163,7 +167,7 @@ function travelOn(key: string, items: VisibleItem[], gaps: { dayKey: string; to:
 function plansOn(key: string, view: TripView): PlanEntry[] {
   const plans = view.items
     .filter((i) => i.type === "plan" && isConfirmed(i) && localDateKey(i.start) === key)
-    .map((i) => ({ at: instantMs(i.start), entry: { key: `plan:${i.id}`, itemId: i.id, title: i.title.split(",")[0], time: formatClock(toLocal(i.start)) } }));
+    .map((i) => ({ at: instantMs(i.start), entry: { key: `plan:${i.id}`, itemId: i.id, title: i.title.split(",")[0], time: formatClock(toLocal(i.start)), draft: !i.booked } }));
   const busy = view.busy
     .filter((b) => localDateKey(b.start) === key)
     .map((b) => ({ at: instantMs(b.start), entry: { key: b.key, itemId: null, title: "Busy", time: formatClock(toLocal(b.start)) } }));
@@ -297,6 +301,7 @@ export interface UpNextEntry {
   title: string;
   place: string | null;
   inHowLong: string;
+  draft: boolean;
 }
 
 export function upNext(view: TripView, nowMs: number, count = 3): UpNextEntry[] {
@@ -305,16 +310,16 @@ export function upNext(view: TripView, nowMs: number, count = 3): UpNextEntry[] 
     .flatMap((i) => {
       const at = (t: VisibleItem["start"]) => ({ dayKey: localDateKey(t), date: toLocal(t).toFormat("ccc LLL d", { locale: "en-US" }), time: formatClock(toLocal(t)), ms: instantMs(t) });
       if (i.type === "flight") {
-        return [{ ...at(i.start), key: `up:${i.id}`, itemId: i.id, title: `${i.flight?.flightNumber ?? i.title} to ${flightCities(i).to ?? i.flight?.toAirport ?? ""}`, place: flightCities(i).from }];
+        return [{ ...at(i.start), key: `up:${i.id}`, itemId: i.id, title: `${i.flight?.flightNumber || "Flight"} to ${flightCities(i).to ?? i.flight?.toAirport ?? ""}`, place: flightCities(i).from, draft: !i.booked }];
       }
       if (i.type === "stay") {
         const name = i.stay?.propertyName ?? i.title;
         const out = [];
-        if (instantMs(i.start) > nowMs) out.push({ ...at(i.start), key: `in:${i.id}`, itemId: i.id, title: `Check in: ${name}`, place: itemCity(i) });
-        out.push({ ...at(i.end), key: `out:${i.id}`, itemId: i.id, title: `Check out: ${name}`, place: itemCity(i) });
+        if (instantMs(i.start) > nowMs) out.push({ ...at(i.start), key: `in:${i.id}`, itemId: i.id, title: `Check in: ${name}`, place: itemCity(i), draft: !i.booked });
+        out.push({ ...at(i.end), key: `out:${i.id}`, itemId: i.id, title: `Check out: ${name}`, place: itemCity(i), draft: !i.booked });
         return out;
       }
-      return [{ ...at(i.start), key: `up:${i.id}`, itemId: i.id, title: i.title.split(",")[0], place: itemCity(i) }];
+      return [{ ...at(i.start), key: `up:${i.id}`, itemId: i.id, title: i.title.split(",")[0], place: itemCity(i), draft: !i.booked }];
     })
     .filter((e) => e.ms > nowMs)
     .sort((a, b) => a.ms - b.ms)

@@ -7,6 +7,7 @@ import { insertActivity } from "../repo/activity-repo";
 import type { ServiceContext } from "./context";
 import { AccessDenied, assertCanEditItem, assertCanEditTrip, canSeeItem, projectTrip, type TripView } from "@/domain/visibility/project";
 import { itemPatchSchema, type ItemPatch } from "@/domain/item-patch";
+import { withoutBookedOnly } from "@/domain/drafts";
 import { inputToProposal, InputProblem, placeQueries } from "@/domain/import/quick-add";
 import { placeContextFor } from "./place-service";
 import type { ProposedItem } from "@/domain/import/proposal";
@@ -50,6 +51,7 @@ export interface ItemSharing {
   visibility?: Visibility;
   visibleToUserIds?: string[];
   showAsBusy?: boolean;
+  booked?: boolean;
 }
 
 export function proposalToItem(ctx: ServiceContext, tripId: string, actorId: string, p: ProposedItem, sharing: ItemSharing = {}): Item {
@@ -72,6 +74,7 @@ export function proposalToItem(ctx: ServiceContext, tripId: string, actorId: str
     visibility: sharing.visibility ?? "everyone",
     visibleToUserIds: sharing.visibility === "specific" ? (sharing.visibleToUserIds ?? []) : [],
     showAsBusy: sharing.showAsBusy ?? false,
+    booked: sharing.booked ?? true,
     status: p.status,
     notes: p.notes,
     flags: p.problems,
@@ -105,6 +108,7 @@ export function idempotentItemId(userId: string, tripId: string, key: string): s
 
 export interface QuickAddOptions {
   idempotencyKey?: string;
+  endEstimated?: boolean;
   within?: DbOrTx;
   places?: PlaceContext;
 }
@@ -128,7 +132,8 @@ export async function quickAddItem(
     assertCanEditTrip(agg, requester);
     const existing = fixedId ? agg.items.find((i) => i.id === fixedId) : undefined;
     if (existing) return { item: existing, added: false };
-    const proposed = proposalToItem(ctx, tripId, actorId, inputToProposal(input, agg.travelers, places), sharing);
+    const built = proposalToItem(ctx, tripId, actorId, inputToProposal(input, agg.travelers, places, { draft: sharing.booked === false, endEstimated: options.endEstimated }), sharing);
+    const proposed = built.booked ? built : withoutBookedOnly(built);
     const created = fixedId ? { ...proposed, id: fixedId } : proposed;
     await saveItem(tx, created);
     await touchTrip(tx, tripId);
@@ -163,12 +168,15 @@ export async function updateItem(ctx: ServiceContext, tripId: string, itemId: st
     if ((patch.visibility || patch.visibleToUserIds || patch.showAsBusy !== undefined) && before.createdBy !== actorId) {
       throw new AccessDenied("Only the person who added this can change who sees it.");
     }
+    if (patch.booked === false && before.booked && before.createdBy !== actorId) {
+      throw new InputProblem("Only the person who added this can make it not booked yet.");
+    }
     const knownTravelers = new Set(agg.travelers.map((x) => x.id));
     if (patch.travelerIds?.some((id) => !knownTravelers.has(id))) throw new UnknownTraveler();
     const travelerIds = patch.travelerIds ?? before.travelerIds;
     if (patch.private?.some((row) => row.travelerId !== null && !travelerIds.includes(row.travelerId))) throw new InputProblem("That change is not valid.");
     const reviewed = patch.status === "confirmed" || patch.location !== undefined || patch.start !== undefined || patch.end !== undefined;
-    const after: Item = {
+    const merged: Item = {
       ...before,
       ...patch,
       status: reviewed && patch.status !== "needs_review" ? "confirmed" : (patch.status ?? before.status),
@@ -176,6 +184,7 @@ export async function updateItem(ctx: ServiceContext, tripId: string, itemId: st
       updatedBy: actorId,
       updatedAt: ctx.now().toISOString(),
     };
+    const after = merged.booked ? merged : withoutBookedOnly(merged);
     if (after.end.at < after.start.at) throw new InputProblem("The end is before the start.");
     await saveItem(tx, after);
     await touchTrip(tx, tripId);

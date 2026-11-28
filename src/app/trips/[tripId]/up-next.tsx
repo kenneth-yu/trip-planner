@@ -54,6 +54,7 @@ export function UpNext({ entries, attention, checks, tripId, linked = true }: { 
                 {e.title}
                 <small>
                   {e.date}
+                  {e.draft ? ", not booked yet" : ""}
                   {e.place ? `, ${e.place}` : ""} · {e.inHowLong}
                 </small>
               </span>

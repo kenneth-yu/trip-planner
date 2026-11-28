@@ -30,7 +30,7 @@ describe("view builders for any requester", () => {
         const oracle = oracleFor(agg, requester);
         if (!oracle.allowed) return;
         const lines = buildDeadlineLines(projectTrip(agg, requester), now);
-        const expected = oracle.canSeeDeadlines ? agg.items.filter((i) => oracle.seesItem(i)).reduce((n, i) => n + i.deadlines.length, 0) : 0;
+        const expected = oracle.canSeeDeadlines ? agg.items.filter((i) => oracle.seesItem(i) && i.booked).reduce((n, i) => n + i.deadlines.length, 0) : 0;
         expect(lines).toHaveLength(expected);
         expect(lines.map((l) => l.at)).toEqual([...lines.map((l) => l.at)].sort());
         for (const l of lines) expect(l.passed).toBe(new Date(l.at).getTime() <= now);

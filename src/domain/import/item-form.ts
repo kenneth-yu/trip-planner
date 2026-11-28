@@ -1,3 +1,4 @@
+import { DateTime } from "../time/luxon";
 import type { ItemPrivate, ItemType, Visibility, Zone, ZonedTime } from "../types";
 import type { ItemPatch } from "../item-patch";
 import type { ProposedItem } from "./proposal";
@@ -8,6 +9,7 @@ import { resolvePlace, type PlaceQuery } from "../time/resolve-place";
 import { airlineFor } from "./airlines";
 import { arrivalAfter, sameDayClockRoll } from "./arrival";
 import { DEFAULT_CHECK_IN, DEFAULT_CHECK_OUT } from "./calendar-event";
+import { hasBookedOnly } from "../drafts";
 import { ItemInput } from "./quick-add";
 
 export type FormEntries = [string, string][];
@@ -19,16 +21,18 @@ export interface ItemFormValues {
   visibility: Visibility;
   visibleToUserIds: string[];
   showAsBusy: boolean;
+  losesOnNotYet?: boolean;
 }
 
 export interface FormSharing {
   visibility: Visibility;
   visibleToUserIds: string[];
   showAsBusy: boolean;
+  booked: boolean;
 }
 
 export type ItemFormResult =
-  | { ok: true; input: ItemInput; sharing: FormSharing }
+  | { ok: true; input: ItemInput; sharing: FormSharing; endEstimated: boolean }
   | { ok: false; errors: Record<string, string>; values: FormEntries };
 
 export const FORM_ERROR = "That did not save. Your entries are still here. Try again.";
@@ -41,6 +45,10 @@ export const MESSAGES = {
   time: "Enter a time like 8:50am.",
   date: "Choose a date.",
   arrivalBeforeDeparture: "Arrival is before departure. If it lands the next day, check the date.",
+  arrivalOrDuration: "Enter an arrival time, or about how long the flight takes.",
+  hours: "Enter whole hours, like 16.",
+  minutes: "Enter minutes from 0 to 59.",
+  confirmDrop: "Check the box to remove them, or choose Yes.",
   checkOutBeforeCheckIn: "Check out is before check in.",
   people: "Choose at least one person, or pick Everyone.",
   name: "Enter a name.",
@@ -171,6 +179,17 @@ interface Parse {
   fields: Fields;
   errors: Record<string, string>;
   zoneOf: ZoneOf;
+  draft: boolean;
+  endEstimated: boolean;
+}
+
+const MAX_FLIGHT_HOURS = 48;
+
+function boundedWhole(text: string, max: number): number | null {
+  if (text === "") return 0;
+  if (!/^\d{1,3}$/.test(text)) return null;
+  const value = Number(text);
+  return value <= max ? value : null;
 }
 
 function requireDate(e: Entries, name: string, p: Parse): string {
@@ -190,31 +209,43 @@ function requireClock(e: Entries, name: string, p: Parse): string {
 
 function flight(e: Entries, p: Parse): void {
   const number = e.get("flightNumber");
-  if (!number) p.errors.flightNumber = MESSAGES.flightNumber;
-  else if (!/^[A-Z0-9]{2}\s?\d{1,4}$/i.test(number)) p.errors.flightNumber = MESSAGES.flightNumberShape;
+  if (!number && !p.draft) p.errors.flightNumber = MESSAGES.flightNumber;
+  else if (number && !/^[A-Z0-9]{2}\s?\d{1,4}$/i.test(number)) p.errors.flightNumber = MESSAGES.flightNumberShape;
   const from = airportFor(e.get("from"));
   const to = airportFor(e.get("to"));
   if (!from) p.errors.from = MESSAGES.place;
   if (!to) p.errors.to = MESSAGES.place;
   const date = requireDate(e, "date", p);
   const departs = requireClock(e, "departs", p);
-  const arrives = requireClock(e, "arrives", p);
-  const airline = e.get("airline") || airlineFor(number) || undefined;
+  const hoursPart = boundedWhole(e.get("hours"), MAX_FLIGHT_HOURS);
+  const minutesPart = boundedWhole(e.get("minutes"), 59);
+  const byDuration = p.draft && !e.get("arrives");
+  if (byDuration && hoursPart === null) p.errors.hours = MESSAGES.hours;
+  if (byDuration && minutesPart === null) p.errors.minutes = MESSAGES.minutes;
+  const minutes = (hoursPart ?? 0) * 60 + (minutesPart ?? 0);
+  const arrives = byDuration ? "" : requireClock(e, "arrives", p);
+  const airline = e.get("airline") || (number ? airlineFor(number) : null) || undefined;
   const fromZone = from ? airportByCode(from)?.zone : undefined;
   const toZone = to ? airportByCode(to)?.zone : undefined;
   let arriveLocal = "";
-  if (fromZone && toZone && !p.errors.date && departs && arrives) {
+  if (byDuration && minutes === 0 && hoursPart !== null && minutesPart !== null) p.errors.arrives = MESSAGES.arrivalOrDuration;
+  else if (byDuration && !p.errors.hours && !p.errors.minutes && fromZone && toZone && !p.errors.date && departs) {
+    arriveLocal = DateTime.fromISO(`${date}T${departs}`, { zone: fromZone }).plus({ minutes }).setZone(toZone).toFormat("yyyy-MM-dd'T'HH:mm");
+    p.endEstimated = true;
+  } else if (fromZone && toZone && !p.errors.date && departs && arrives) {
     const arrival = arrivalAfter(`${date}T${departs}`, fromZone, arrives, toZone);
     if (arrival) arriveLocal = arrival.local;
     else p.errors.arrives = MESSAGES.arrivalBeforeDeparture;
   }
-  const seats = e
-    .withPrefix("seat:")
-    .filter(([, seat]) => seat)
-    .map(([traveler, seat]) => ({ traveler, seat }));
+  const seats = p.draft
+    ? []
+    : e
+        .withPrefix("seat:")
+        .filter(([, seat]) => seat)
+        .map(([traveler, seat]) => ({ traveler, seat }));
   Object.assign(p.fields, {
     type: "flight",
-    flightNumber: number,
+    flightNumber: number || undefined,
     airline,
     fromAirport: from ?? "",
     toAirport: to ?? "",
@@ -318,10 +349,10 @@ function transfer(e: Entries, p: Parse): void {
 }
 
 function details(e: Entries, p: Parse): void {
-  const price = e.get("price");
+  const price = p.draft ? "" : e.get("price");
   const parsedPrice = price ? parsePrice(price) : undefined;
   if (price && !parsedPrice) p.errors.price = MESSAGES.price;
-  const deadlineDate = e.get("deadlineDate");
+  const deadlineDate = p.draft ? "" : e.get("deadlineDate");
   let deadlines: Fields[] | undefined;
   if (deadlineDate) {
     if (!validDate(deadlineDate)) p.errors.deadlineDate = MESSAGES.date;
@@ -329,8 +360,8 @@ function details(e: Entries, p: Parse): void {
     if (!p.errors.deadlineDate && time) deadlines = [{ kind: "free_cancellation", local: `${deadlineDate}T${time}` }];
   }
   Object.assign(p.fields, {
-    confirmationCode: e.get("confirmationCode") || undefined,
-    bookingReference: e.get("bookingReference") || undefined,
+    confirmationCode: (!p.draft && e.get("confirmationCode")) || undefined,
+    bookingReference: (!p.draft && e.get("bookingReference")) || undefined,
     phone: e.get("phone") || undefined,
     price: parsedPrice ?? undefined,
     notes: e.get("notes") || undefined,
@@ -347,12 +378,13 @@ function sharing(e: Entries, p: Parse, memberIds: readonly string[] | null): For
     visibility,
     visibleToUserIds: visibility === "specific" ? [...new Set(picked)] : [],
     showAsBusy: visibility !== "everyone" && e.get("showAsBusy") === "on",
+    booked: e.get("booked") !== "no",
   };
 }
 
 export function parseItemForm(entries: FormEntries, options: ParseOptions = {}): ItemFormResult {
   const e = new Entries(entries);
-  const p: Parse = { fields: {}, errors: {}, zoneOf: options.zoneOf ?? defaultZoneOf };
+  const p: Parse = { fields: {}, errors: {}, zoneOf: options.zoneOf ?? defaultZoneOf, draft: e.get("booked") === "no", endEstimated: false };
   const type = ITEM_TYPES.find((t) => t === e.get("type"));
   if (type === "flight") flight(e, p);
   else if (type === "stay") stay(e, p);
@@ -371,7 +403,7 @@ export function parseItemForm(entries: FormEntries, options: ParseOptions = {}):
     }
     return { ok: false, errors: Object.keys(errors).length ? errors : { form: FORM_ERROR }, values: entries };
   }
-  return { ok: true, input: parsed.data, sharing: share };
+  return { ok: true, input: parsed.data, sharing: share, endEstimated: p.endEstimated };
 }
 
 const SYMBOL_OF_CURRENCY: Record<string, string> = { USD: "$", GBP: "£", EUR: "€", JPY: "¥" };
@@ -393,6 +425,11 @@ function placeText(location: VisibleItem["location"]): string {
   return location?.address ?? location?.city ?? "";
 }
 
+function flightTime(item: VisibleItem): Record<string, string> {
+  const minutes = Math.max(0, Math.round((Date.parse(item.end.at) - Date.parse(item.start.at)) / 60000));
+  return { hours: String(Math.floor(minutes / 60)), minutes: String(minutes % 60) };
+}
+
 function typeFields(item: VisibleItem): Record<string, string> {
   if (item.type === "flight" && item.flight) {
     return {
@@ -402,7 +439,7 @@ function typeFields(item: VisibleItem): Record<string, string> {
       from: item.flight.fromAirport,
       to: item.flight.toAirport,
       departs: localClock(item.start),
-      arrives: localClock(item.end),
+      ...(item.endIsEstimated ? flightTime(item) : { arrives: localClock(item.end) }),
     };
   }
   if (item.type === "stay") {
@@ -466,7 +503,7 @@ function privateFields(item: VisibleItem, travelers: { id: string }[]): Record<s
 }
 
 export function itemToFormValues(item: VisibleItem, travelers: { id: string; name: string }[]): ItemFormValues {
-  const fields = { ...typeFields(item), ...privateFields(item, travelers) };
+  const fields = { ...typeFields(item), ...privateFields(item, travelers), booked: item.booked ? "yes" : "no" };
   const seats = travelers.flatMap((t) => {
     const seat = item.private.find((r) => r.travelerId === t.id)?.seat;
     return seat ? [{ traveler: t.id, seat }] : [];
@@ -478,6 +515,7 @@ export function itemToFormValues(item: VisibleItem, travelers: { id: string; nam
     visibility: item.visibility,
     visibleToUserIds: item.visibleToUserIds,
     showAsBusy: item.showAsBusy,
+    losesOnNotYet: hasBookedOnly(item.private),
   };
 }
 
@@ -486,12 +524,13 @@ export function entriesOfValues(values: ItemFormValues): FormEntries {
 }
 
 export type EditFormResult =
-  | { ok: true; input: ItemInput; private: ItemPrivate[] }
+  | { ok: true; input: ItemInput; private: ItemPrivate[]; booked: boolean; endEstimated: boolean }
   | { ok: false; errors: Record<string, string>; values: FormEntries };
 
 export interface EditOptions extends ParseOptions {
   travelerIds: readonly string[];
   previous: readonly ItemPrivate[];
+  wasBooked?: boolean;
 }
 
 const CODE_MAX = 60;
@@ -516,9 +555,13 @@ export function parseEditForm(entries: FormEntries, options: EditOptions): EditF
   if (!parsed.ok) return { ok: false, errors: { ...parsed.errors, ...errors }, values: entries };
   if (Object.keys(errors).length) return { ok: false, errors, values: entries };
   const input = parsed.input;
+  if (options.wasBooked !== false && !parsed.sharing.booked && hasBookedOnly([...options.previous]) && e.get("confirmDrop") !== "yes") {
+    return { ok: false, errors: { confirmDrop: MESSAGES.confirmDrop }, values: entries };
+  }
   const single = ids.length === 1;
   const upper = (value: string | undefined): string | undefined => value?.toUpperCase();
-  const perTraveler = ids.map((id) => ({ id, seat: upper(e.get(`seat:${id}`) || undefined), code: single ? undefined : upper(e.get(`code:${id}`) || undefined) }));
+  const booked = parsed.sharing.booked;
+  const perTraveler = ids.map((id) => ({ id, seat: booked ? upper(e.get(`seat:${id}`) || undefined) : undefined, code: single || !booked ? undefined : upper(e.get(`code:${id}`) || undefined) }));
   const distinctCodes = [...new Set(perTraveler.flatMap((p) => (p.code ? [p.code] : [])))];
   const sharedCode = single ? upper(input.confirmationCode) : distinctCodes.length === 1 ? distinctCodes[0] : undefined;
   const sharedRow: ItemPrivate = {
@@ -530,9 +573,10 @@ export function parseEditForm(entries: FormEntries, options: EditOptions): EditF
     notes: input.notes,
     bookingSite: options.previous.find((r) => r.bookingSite)?.bookingSite,
   };
-  if (single) return { ok: true, input, private: compact({ ...sharedRow, seat: perTraveler[0].seat }) };
+  const done = { booked, endEstimated: parsed.endEstimated };
+  if (single) return { ok: true, input, private: compact({ ...sharedRow, seat: perTraveler[0].seat }), ...done };
   const rows = perTraveler.flatMap((p) => compact({ travelerId: p.id, seat: p.seat, confirmationCode: distinctCodes.length > 1 ? p.code : undefined }));
-  return { ok: true, input, private: [...rows, ...compact(sharedRow)] };
+  return { ok: true, input, private: [...rows, ...compact(sharedRow)], ...done };
 }
 
 function canonical(value: unknown): string {
@@ -556,8 +600,9 @@ function sameMoment(a: ZonedTime, b: ZonedTime): boolean {
   return Date.parse(a.at) === Date.parse(b.at) && a.zone === b.zone;
 }
 
-export function editPatch(before: VisibleItem, proposal: ProposedItem, rows: ItemPrivate[]): ItemPatch {
+export function editPatch(before: VisibleItem, proposal: ProposedItem, rows: ItemPrivate[], booked: boolean = before.booked): ItemPatch {
   const patch: ItemPatch = {};
+  if (booked !== before.booked) patch.booked = booked;
   const sameEndpoints = sameValue({ from: placeIdentity(proposal.transfer?.fromPlace), to: placeIdentity(proposal.transfer?.toPlace) }, { from: placeIdentity(before.transfer?.fromPlace), to: placeIdentity(before.transfer?.toPlace) });
   if (proposal.title !== before.title && !(before.type === "transfer" && sameEndpoints)) patch.title = proposal.title;
   if (!sameMoment(proposal.start, before.start) || proposal.startIsEstimated !== before.startIsEstimated) {

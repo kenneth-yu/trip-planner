@@ -40,6 +40,7 @@ export const itemPatchSchema = z
     visibility: z.enum(["everyone", "only_me", "specific"]),
     visibleToUserIds: z.array(z.string().max(64)).max(50),
     showAsBusy: z.boolean(),
+    booked: z.boolean(),
     status: z.enum(["confirmed", "needs_review"]),
     flight: z.object({
       airline: z.string().max(80).optional(),

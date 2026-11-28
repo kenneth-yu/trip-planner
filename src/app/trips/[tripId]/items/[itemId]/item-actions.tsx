@@ -10,10 +10,11 @@ interface Props {
   itemId: string;
   heading: string;
   editHref: string;
+  markBookedHref?: string;
   remove: (prev: DeleteState, form: FormData) => Promise<DeleteState>;
 }
 
-export function ItemActions({ tripId, itemId, heading, editHref, remove }: Props) {
+export function ItemActions({ tripId, itemId, heading, editHref, markBookedHref, remove }: Props) {
   const [confirming, setConfirming] = useState(false);
   const [state, formAction, pending] = useActionState<DeleteState, FormData>(remove, { failed: false });
   const keepRef = useRef<HTMLButtonElement>(null);
@@ -25,7 +26,12 @@ export function ItemActions({ tripId, itemId, heading, editHref, remove }: Props
   if (!confirming) {
     return (
       <div className={styles.actions}>
-        <Link href={editHref} className={styles.edit}>
+        {markBookedHref && (
+          <Link href={markBookedHref} className={styles.edit}>
+            Mark as booked
+          </Link>
+        )}
+        <Link href={editHref} className={markBookedHref ? styles.quietEdit : styles.edit}>
           Edit
         </Link>
         <button type="button" className={styles.remove} onClick={() => setConfirming(true)}>
