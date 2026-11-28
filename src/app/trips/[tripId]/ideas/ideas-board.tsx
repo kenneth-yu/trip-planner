@@ -4,6 +4,7 @@ import { useActionState, useState, type ReactNode } from "react";
 import pageStyles from "../../../ui/page.module.css";
 import styles from "./ideas.module.css";
 import { ideaAction, type IdeaState } from "./actions";
+import { closesRow } from "./row-state";
 
 export interface IdeaRow {
   id: string;
@@ -51,6 +52,7 @@ function Hidden({ tripId, ideaId, intent }: { tripId: string; ideaId?: string; i
 
 function Sharing({ idea, people }: { idea?: IdeaRow; people: Person[] }) {
   const [visibility, setVisibility] = useState<IdeaRow["visibility"]>(idea?.visibility ?? "everyone");
+  const [chosen, setChosen] = useState<string[]>(idea?.visibleTo ?? []);
   const choices: { value: IdeaRow["visibility"]; label: string }[] = [
     { value: "everyone", label: "Everyone on the trip" },
     { value: "only_me", label: "Only me" },
@@ -68,7 +70,7 @@ function Sharing({ idea, people }: { idea?: IdeaRow; people: Person[] }) {
       {visibility === "specific" &&
         people.map((person) => (
           <label key={person.userId} className={styles.choice}>
-            <input type="checkbox" name="visibleTo" value={person.userId} defaultChecked={idea?.visibleTo.includes(person.userId) ?? false} />
+            <input type="checkbox" name="visibleTo" value={person.userId} checked={chosen.includes(person.userId)} onChange={(e) => setChosen(e.target.checked ? [...chosen, person.userId] : chosen.filter((id) => id !== person.userId))} />
             <span>{person.name}</span>
           </label>
         ))}
@@ -77,22 +79,25 @@ function Sharing({ idea, people }: { idea?: IdeaRow; people: Person[] }) {
 }
 
 function Fields({ idea, people, sharing, focus = false }: { idea?: IdeaRow; people: Person[]; sharing: boolean; focus?: boolean }) {
+  const [title, setTitle] = useState(idea?.title ?? "");
+  const [where, setWhere] = useState(idea?.where ?? "");
+  const [note, setNote] = useState(idea?.note ?? "");
   return (
     <>
       <label className={styles.field}>
         What
-        <input name="title" defaultValue={idea?.title ?? ""} required maxLength={200} placeholder="Buy gold" autoFocus={focus} />
+        <input name="title" value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} placeholder="Buy gold" autoFocus={focus} />
       </label>
       <label className={styles.field}>
         Where
-        <input name="where" defaultValue={idea?.where ?? ""} maxLength={300} aria-describedby="idea-where-hint" />
+        <input name="where" value={where} onChange={(e) => setWhere(e.target.value)} maxLength={300} aria-describedby="idea-where-hint" />
         <span id="idea-where-hint" className={pageStyles.muted}>
           A city, or a specific place. Leave it blank if it could be anywhere.
         </span>
       </label>
       <label className={styles.field}>
         Note
-        <textarea name="note" defaultValue={idea?.note ?? ""} maxLength={2000} rows={2} />
+        <textarea name="note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} rows={2} />
       </label>
       {sharing && <Sharing idea={idea} people={people} />}
     </>
@@ -179,14 +184,15 @@ function Row({ tripId, idea, people, canEdit, open, onToggle, action, pending }:
 }
 
 export function IdeasBoard({ tripId, groups, done, canEdit, people, startAdding = false }: { tripId: string; groups: IdeaGroupData[]; done: DoneRow[]; canEdit: boolean; people: Person[]; startAdding?: boolean }) {
-  const [state, submit, pending] = useActionState<IdeaState, FormData>(ideaAction, idle);
+  const [state, action, pending] = useActionState<IdeaState, FormData>(ideaAction, idle);
   const [openId, setOpenId] = useState<string | null>(null);
   const [adding, setAdding] = useState(startAdding && canEdit);
   const toggle = (id: string) => setOpenId((now) => (now === id ? null : id));
-  const action = (form: FormData) => {
-    setOpenId(null);
-    submit(form);
-  };
+  const [seen, setSeen] = useState(state);
+  if (seen !== state) {
+    setSeen(state);
+    if (closesRow(state)) setOpenId(null);
+  }
   let status: ReactNode = state.status ?? "";
   if (state.status && state.undo) {
     status = (
