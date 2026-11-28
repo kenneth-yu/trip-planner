@@ -26,6 +26,22 @@ const noComments = {
 
 const principles = { rules: { "no-comments": noComments } };
 
+const restrictedSyntax = [
+  {
+    selector: "TSAsExpression:not([typeAnnotation.typeName.name='const'])",
+    message: "No type casts. Parse unknown data with a zod schema at the boundary, or fix the type where it is produced. See docs/ENGINEERING.md, rule 4.",
+  },
+  { selector: "TSTypeAssertion", message: "No type casts. Parse with a zod schema or fix the type at its source. See docs/ENGINEERING.md, rule 4." },
+  {
+    selector: "TSNonNullExpression",
+    message: "No non-null assertions. Narrow with a real check, change the type so the value cannot be missing, or use present() from src/testing in tests. See docs/ENGINEERING.md, rule 4.",
+  },
+  {
+    selector: "CallExpression[callee.property.name='catch'] > ArrowFunctionExpression",
+    message: "Do not swallow errors with .catch(() => ...). Handle the failure where it can be handled and surface it, or let it propagate. See docs/ENGINEERING.md, rule 3.",
+  },
+];
+
 const outsideLayer = (layers) => layers.flatMap((l) => [`@/${l}/*`, `**/${l}/*`]);
 
 const icalMessage = "Import ical.js only in src/domain/import/ics.ts, which turns .ics text into calendar events. Call that module instead. See docs/SECURITY.md, outbound calls.";
@@ -51,22 +67,7 @@ export default defineConfig([
     linterOptions: { noInlineConfig: true, reportUnusedDisableDirectives: "off" },
     rules: {
       "principles/no-comments": "error",
-      "no-restricted-syntax": [
-        "error",
-        {
-          selector: "TSAsExpression:not([typeAnnotation.typeName.name='const'])",
-          message: "No type casts. Parse unknown data with a zod schema at the boundary, or fix the type where it is produced. See docs/ENGINEERING.md, rule 4.",
-        },
-        { selector: "TSTypeAssertion", message: "No type casts. Parse with a zod schema or fix the type at its source. See docs/ENGINEERING.md, rule 4." },
-        {
-          selector: "TSNonNullExpression",
-          message: "No non-null assertions. Narrow with a real check, change the type so the value cannot be missing, or use present() from src/testing in tests. See docs/ENGINEERING.md, rule 4.",
-        },
-        {
-          selector: "CallExpression[callee.property.name='catch'] > ArrowFunctionExpression",
-          message: "Do not swallow errors with .catch(() => ...). Handle the failure where it can be handled and surface it, or let it propagate. See docs/ENGINEERING.md, rule 3.",
-        },
-      ],
+      "no-restricted-syntax": ["error", ...restrictedSyntax],
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-empty-function": "error",
       "@typescript-eslint/ban-ts-comment": "error",
@@ -74,6 +75,40 @@ export default defineConfig([
       "no-useless-catch": "error",
       "no-console": ["error", { allow: ["error"] }],
       "no-restricted-imports": ["error", { paths: [{ name: "luxon", message: "Import DateTime from src/domain/time/luxon, which turns on throwOnInvalid." }, icalOnlyInIcs], patterns: [icalSubpaths] }],
+    },
+  },
+  {
+    files: ["**/*.test.ts"],
+    ignores: ["perf/**"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...restrictedSyntax,
+        {
+          selector: "CallExpression[callee.object.name='Date'][callee.property.name='now']",
+          message: "Tests run on a frozen clock (src/testing/clock.ts). Use frozenNow() or FROZEN_NOW_MS, or realNow() inside withRealClock when real time is the point.",
+        },
+        {
+          selector: "NewExpression[callee.name='Date'][arguments.length=0]",
+          message: "Tests run on a frozen clock (src/testing/clock.ts). Use frozenNow(), or pass the instant you mean to new Date(...).",
+        },
+        {
+          selector: "CallExpression[callee.object.object.name='globalThis'][callee.object.property.name='Date'][callee.property.name='now']",
+          message: "Tests run on a frozen clock (src/testing/clock.ts). Use frozenNow() or FROZEN_NOW_MS, or realNow() inside withRealClock when real time is the point.",
+        },
+        {
+          selector: "CallExpression[callee.object.name='performance'][callee.property.name='now']",
+          message: "Timing belongs in perf/. In a unit test use the frozen clock, or fake timers and advance them.",
+        },
+        {
+          selector: "CallExpression[callee.property.name=/^toBeLessThan(OrEqual)?$/][callee.object.callee.name='expect'][callee.object.arguments.0.property.name=/elapsed|duration|took|latency/i]",
+          message: "A wall clock timing assertion is flaky on a busy runner. Put it in perf/, or assert the behavior with fake timers.",
+        },
+        {
+          selector: "CallExpression[callee.property.name=/^toBeLessThan(OrEqual)?$/][callee.object.callee.name='expect'][callee.object.arguments.0.name=/elapsed|duration|took|latency/i]",
+          message: "A wall clock timing assertion is flaky on a busy runner. Put it in perf/, or assert the behavior with fake timers.",
+        },
+      ],
     },
   },
   {
