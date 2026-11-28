@@ -4,6 +4,7 @@ CREATE TABLE "calendar_feeds" (
 	"user_id" uuid NOT NULL,
 	"token_hash" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"last_read_at" timestamp with time zone,
 	"revoked_at" timestamp with time zone,
 	CONSTRAINT "calendar_feeds_token_hash_unique" UNIQUE("token_hash")
 );

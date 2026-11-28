@@ -282,6 +282,7 @@ export const calendarFeeds = pgTable(
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     tokenHash: text("token_hash").notNull().unique(),
     createdAt: created(),
+    lastReadAt: ts("last_read_at"),
     revokedAt: ts("revoked_at"),
   },
   (t) => [index("calendar_feeds_trip_user_idx").on(t.tripId, t.userId)],

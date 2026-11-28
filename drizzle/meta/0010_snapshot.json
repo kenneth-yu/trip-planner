@@ -1,5 +1,5 @@
 {
-  "id": "2d6646f6-5e43-41a3-bfc1-1efca844e528",
+  "id": "b760a4a9-540f-425d-a775-e4ceed7f9954",
   "prevId": "93939eb7-22dc-48e6-9f0b-339f42f0cf54",
   "version": "7",
   "dialect": "postgresql",
@@ -458,6 +458,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "last_read_at": {
+          "name": "last_read_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "revoked_at": {
           "name": "revoked_at",
