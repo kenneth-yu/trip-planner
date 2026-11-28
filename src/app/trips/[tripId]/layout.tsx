@@ -1,7 +1,7 @@
 import { Fragment } from "react";
 import styles from "../../ui/page.module.css";
 import { loadTripPage } from "@/server/web";
-import { buildTripGrid, tripSpan } from "@/domain/timeline/trip-grid";
+import { buildTripGrid, spanText, tripSpan } from "@/domain/timeline/trip-grid";
 import { TripNav } from "./nav";
 import { JoinedNotice } from "@/app/invite/joined-notice";
 
@@ -34,8 +34,7 @@ export default async function TripLayout({ children, params }: LayoutProps<"/tri
       )}
       {span && (
         <p className={styles.span}>
-          {span.dates}
-          {span.countdown && ` · ${span.countdown}`}
+          {spanText(span)}
           {others.length > 0 && ` · with ${listOf(others)}`}
         </p>
       )}

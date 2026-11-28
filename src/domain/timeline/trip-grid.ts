@@ -239,24 +239,36 @@ export function pickDay(days: Pick<GridDay, "key" | "today">[], requested: strin
   return days.find((d) => d.today)?.key ?? days[0]?.key ?? null;
 }
 
-export function tripSpan(view: TripView, nowMs: number): { dates: string; countdown: string | null } | null {
+export interface TripSpan {
+  dates: string;
+  countdown: string | null;
+  planning: boolean;
+}
+
+export function spanText(span: TripSpan): string {
+  if (span.planning) return `Planning, ${span.dates}`;
+  return span.countdown ? `${span.dates} · ${span.countdown}` : span.dates;
+}
+
+export function tripSpan(view: TripView, nowMs: number): TripSpan | null {
   const items = [...view.items].sort(byStart);
   if (!items.length) return null;
   const first = toLocal(items[0].start);
   const lastItem = items.reduce((a, b) => (instantMs(b.end) > instantMs(a.end) ? b : a));
   const last = toLocal(lastItem.end);
   const dates = first.month === last.month ? `${first.toFormat("LLL d")} to ${last.day}` : `${first.toFormat("LLL d")} to ${last.toFormat("LLL d")}`;
+  if (items.every((item) => !item.booked)) return { dates, countdown: null, planning: true };
   const startMs = instantMs(items[0].start);
   const endMs = instantMs(lastItem.end);
   if (nowMs < startMs) {
     const days = Math.ceil((startMs - nowMs) / 86400_000);
-    return { dates, countdown: days === 1 ? "You leave tomorrow" : `You leave in ${days} days` };
+    return { dates, countdown: days === 1 ? "You leave tomorrow" : `You leave in ${days} days`, planning: false };
   }
   if (nowMs <= endMs) {
     const where = whereAt(nowMs, items, view.homeZone);
-    return { dates, countdown: where.kind === "air" ? "You're in the air" : where.city ? `You're in ${where.city}` : null };
+    return { dates, countdown: where.kind === "air" ? "You're in the air" : where.city ? `You're in ${where.city}` : null, planning: false };
   }
-  return { dates, countdown: null };
+  return { dates, countdown: null, planning: false };
 }
 
 export interface StripDay {
