@@ -121,14 +121,12 @@ export function DayView({ view, days, todayKey, only, anchors = true }: { view: 
         <FlashStatus kind="deleted" tripId={view.trip.id} />
         {view.permissions.canEdit ? (
           <>
-            <p className={styles.emptyTitle}>Add your first flight or stay.</p>
+            <p className={styles.emptyTitle}>Start with your flights.</p>
+            <p>Booked or not, add the flights first. The app works out which nights you need a bed, in local time.</p>
             <p>
-              <Link className={formStyles.primaryLink} href={`/trips/${view.trip.id}/add`}>
-                Add flight or stay
+              <Link className={formStyles.primaryLink} href={`/trips/${view.trip.id}/add?type=flight`}>
+                Add a flight
               </Link>
-            </p>
-            <p className={styles.free}>
-              <Link href={`/trips/${view.trip.id}/connect`}>Connect Claude or ChatGPT</Link>
             </p>
           </>
         ) : (
