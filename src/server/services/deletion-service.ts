@@ -96,6 +96,41 @@ async function settleHiddenItems(tx: Tx, userId: string, removeAll: boolean): Pr
   return new Set(hidden.map((h) => h.tripId));
 }
 
+async function settleHiddenIdeas(tx: Tx, userId: string, removeAll: boolean): Promise<void> {
+  const hidden = await tx
+    .select({ id: t.ideas.id, tripId: t.ideas.tripId, visibility: t.ideas.visibility, visibleTo: t.ideas.visibleToUserIds })
+    .from(t.ideas)
+    .where(and(eq(t.ideas.createdBy, userId), ne(t.ideas.visibility, "everyone")))
+    .orderBy(asc(t.ideas.id));
+  const doomed: string[] = [];
+  for (const idea of hidden) {
+    if (removeAll || idea.visibility === "only_me") {
+      doomed.push(idea.id);
+      continue;
+    }
+    const members = await tx.select({ userId: t.memberships.userId }).from(t.memberships).where(and(eq(t.memberships.tripId, idea.tripId), ne(t.memberships.userId, userId)));
+    const staying = new Set(members.map((m) => m.userId));
+    const successor = idea.visibleTo.find((id) => id !== userId && staying.has(id));
+    if (!successor) {
+      doomed.push(idea.id);
+      continue;
+    }
+    await tx
+      .update(t.ideas)
+      .set({ createdBy: successor, visibleToUserIds: idea.visibleTo.filter((id) => id !== userId && staying.has(id) && id !== successor) })
+      .where(eq(t.ideas.id, idea.id));
+  }
+  if (doomed.length > 0) {
+    await tx.delete(t.activity).where(inArray(t.activity.itemId, doomed));
+    await tx.delete(t.ideas).where(inArray(t.ideas.id, doomed));
+  }
+  const listed = await tx
+    .select({ id: t.ideas.id, ids: t.ideas.visibleToUserIds })
+    .from(t.ideas)
+    .where(sql`${t.ideas.visibleToUserIds} @> ${JSON.stringify([userId])}::jsonb`);
+  for (const row of listed) await tx.update(t.ideas).set({ visibleToUserIds: row.ids.filter((id) => id !== userId) }).where(eq(t.ideas.id, row.id));
+}
+
 export async function deleteAccount(ctx: ServiceContext, userId: string, opts: { removeHiddenItemsInSharedTrips: boolean }): Promise<AccountDeletion> {
   const [user] = await ctx.db.select().from(t.users).where(eq(t.users.id, userId));
   if (!user) throw new NotFound("That account does not exist.");
@@ -116,6 +151,7 @@ export async function deleteAccount(ctx: ServiceContext, userId: string, opts: {
     for (const trip of ownedNow) await deleteTripRows(tx, trip.id);
 
     for (const tripId of await settleHiddenItems(tx, userId, opts.removeHiddenItemsInSharedTrips)) settled.add(tripId);
+    await settleHiddenIdeas(tx, userId, opts.removeHiddenItemsInSharedTrips);
     const visibleToUser = await tx
       .select({ id: t.items.id, ids: t.items.visibleToUserIds })
       .from(t.items)

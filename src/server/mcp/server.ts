@@ -6,7 +6,8 @@ import type { AssistantIdentity } from "../services/assistant-service";
 import { getTripView, listTrips, requireAggregate } from "../services/trip-service";
 import { importCalendarEvents, importProposals, listInbox } from "../services/inbox-service";
 import { visibleFindings } from "../services/check-service";
-import { describeInbox, describeTrip } from "./describe";
+import { listIdeas } from "../services/idea-service";
+import { describeIdeas, describeInbox, describeTrip } from "./describe";
 import { ItemInput, inputToProposal, InputProblem, placeQueries } from "@/domain/import/quick-add";
 import { placeContextFor } from "../services/place-service";
 import { buildDeadlineLines } from "@/domain/deadlines/deadlines";
@@ -81,7 +82,7 @@ export function createMcpServer(ctx: ServiceContext, who: AssistantIdentity): Mc
         const view = await getTripView(ctx, trip_id, requester);
         const findings = await visibleFindings(ctx, view, requester);
         const deadlines = buildDeadlineLines(view, ctx.now().getTime());
-        return text(describeTrip(view, deadlines, findings));
+        return text(describeTrip(view, deadlines, findings) + describeIdeas(await listIdeas(ctx, trip_id, requester)));
       }),
   );
 
