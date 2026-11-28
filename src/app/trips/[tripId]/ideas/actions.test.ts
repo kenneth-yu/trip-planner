@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { TRIP_ID } from "@/fixtures/december-trip";
-import { kenny, testContext } from "@/server/testing";
+import { TRIP_ID, USERS } from "@/fixtures/december-trip";
+import * as t from "@/server/db/schema";
+import { jacob, kenny, testContext } from "@/server/testing";
 import type { ServiceContext } from "@/server/services/context";
 import { listIdeas } from "@/server/services/idea-service";
 import { getTripView } from "@/server/services/trip-service";
@@ -69,6 +70,35 @@ describe("the Ideas page actions", () => {
     expect(await listIdeas(ctx(), TRIP_ID, kenny)).toHaveLength(1);
   });
 
+  it("makes an only me idea through the form that nobody else is shown, and a specific one for the people picked", async () => {
+    await ideaAction(idle, form({ intent: "add", title: "Ring shopping", where: "Shenzhen", visibility: "only_me" }));
+    const picked = new FormData();
+    picked.set("tripId", TRIP_ID);
+    picked.set("intent", "add");
+    picked.set("title", "Dinner for two");
+    picked.set("visibility", "specific");
+    picked.append("visibleTo", USERS.jacob.id);
+    await ideaAction(idle, picked);
+    expect((await listIdeas(ctx(), TRIP_ID, kenny)).map((i) => i.title).sort()).toEqual(["Dinner for two", "Ring shopping"]);
+    expect((await listIdeas(ctx(), TRIP_ID, jacob)).map((i) => i.title)).toEqual(["Dinner for two"]);
+    const rows = await ctx().db.select().from(t.ideas);
+    expect(rows.find((r) => r.title === "Ring shopping")).toMatchObject({ visibility: "only_me", visibleToUserIds: [] });
+    expect(rows.find((r) => r.title === "Dinner for two")).toMatchObject({ visibility: "specific", visibleToUserIds: [USERS.jacob.id] });
+  });
+
+  it("keeps an idea shared with everyone when the form says nothing about who sees it, and refuses a visibility it does not know", async () => {
+    await ideaAction(idle, form({ intent: "add", title: "Buy gold" }));
+    expect(present((await ctx().db.select().from(t.ideas))[0]).visibility).toBe("everyone");
+    await expect(ideaAction(idle, form({ intent: "add", title: "x", visibility: "world" }))).rejects.toThrow();
+  });
+
+  it("lets an edit clear the place and the note", async () => {
+    await ideaAction(idle, form({ intent: "add", title: "Massage", where: "Tianyuan Foot Spa, Luohu, Shenzhen", note: "Ask for Ms Lin" }));
+    const idea = present((await listIdeas(ctx(), TRIP_ID, kenny))[0]);
+    await ideaAction(idle, form({ intent: "edit", ideaId: idea.id, title: "Massage", where: "", note: "" }));
+    expect(present((await listIdeas(ctx(), TRIP_ID, kenny))[0])).toMatchObject({ title: "Massage", city: null, location: null, note: "" });
+  });
+
   it("saves an edit", async () => {
     const idea = await add("Buy gold");
     expect((await ideaAction(idle, form({ intent: "edit", ideaId: idea.id, title: "Buy gold bars", where: "Shenzhen" }))).status).toBe("Saved.");
@@ -78,7 +108,7 @@ describe("the Ideas page actions", () => {
   it("schedules an idea into a plan and says which one", async () => {
     const idea = await add("Buy gold");
     const result = await ideaAction(idle, form({ intent: "schedule", ideaId: idea.id, title: "Buy gold", city: "Shenzhen", start: "2026-12-08T14:00", end: "2026-12-08T15:00" }));
-    expect(result).toEqual({ status: "Scheduled Buy gold.", error: null, undo: null });
+    expect(result).toEqual({ status: "Scheduled Buy gold for Tue Dec 8, 2:00pm.", error: null, undo: null });
     expect(await listIdeas(ctx(), TRIP_ID, kenny)).toEqual([]);
     expect((await getTripView(ctx(), TRIP_ID, kenny)).items.map((i) => i.title)).toEqual(["Buy gold"]);
   });

@@ -124,7 +124,7 @@ export async function editIdea(ctx: ServiceContext, tripId: string, ideaId: stri
 }
 
 async function record(db: DbOrTx, tripId: string, actorId: string, action: "idea_scheduled" | "idea_done" | "idea_dropped" | "idea_reopened", idea: Idea): Promise<void> {
-  await insertActivity(db, { tripId, actorId, action, after: { title: idea.title, visibility: idea.visibility, createdBy: idea.createdBy, visibleToUserIds: idea.visibleToUserIds } });
+  await insertActivity(db, { tripId, actorId, action, itemId: idea.id, after: { ideaId: idea.id, title: idea.title, visibility: idea.visibility, createdBy: idea.createdBy, visibleToUserIds: idea.visibleToUserIds } });
 }
 
 async function move(ctx: ServiceContext, tripId: string, ideaId: string, requester: Requester, from: Idea["state"], to: Idea["state"], action: "idea_done" | "idea_dropped" | "idea_reopened"): Promise<Idea> {
@@ -157,7 +157,7 @@ export async function scheduleIdea(ctx: ServiceContext, tripId: string, ideaId: 
     const [row] = await tx.select().from(t.ideas).where(and(eq(t.ideas.id, ideaId), eq(t.ideas.tripId, tripId))).for("update");
     const idea = row ? toIdea(row) : null;
     if (!idea || !canSeeIdea(idea, requester) || idea.state !== "open") throw new InputProblem("That idea already changed. Reload the page.");
-    const sharing = idea.visibility === "everyone" ? {} : { visibility: idea.visibility, visibleToUserIds: idea.visibleToUserIds };
+    const sharing = idea.visibility === "everyone" ? {} : { visibility: idea.visibility, visibleToUserIds: idea.visibility === "specific" && idea.createdBy ? [...new Set([...idea.visibleToUserIds, idea.createdBy])] : idea.visibleToUserIds };
     const created = await quickAddItem(ctx, tripId, requester, plan, sharing, { within: tx, places, idempotencyKey: `idea:${ideaId}` });
     await record(tx, tripId, userId, "idea_scheduled", idea);
     await tx.delete(t.ideas).where(eq(t.ideas.id, ideaId));

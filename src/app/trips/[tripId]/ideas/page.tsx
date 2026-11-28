@@ -7,6 +7,7 @@ import { firstName } from "@/domain/people/first-name";
 import { formatShortDate, toLocal } from "@/domain/time/format";
 import * as t from "@/server/db/schema";
 import { listIdeas } from "@/server/services/idea-service";
+import { listTripMembers } from "@/server/services/member-service";
 import { loadTripPage } from "@/server/web";
 import { IdeasBoard, type DoneRow, type IdeaGroupData, type IdeaRow } from "./ideas-board";
 
@@ -18,10 +19,12 @@ function secondLine(idea: Idea): string | null {
   return [place, note].filter((part) => part && part.length > 0).join(" · ") || null;
 }
 
-export default async function IdeasPage({ params }: PageProps<"/trips/[tripId]/ideas">) {
+export default async function IdeasPage({ params, searchParams }: PageProps<"/trips/[tripId]/ideas">) {
   const { tripId } = await params;
+  const { add } = await searchParams;
   const { ctx, requester, view } = await loadTripPage(tripId);
   const all = await listIdeas(ctx, tripId, requester);
+  const people = view.permissions.canEdit ? (await listTripMembers(ctx, tripId, requester)).filter((m) => m.userId !== view.viewerUserId).map((m) => ({ userId: m.userId, name: m.name })) : [];
   const days = buildDays(view);
   const open = all.filter((idea) => idea.state === "open");
   const finished = all.filter((idea) => idea.state === "done");
@@ -35,6 +38,9 @@ export default async function IdeasPage({ params }: PageProps<"/trips/[tripId]/i
       place: idea.location?.name ?? null,
       note: idea.note,
       where: idea.location?.name ?? city ?? "",
+      visibility: idea.visibility,
+      visibleTo: idea.visibleToUserIds,
+      mine: idea.createdBy === view.viewerUserId,
       suggestions: city ? freeTime(view, days, city) : [],
     };
   };
@@ -49,7 +55,7 @@ export default async function IdeasPage({ params }: PageProps<"/trips/[tripId]/i
   return (
     <div className={pageStyles.narrow}>
       <h2 className={pageStyles.sectionTitle}>Ideas</h2>
-      <IdeasBoard tripId={tripId} groups={groups} done={done} canEdit={view.permissions.canEdit} />
+      <IdeasBoard tripId={tripId} groups={groups} done={done} canEdit={view.permissions.canEdit} people={people} startAdding={add === "1"} />
     </div>
   );
 }

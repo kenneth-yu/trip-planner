@@ -47,7 +47,7 @@ test("ideas are captured, recalled on the city's days, scheduled, finished and d
   await expect(choice).toHaveAttribute("aria-pressed", "true");
   expect(await seriousViolations(kenny)).toEqual([]);
   await kenny.getByRole("button", { name: "Schedule it" }).last().click();
-  await expect(kenny.getByRole("status").filter({ hasText: "Scheduled Buy gold." })).toBeVisible();
+  await expect(kenny.getByRole("status").filter({ hasText: /^Scheduled Buy gold for / })).toBeVisible();
   await expect(kenny.getByRole("button", { name: "Buy gold" })).toHaveCount(0);
 
   await kenny.getByRole("button", { name: "Try the local beer" }).click();
@@ -58,11 +58,20 @@ test("ideas are captured, recalled on the city's days, scheduled, finished and d
   expect(await seriousViolations(kenny)).toEqual([]);
 });
 
+test("the Add page leads to the idea form, with focus on What and the choice of who can see it", async ({ pageSignedInAs }) => {
+  const kenny = await pageSignedInAs("kenny", `/trips/${DECEMBER_TRIP}/add`);
+  await kenny.getByRole("link", { name: "Not sure when yet? Save it as an idea" }).click();
+  await expect(kenny.getByLabel("What")).toBeFocused();
+  await expect(kenny.getByRole("group", { name: "Who can see this" })).toBeVisible();
+  expect(await seriousViolations(kenny)).toEqual([]);
+});
+
 test("a dropped idea comes back with Undo, and nothing is left open for the other specs", async ({ pageSignedInAs }) => {
   const kenny = await pageSignedInAs("kenny", IDEAS);
   await kenny.getByRole("button", { name: "Add an idea" }).click();
   await kenny.getByLabel("What").fill("Massage");
   await kenny.getByLabel("Where").fill("Shenzhen");
+  await kenny.getByLabel("Only me").check();
   await kenny.getByRole("button", { name: "Add idea" }).click();
   await kenny.getByRole("button", { name: "Massage" }).click();
   await kenny.getByRole("button", { name: "Drop it" }).click();

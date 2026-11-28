@@ -13,7 +13,15 @@ export interface IdeaRow {
   place: string | null;
   note: string;
   where: string;
+  visibility: "everyone" | "only_me" | "specific";
+  visibleTo: string[];
+  mine: boolean;
   suggestions: { label: string; startLocal: string; endLocal: string | null }[];
+}
+
+export interface Person {
+  userId: string;
+  name: string;
 }
 
 export interface IdeaGroupData {
@@ -41,12 +49,39 @@ function Hidden({ tripId, ideaId, intent }: { tripId: string; ideaId?: string; i
   );
 }
 
-function Fields({ idea }: { idea?: IdeaRow }) {
+function Sharing({ idea, people }: { idea?: IdeaRow; people: Person[] }) {
+  const [visibility, setVisibility] = useState<IdeaRow["visibility"]>(idea?.visibility ?? "everyone");
+  const choices: { value: IdeaRow["visibility"]; label: string }[] = [
+    { value: "everyone", label: "Everyone on the trip" },
+    { value: "only_me", label: "Only me" },
+    { value: "specific", label: "Pick people" },
+  ];
+  return (
+    <fieldset className={styles.suggestions}>
+      <legend>Who can see this</legend>
+      {choices.map((choice) => (
+        <label key={choice.value} className={styles.choice}>
+          <input type="radio" name="visibility" value={choice.value} checked={visibility === choice.value} onChange={() => setVisibility(choice.value)} />
+          <span>{choice.label}</span>
+        </label>
+      ))}
+      {visibility === "specific" &&
+        people.map((person) => (
+          <label key={person.userId} className={styles.choice}>
+            <input type="checkbox" name="visibleTo" value={person.userId} defaultChecked={idea?.visibleTo.includes(person.userId) ?? false} />
+            <span>{person.name}</span>
+          </label>
+        ))}
+    </fieldset>
+  );
+}
+
+function Fields({ idea, people, sharing, focus = false }: { idea?: IdeaRow; people: Person[]; sharing: boolean; focus?: boolean }) {
   return (
     <>
       <label className={styles.field}>
         What
-        <input name="title" defaultValue={idea?.title ?? ""} required maxLength={200} placeholder="Buy gold" />
+        <input name="title" defaultValue={idea?.title ?? ""} required maxLength={200} placeholder="Buy gold" autoFocus={focus} />
       </label>
       <label className={styles.field}>
         Where
@@ -59,11 +94,12 @@ function Fields({ idea }: { idea?: IdeaRow }) {
         Note
         <textarea name="note" defaultValue={idea?.note ?? ""} maxLength={2000} rows={2} />
       </label>
+      {sharing && <Sharing idea={idea} people={people} />}
     </>
   );
 }
 
-function Row({ tripId, idea, canEdit, open, onToggle, action, pending }: { tripId: string; idea: IdeaRow; canEdit: boolean; open: boolean; onToggle: () => void; action: (form: FormData) => void; pending: boolean }) {
+function Row({ tripId, idea, people, canEdit, open, onToggle, action, pending }: { tripId: string; idea: IdeaRow; people: Person[]; canEdit: boolean; open: boolean; onToggle: () => void; action: (form: FormData) => void; pending: boolean }) {
   const [mode, setMode] = useState<Mode>("actions");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
@@ -102,7 +138,7 @@ function Row({ tripId, idea, canEdit, open, onToggle, action, pending }: { tripI
           {canEdit && mode === "edit" && (
             <form action={action}>
               <Hidden tripId={tripId} ideaId={idea.id} intent="edit" />
-              <Fields idea={idea} />
+              <Fields idea={idea} people={people} sharing={idea.mine} />
               <button disabled={pending}>Save changes</button>
             </form>
           )}
@@ -118,7 +154,7 @@ function Row({ tripId, idea, canEdit, open, onToggle, action, pending }: { tripI
                   <legend>Free time in {idea.city}</legend>
                   {idea.suggestions.length === 0 && <p className={pageStyles.muted}>Your {idea.city} days are full. Pick a date and time.</p>}
                   {idea.suggestions.map((s) => (
-                    <button key={s.startLocal} type="button" className="quiet" aria-pressed={start === s.startLocal} onClick={() => { setStart(s.startLocal); setEnd(s.endLocal ?? ""); }}>
+                    <button key={s.startLocal} type="button" className="quiet" aria-pressed={start === s.startLocal} onClick={() => setStart(s.startLocal)}>
                       {s.label}
                     </button>
                   ))}
@@ -142,10 +178,10 @@ function Row({ tripId, idea, canEdit, open, onToggle, action, pending }: { tripI
   );
 }
 
-export function IdeasBoard({ tripId, groups, done, canEdit }: { tripId: string; groups: IdeaGroupData[]; done: DoneRow[]; canEdit: boolean }) {
+export function IdeasBoard({ tripId, groups, done, canEdit, people, startAdding = false }: { tripId: string; groups: IdeaGroupData[]; done: DoneRow[]; canEdit: boolean; people: Person[]; startAdding?: boolean }) {
   const [state, action, pending] = useActionState<IdeaState, FormData>(ideaAction, idle);
   const [openId, setOpenId] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(startAdding && canEdit);
   const toggle = (id: string) => setOpenId((now) => (now === id ? null : id));
   let status: ReactNode = state.status ?? "";
   if (state.status && state.undo) {
@@ -173,7 +209,7 @@ export function IdeasBoard({ tripId, groups, done, canEdit }: { tripId: string; 
           <h3 className={pageStyles.sectionTitle}>{group.title}</h3>
           <ul className={styles.list}>
             {group.ideas.map((idea) => (
-              <Row key={idea.id} tripId={tripId} idea={idea} canEdit={canEdit} open={openId === idea.id} onToggle={() => toggle(idea.id)} action={action} pending={pending} />
+              <Row key={idea.id} tripId={tripId} idea={idea} people={people} canEdit={canEdit} open={openId === idea.id} onToggle={() => toggle(idea.id)} action={action} pending={pending} />
             ))}
           </ul>
         </section>
@@ -183,7 +219,7 @@ export function IdeasBoard({ tripId, groups, done, canEdit }: { tripId: string; 
           {adding ? (
             <form action={action} onSubmit={() => setAdding(false)}>
               <Hidden tripId={tripId} intent="add" />
-              <Fields />
+              <Fields people={people} sharing focus />
               <button disabled={pending}>Add idea</button>
             </form>
           ) : (

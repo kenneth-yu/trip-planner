@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { InputProblem } from "@/domain/import/problem";
+import { formatClock, formatDayHeader, toLocal } from "@/domain/time/format";
 import { AccessDenied } from "@/domain/visibility/project";
 import { createIdea, dropIdea, editIdea, markIdeaDone, markIdeaNotDone, restoreIdea, scheduleIdea } from "@/server/services/idea-service";
 import { NotFound } from "@/server/services/trip-service";
@@ -21,12 +22,18 @@ const text = (form: FormData, name: string) => {
   const value = form.get(name);
   return typeof value === "string" && value.trim() !== "" ? value : undefined;
 };
+const typed = (form: FormData, name: string) => {
+  const value = form.get(name);
+  return typeof value === "string" ? value : undefined;
+};
 
 export async function ideaAction(_previous: IdeaState, form: FormData): Promise<IdeaState> {
   const { tripId, ideaId } = Ids.parse({ tripId: form.get("tripId"), ideaId: form.get("ideaId") ?? undefined });
   const intent = Intent.parse(form.get("intent"));
   const { ctx, requester } = await loadTripPage(tripId, `/trips/${tripId}/ideas`);
-  const fields = { title: text(form, "title") ?? "", where: text(form, "where"), note: text(form, "note") };
+  const visibility = z.enum(["everyone", "only_me", "specific"]).optional().parse(text(form, "visibility"));
+  const sharing = visibility ? { visibility, visibleToUserIds: visibility === "specific" ? form.getAll("visibleTo").filter((v): v is string => typeof v === "string") : [] } : {};
+  const fields = { title: text(form, "title") ?? "", where: typed(form, "where"), note: typed(form, "note"), ...sharing };
   try {
     const id = ideaId ?? "";
     let state: IdeaState = NOTHING;
@@ -52,7 +59,7 @@ export async function ideaAction(_previous: IdeaState, form: FormData): Promise<
       const start = text(form, "start");
       const end = text(form, "end");
       const item = await scheduleIdea(ctx, tripId, id, requester, { type: "plan", title: fields.title, city: text(form, "city"), place: text(form, "place"), startLocal: start, endLocal: end, notes: fields.note });
-      state = { ...NOTHING, status: `Scheduled ${item.title}.` };
+      state = { ...NOTHING, status: `Scheduled ${item.title} for ${formatDayHeader(toLocal(item.start))}, ${formatClock(toLocal(item.start))}.` };
     }
     revalidatePath(`/trips/${tripId}/ideas`);
     revalidatePath(`/trips/${tripId}`, "layout");

@@ -120,7 +120,10 @@ async function settleHiddenIdeas(tx: Tx, userId: string, removeAll: boolean): Pr
       .set({ createdBy: successor, visibleToUserIds: idea.visibleTo.filter((id) => id !== userId && staying.has(id) && id !== successor) })
       .where(eq(t.ideas.id, idea.id));
   }
-  if (doomed.length > 0) await tx.delete(t.ideas).where(inArray(t.ideas.id, doomed));
+  if (doomed.length > 0) {
+    await tx.delete(t.activity).where(inArray(t.activity.itemId, doomed));
+    await tx.delete(t.ideas).where(inArray(t.ideas.id, doomed));
+  }
   const listed = await tx
     .select({ id: t.ideas.id, ids: t.ideas.visibleToUserIds })
     .from(t.ideas)

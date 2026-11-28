@@ -34,7 +34,7 @@ beforeEach(async () => {
   await env.db.insert(t.memberships).values({ tripId: TRIP_ID, userId: "00000000-0000-4000-8000-0000000000c3", role: "viewer" });
 });
 
-const render = async () => renderToStaticMarkup(await IdeasPage({ params: Promise.resolve({ tripId: TRIP_ID }), searchParams: Promise.resolve({}) }));
+const render = async (query: Record<string, string> = {}) => renderToStaticMarkup(await IdeasPage({ params: Promise.resolve({ tripId: TRIP_ID }), searchParams: Promise.resolve(query) }));
 
 describe("the Ideas page", () => {
   it("says what it is for when there are none, and offers to add one", async () => {
@@ -42,6 +42,22 @@ describe("the Ideas page", () => {
     expect(html).toContain(">Ideas</h2>");
     expect(html).toContain("No ideas yet. Add things you might do here, with or without a place. They show up on that city&#x27;s days.");
     expect(html).toContain("Add an idea</button>");
+  });
+
+  it("opens the Add an idea form with focus on What when it is reached from the Add page, and asks who can see it", async () => {
+    const html = await render({ add: "1" });
+    expect(html).toMatch(/<input name="title"[^>]*autofocus|autoFocus/i);
+    expect(html).toContain("<legend>Who can see this</legend>");
+    for (const label of ["Everyone on the trip", "Only me", "Pick people"]) expect(html).toContain(`<span>${label}</span>`);
+    expect(html).toContain('<input type="radio" name="visibility" checked="" value="everyone"/>');
+    expect(html).toContain(">Add idea</button>");
+  });
+
+  it("does not open the form for a viewer who follows that address, and shows nothing to add with", async () => {
+    world.who = "viewer";
+    const html = await render({ add: "1" });
+    expect(html).not.toContain("Who can see this");
+    expect(html).not.toContain("Add idea");
   });
 
   it("groups by city with its dates, then Anywhere, in the spec's words, with the place and note under each title", async () => {

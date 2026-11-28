@@ -39,7 +39,7 @@ export default async function TripPage({ params, searchParams }: PageProps<"/tri
   const tripChecks = checksForTripPage(attention.findings, view, attention.tripStartMs, nowMs);
   const panelChecks = tripChecks.filter((f) => !onGrid.drawn.has(f.anchor));
   const canEdit = view.permissions.canEdit;
-  const hasAttention = plan.summary !== null || attention.pending > 0 || attention.deadlines.some((d) => !d.passed && d.warning) || panelChecks.length > 0 || ideas.length > 0;
+  const hasAttention = plan.summary !== null || attention.pending > 0 || attention.deadlines.some((d) => !d.passed && d.warning) || panelChecks.length > 0 || ideas.length > 0 || canEdit;
   return (
     <>
       {grid && (

@@ -49,10 +49,10 @@ export function AttentionPanel({ data, tripId, checks, ideasOpen = 0 }: { data: 
   return (
     <>
       <InboxNotice data={data} tripId={tripId} />
-      {ideasOpen > 0 && (
+      {(ideasOpen > 0 || data.canEdit) && (
         <p>
           <Link className={styles.panelLink} href={`/trips/${tripId}/ideas`}>
-            Ideas: {ideasOpen} open
+            {ideasOpen > 0 ? `Ideas: ${ideasOpen} open` : "Ideas"}
           </Link>
         </p>
       )}

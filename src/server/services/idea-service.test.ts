@@ -195,6 +195,16 @@ describe("the activity log", () => {
     expect((await lines(ctx, kenny)).sort()).toEqual(["Jacob idea_done Buy gold", "Jacob idea_reopened Buy gold", "You idea_dropped Massage", "You idea_reopened Massage", "You idea_scheduled Buy gold"].sort());
   });
 
+  it("hides the lines of an idea that was narrowed after they were written, even though they were visible then", async () => {
+    const { ctx } = await testContext({ withItems: false });
+    const idea = await createIdea(ctx, TRIP_ID, kenny, { title: "Buy gold", where: "Shenzhen" });
+    await markIdeaDone(ctx, TRIP_ID, idea.id, kenny);
+    expect(await lines(ctx, jacob)).toHaveLength(1);
+    await editIdea(ctx, TRIP_ID, idea.id, kenny, { title: "Buy gold", visibility: "only_me" });
+    expect(await lines(ctx, jacob)).toEqual([]);
+    expect(await lines(ctx, kenny)).toEqual(["You idea_done Buy gold"]);
+  });
+
   it("leaves another person's hidden idea out of the log, and shows it to the people who may see it", async () => {
     const { ctx } = await testContext({ withItems: false });
     const secret = await createIdea(ctx, TRIP_ID, jacob, { title: "Surprise", visibility: "only_me" });
@@ -267,6 +277,25 @@ describe("deleting an account", () => {
     await db.insert(t.ideas).values({ tripId: TRIP_ID, title: "Orphan", visibility: "only_me", createdBy: null });
     await db.insert(t.ideas).values({ tripId: TRIP_ID, title: "Orphan list", visibility: "specific", visibleToUserIds: [], createdBy: null });
     for (const who of [kenny, jacob, viewer]) expect(await listIdeas(ctx, TRIP_ID, who)).toEqual([]);
+  });
+
+  it("also removes the log lines of the only me ideas it deletes, and keeps the lines of ideas that stay", async () => {
+    const { ctx, db } = await setup();
+    const secret = await createIdea(ctx, TRIP_ID, jacob, { title: "Secret", visibility: "only_me" });
+    const open = await createIdea(ctx, TRIP_ID, jacob, { title: "For everyone" });
+    await markIdeaDone(ctx, TRIP_ID, secret.id, jacob);
+    await markIdeaDone(ctx, TRIP_ID, open.id, jacob);
+    await deleteAccount(ctx, USERS.jacob.id, { removeHiddenItemsInSharedTrips: false });
+    expect((await db.select().from(t.activity)).map((row) => row.itemId)).toEqual([open.id]);
+  });
+
+  it("carries a specific idea's sharing onto its plan, with the idea's creator on the list when someone else schedules it", async () => {
+    const { ctx } = await testContext({ withItems: false });
+    const idea = await createIdea(ctx, TRIP_ID, kenny, { title: "Dinner", where: "Shenzhen", visibility: "specific", visibleToUserIds: [USERS.jacob.id] });
+    const item = await scheduleIdea(ctx, TRIP_ID, idea.id, jacob, { type: "plan", title: "Dinner", city: "Shenzhen", startLocal: "2026-12-08T19:00", endLocal: "2026-12-08T21:00" });
+    expect(item).toMatchObject({ visibility: "specific", createdBy: USERS.jacob.id });
+    expect(item.visibleToUserIds).toEqual(expect.arrayContaining([USERS.kenny.id]));
+    expect((await getTripView(ctx, TRIP_ID, kenny)).items.map((i) => i.title)).toContain("Dinner");
   });
 
   it("deletes the ideas of a trip with the trip", async () => {

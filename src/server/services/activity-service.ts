@@ -17,7 +17,7 @@ export const ACTIVITY_PAGE = 50;
 const ACTIVITY_KIND = z.enum(["created", "updated", "deleted", "merged", "imported", "undone", "idea_scheduled", "idea_done", "idea_dropped", "idea_reopened"]);
 export type ActivityKind = z.infer<typeof ACTIVITY_KIND>;
 const KINDS: readonly string[] = ACTIVITY_KIND.options;
-const IdeaActivity = z.object({ title: z.string(), visibility: z.enum(["everyone", "only_me", "specific"]), createdBy: z.string().nullable(), visibleToUserIds: z.array(z.string()) });
+const IdeaActivity = z.object({ ideaId: z.string(), title: z.string(), visibility: z.enum(["everyone", "only_me", "specific"]), createdBy: z.string().nullable(), visibleToUserIds: z.array(z.string()) });
 const UNDOABLE: readonly string[] = ["created", "updated", "deleted", "undone"];
 const UNNAMED = "A trip member";
 
@@ -169,6 +169,8 @@ export async function listActivityLines(ctx: ServiceContext, tripId: string, req
     if (!judge(e).visible) hiddenFromBatch.set(e.via, (hiddenFromBatch.get(e.via) ?? 0) + 1);
   }
 
+  const ideaIds = [...new Set(entries.filter((e) => e.action.startsWith("idea_") && e.itemId).map((e) => e.itemId ?? ""))];
+  const nowIdeas = new Map((ideaIds.length > 0 ? await ctx.db.select().from(t.ideas).where(inArray(t.ideas.id, ideaIds)) : []).map((row) => [row.id, row]));
   const lines: ActivityLine[] = [];
   for (const e of entries) {
     const kind = ACTIVITY_KIND.parse(e.action);
@@ -183,7 +185,8 @@ export async function listActivityLines(ctx: ServiceContext, tripId: string, req
     }
     if (kind.startsWith("idea_")) {
       const idea = IdeaActivity.parse(e.after);
-      if (!canSeeIdea(idea, requester)) continue;
+      const current = nowIdeas.get(idea.ideaId);
+      if (!canSeeIdea(idea, requester) || (current && !canSeeIdea({ visibility: current.visibility, createdBy: current.createdBy, visibleToUserIds: current.visibleToUserIds }, requester))) continue;
       lines.push({ id: e.id, at: e.at, kind, by, title: idea.title, itemId: null, changed: [], via: null, count: null, source: null, canUndo: false, undid: null });
       continue;
     }
