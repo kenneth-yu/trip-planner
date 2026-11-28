@@ -3,8 +3,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { appUrl } from "@/server/app-context";
 import { IMPORT_SCOPE } from "@/server/google/calendar-api";
-import { FAKE_CODE, fakeGoogleActive, IMPORT_CALLBACK_PATH, IMPORT_CLOSED, IMPORT_CONNECT_PATH, importIsRateLimited, importOAuthConfig } from "@/server/google/import-guard";
-import { IMPORT_FLOW_COOKIE, IMPORT_FLOW_PATH, startImportFlow } from "@/server/google/import-oauth";
+import { FAKE_CODE, fakeGoogleActive, IMPORT_CALLBACK_PATH, IMPORT_CLOSED, IMPORT_CONNECT_PATH, importIsRateLimited, importOAuthConfig, importPagePath } from "@/server/google/import-guard";
+import { IMPORT_FLOW_COOKIE, IMPORT_FLOW_PATH, IMPORT_SEEN_COOKIE, startImportFlow } from "@/server/google/import-oauth";
 import { authorizationUrl } from "@/server/google/oauth";
 import { loadTripPage } from "@/server/web";
 
@@ -17,7 +17,9 @@ export async function GET(request: Request) {
   const { user, view } = await loadTripPage(tripId.data);
   if (!view.permissions.canEdit) return new Response("Only people who can edit this trip can import into it.", { status: 403 });
   const flow = startImportFlow(user.id, tripId.data);
-  (await cookies()).set(IMPORT_FLOW_COOKIE, flow.cookie.value, {
+  const jar = await cookies();
+  jar.delete({ name: IMPORT_SEEN_COOKIE, path: importPagePath(tripId.data) });
+  jar.set(IMPORT_FLOW_COOKIE, flow.cookie.value, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",

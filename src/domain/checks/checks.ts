@@ -4,6 +4,7 @@ import { itemCity, whereAt } from "../time/days";
 import { flightCities } from "../time/flight-card";
 import { formatClock, formatShortDate, instantMs, localDateKey, toLocal } from "../time/format";
 import { airportByCode, airportShortName } from "../time/places";
+import { smartChecks, type SmartFix } from "../smarts";
 import type { Zone } from "../types";
 
 export type CheckKind =
@@ -16,13 +17,17 @@ export type CheckKind =
   | "plan_outside_places"
   | "tight_connection"
   | "busy_overlap"
-  | "unsure_place";
+  | "unsure_place"
+  | "wrong_time"
+  | "risky_connection";
 
 export interface Finding {
   key: string;
   kind: CheckKind;
   sentence: string;
   itemIds: string[];
+  why?: string;
+  fix?: SmartFix;
 }
 
 const HOUR = 3600_000;
@@ -254,6 +259,10 @@ export function unsurePlace(view: TripView): Finding[] {
     }));
 }
 
+export function smartFindings(view: TripView): Finding[] {
+  return smartChecks(view).map((c) => ({ key: c.key, kind: c.kind, sentence: c.line, itemIds: c.itemIds, why: c.why, ...(c.fix ? { fix: c.fix } : {}) }));
+}
+
 export const CHECKS: ((view: TripView) => Finding[])[] = [
   overlappingStays,
   nowhereToSleep,
@@ -264,6 +273,7 @@ export const CHECKS: ((view: TripView) => Finding[])[] = [
   tightConnection,
   busyOverlap,
   unsurePlace,
+  smartFindings,
 ];
 
 const PRIORITY: CheckKind[] = [
@@ -273,6 +283,8 @@ const PRIORITY: CheckKind[] = [
   "city_change_no_transport",
   "nowhere_to_sleep",
   "late_arrival",
+  "risky_connection",
+  "wrong_time",
   "tight_connection",
   "plan_outside_places",
   "airport_switch",
