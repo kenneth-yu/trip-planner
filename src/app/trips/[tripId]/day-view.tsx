@@ -12,6 +12,8 @@ import { stayCities } from "@/domain/timeline/trip-grid";
 import { groupFreeDays } from "@/domain/time/days";
 import { rowKey } from "@/domain/smarts/rows";
 import { SmartRow, TipsIntro, type SmartRows } from "./smart-row";
+import { ideasForDay, type Idea } from "@/domain/ideas/ideas";
+import { DayIdeas } from "./day-ideas";
 
 const CITY_CLASSES = [styles.city1, styles.city2, styles.city3, styles.city4, styles.city5];
 
@@ -117,7 +119,7 @@ function Entry({ entry, view, colors, smart }: { entry: DayEntry; view: TripView
   );
 }
 
-export function DayView({ view, days, todayKey, only, anchors = true, smart }: { view: TripView; days: Day[]; todayKey: string; only?: string; anchors?: boolean; smart?: SmartRows }) {
+export function DayView({ view, days, todayKey, only, anchors = true, smart, ideas = [] }: { view: TripView; days: Day[]; todayKey: string; only?: string; anchors?: boolean; smart?: SmartRows; ideas?: Idea[] }) {
   const colors = cityColors(view);
   if (!days.length) {
     return (
@@ -162,6 +164,10 @@ export function DayView({ view, days, todayKey, only, anchors = true, smart }: {
               ))}
             </ul>
           )}
+          <DayIdeas
+            tripId={view.trip.id}
+            lines={ideasForDay(day, ideas).map((found) => ({ city: found.city, line: found.line, ideas: found.ideas.map((idea) => ({ id: idea.id, title: idea.title, second: [idea.location?.name, idea.note.split("\n")[0]].filter(Boolean).join(" · ") || null })) }))}
+          />
         </details>
       ))}
     </>
