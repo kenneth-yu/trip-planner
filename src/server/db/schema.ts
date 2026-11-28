@@ -132,6 +132,7 @@ export const items = pgTable(
     visibleToUserIds: jsonb("visible_to_user_ids").$type<string[]>().notNull().default([]),
     showAsBusy: boolean("show_as_busy").notNull().default(false),
     status: text("status", { enum: ["confirmed", "needs_review"] }).notNull().default("confirmed"),
+    booked: boolean("booked").notNull().default(true),
     notes: text("notes").notNull().default(""),
     flags: jsonb("flags").$type<string[]>().notNull().default([]),
     createdBy: uuid("created_by").notNull().references(() => users.id),
