@@ -1,6 +1,5 @@
+import Link from "next/link";
 import styles from "../../../ui/page.module.css";
-import { appUrl } from "@/server/app-context";
-import { importOAuthConfig, importPagePath } from "@/server/google/import-guard";
 import { loadTripPage } from "@/server/web";
 import { listInbox } from "@/server/services/inbox-service";
 import { formatClock, formatDayHeader, toLocal } from "@/domain/time/format";
@@ -20,24 +19,23 @@ const SOURCE: Record<string, string> = {
 
 export default async function InboxPage({ params, searchParams }: PageProps<"/trips/[tripId]/inbox">) {
   const { tripId } = await params;
-  const { imported, matched } = await searchParams;
+  const { imported, matched, left } = await searchParams;
   const { ctx, requester, view } = await loadTripPage(tripId);
   if (!view.permissions.canEdit) return <p className={styles.muted}>Only editors review imports.</p>;
   const entries = await listInbox(ctx, tripId, requester);
   const clean = entries.filter((e) => e.clean).map((e) => e.id);
-  const importLink = importOAuthConfig(appUrl()) ? importPagePath(tripId) : null;
   return (
     <div className={styles.narrow}>
-      <InboxResults initial={importedOutcome(imported, matched)}>
+      <InboxResults initial={importedOutcome(imported, matched, left)}>
         {clean.length > 0 && <AddAllForm tripId={tripId} entryIds={clean} />}
         {!entries.length && (
           <p className={styles.muted}>
-            Nothing waiting. {importLink ? <><a href={importLink}>Import from Google Calendar</a> to bring your bookings in.</> : "Items from calendars and assistants show up here first."}
+            Nothing to review. Items from calendars and assistants arrive here first. <Link href={`/trips/${tripId}/import`}>Import bookings</Link>
           </p>
         )}
-        {entries.length > 0 && importLink && (
+        {entries.length > 0 && (
           <p>
-            <a href={importLink}>Import from Google Calendar</a>
+            <Link href={`/trips/${tripId}/import`}>Import bookings</Link>
           </p>
         )}
       <ul className={styles.list}>
