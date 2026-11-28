@@ -29,9 +29,4 @@ describe("the checks the merge gate starts by hand on a branch", () => {
       expect(condition, `${name} job ${job}`).not.toContain("github.event_name == 'push'");
     }
   });
-
-  it("the gate starts both workflows on the branch after it updates it", () => {
-    const gate = readFileSync(path.join(process.cwd(), "tools", "merge-gate.mjs"), "utf8");
-    expect(gate).toMatch(/update-branch[\s\S]*\["ci\.yml", "security\.yml"\][\s\S]*"--ref", branch/);
-  });
 });

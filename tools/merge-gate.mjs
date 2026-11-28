@@ -132,10 +132,14 @@ function processPullRequest(number) {
   } catch (error) {
     return refused(number, "merge", error);
   }
-  try {
-    gh(["api", "-X", "DELETE", `repos/${REPO}/git/refs/heads/${branch}`]);
-  } catch (error) {
-    say(`#${number}: merged, but the branch could not be deleted (${describe(error)}).`);
+  const keep = branchToKeep(branch, raw.pr.base.ref);
+  if (keep) say(`#${number}: merged, and the branch was not deleted because ${keep}.`);
+  else {
+    try {
+      gh(["api", "-X", "DELETE", `repos/${REPO}/git/refs/heads/${branch.split("/").map(encodeURIComponent).join("/")}`]);
+    } catch (error) {
+      say(`#${number}: merged, but the branch could not be deleted (${describe(error)}).`);
+    }
   }
   try {
     const merged = api(`repos/${REPO}/pulls/${number}`).merge_commit_sha;
@@ -166,8 +170,21 @@ function describe(error) {
   return (reason || error.message.split("\n")[0]).replace(/[^\x20-\x7e]/g, "").slice(0, 200);
 }
 
+const SAFE_BRANCH = /^[A-Za-z0-9._/-]+$/;
+
+function branchToKeep(branch, base) {
+  if (typeof branch !== "string" || !SAFE_BRANCH.test(branch)) return "its name has characters the gate never deletes";
+  if (branch.split("/").some((segment) => segment === "" || segment === "." || segment === "..")) return "its name has an empty or dot segment";
+  if (branch === base || branch === "main") return "it is the base branch";
+  return null;
+}
+
+function codeSpan(text) {
+  return `\`${text.replace(/[`\s]+/g, " ").trim()}\``;
+}
+
 function refused(number, action, error) {
-  const reason = `GitHub refused to ${action} (${describe(error)}). Someone needs to look at it.`;
+  const reason = `GitHub refused to ${action}: ${codeSpan(describe(error))}. Someone needs to look at it.`;
   say(`#${number}: ${reason}`);
   try {
     upsertComment(number, ["Everything the gate checks passes, but:", "", `- ${reason}`]);
