@@ -198,7 +198,7 @@ export function mergeRecords<T extends Mergeable>(existing: T, incoming: Mergeab
     merged.flight = { ...merged.flight, airline: merged.flight.airline ?? incoming.flight.airline };
   }
   if (incoming.stay && merged.stay) {
-    merged.stay = { ...merged.stay, lateArrivalCutoff: merged.stay.lateArrivalCutoff ?? incoming.stay.lateArrivalCutoff };
+    merged.stay = { ...merged.stay, lateArrivalCutoff: merged.stay.lateArrivalCutoff ?? incoming.stay.lateArrivalCutoff, timeToAirportMinutes: merged.stay.timeToAirportMinutes ?? incoming.stay.timeToAirportMinutes };
   }
   if (!merged.location?.address && incoming.location?.address) merged.location = { ...merged.location, ...incoming.location };
   if (incoming.notes && !merged.notes.includes(incoming.notes)) merged.notes = [merged.notes, incoming.notes].filter(Boolean).join("\n\n");

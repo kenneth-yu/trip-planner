@@ -13,6 +13,8 @@ import { DAY_PANEL_ID } from "./day-panel";
 import { UpNext } from "./up-next";
 import { WhereSleep } from "./where-sleep";
 import { sleepPlan } from "@/domain/timeline/sleep-plan";
+import { arrangeRows, checkSources, tipSources } from "@/domain/smarts/rows";
+import { acknowledgeTipsIntro, loadTipsForPage } from "@/server/services/smarts-service";
 
 export default async function TripPage({ params, searchParams }: PageProps<"/trips/[tripId]">) {
   const { tripId } = await params;
@@ -22,6 +24,9 @@ export default async function TripPage({ params, searchParams }: PageProps<"/tri
   const nowMs = ctx.now().getTime();
   const todayKey = DateTime.fromMillis(nowMs, { zone: view.homeZone }).toISODate();
   const attention = await loadAttention(ctx, view, requester);
+  const shownTips = await loadTipsForPage(ctx, view, requester);
+  if (shownTips.showIntro && requester.kind === "member") await acknowledgeTipsIntro(ctx, requester);
+  const smart = { rows: arrangeRows([...checkSources(attention.findings), ...tipSources(shownTips.tips)]), showIntro: shownTips.showIntro };
   const plan = sleepPlan(view, attention.beforeTrip ? {} : { from: todayKey });
   const fullGrid = buildTripGrid(view, nowMs, plan);
   const days = buildDays(view);
@@ -49,7 +54,7 @@ export default async function TripPage({ params, searchParams }: PageProps<"/tri
           </aside>
         )}
         <div>
-          <DayView view={view} days={days} todayKey={todayKey} only={everyDay || !selected ? undefined : selected} anchors={false} />
+          <DayView view={view} days={days} todayKey={todayKey} only={everyDay || !selected ? undefined : selected} anchors={false} smart={smart} />
           {days.length > 1 && (
             <p className={styles.muted}>
               <Link href={everyDay ? "?" : "?day=all"}>{everyDay ? "Show one day at a time" : "Show every day"}</Link>
@@ -63,7 +68,7 @@ export default async function TripPage({ params, searchParams }: PageProps<"/tri
         <UpNext entries={upNext(view, nowMs)} attention={attention} checks={tripChecks} tripId={tripId} />
         {grid && <DayStrip days={dayStrip(grid)} selectedKey={everyDay ? null : selected} />}
         <div id={DAY_PANEL_ID}>
-          <DayView view={view} days={days} todayKey={todayKey} only={everyDay || !selected ? undefined : selected} anchors={false} />
+          <DayView view={view} days={days} todayKey={todayKey} only={everyDay || !selected ? undefined : selected} anchors={false} smart={smart} />
         </div>
         {days.length > 1 && (
           <p className={styles.muted}>

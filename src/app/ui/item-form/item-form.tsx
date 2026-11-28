@@ -43,7 +43,7 @@ const TYPES: { type: ItemType; label: string }[] = [
 ];
 
 const LAST_TYPE_KEY = "trip-planner:last-add-type";
-const DETAIL_FIELDS = ["confirmationCode", "bookingReference", "phone", "price", "notes", "deadlineDate", "deadlineTime", "person"];
+const DETAIL_FIELDS = ["toAirportHours", "toAirportMinutes", "confirmationCode", "bookingReference", "phone", "price", "notes", "deadlineDate", "deadlineTime", "person"];
 const DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
 const CLOCK_SHAPE = /^\d{2}:\d{2}$/;
 
@@ -419,6 +419,20 @@ function ItemFormBody(props: ItemFormProps & { id: string }): React.JSX.Element 
             <Field label="Booking reference" name="bookingReference" error={errors.bookingReference}>
               <input {...control("bookingReference")} autoComplete="off" autoCapitalize="characters" spellCheck={false} inputMode="text" />
             </Field>
+          )}
+          {type === "stay" && (
+            <fieldset className={styles.group}>
+              <legend>About how long to the airport?</legend>
+              <p className={styles.note}>Used to say when to leave for your flight. Leave blank if you are not sure.</p>
+              <div className={styles.pair}>
+                <Field label="Hours" name="toAirportHours" error={errors.toAirportHours}>
+                  <input {...control("toAirportHours")} type="number" inputMode="numeric" min={0} max={23} />
+                </Field>
+                <Field label="Minutes" name="toAirportMinutes" error={errors.toAirportMinutes}>
+                  <input {...control("toAirportMinutes")} type="number" inputMode="numeric" min={0} max={59} />
+                </Field>
+              </div>
+            </fieldset>
           )}
           <Field label="Phone" name="phone" error={errors.phone}>
             <input {...control("phone")} type="tel" inputMode="tel" autoComplete="off" />
