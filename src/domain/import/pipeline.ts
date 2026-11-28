@@ -3,7 +3,7 @@ import type { Item, Zone } from "../types";
 import { whereAt } from "../time/days";
 import type { VisibleItem } from "../visibility/project";
 import { mapCalendarEvent, type CalendarEvent } from "./calendar-event";
-import { consolidate, matchRecords, type Match } from "./matching";
+import { consolidate, matchRecords, Memo, type Match } from "./matching";
 import type { Difference, ProposedItem } from "./proposal";
 import type { PlaceContext } from "../time/resolve-place";
 import { InputProblem } from "./problem";
@@ -33,10 +33,10 @@ export function zoneOnDateFrom(items: VisibleItem[], homeZone: Zone) {
   };
 }
 
-export function matchAgainst(proposed: ProposedItem, items: (VisibleItem | Item)[]): (Match & { itemId: string }) | null {
+export function matchAgainst(proposed: ProposedItem, items: (VisibleItem | Item)[], memo: Memo = new Memo()): (Match & { itemId: string }) | null {
   let best: (Match & { itemId: string }) | null = null;
   for (const item of items) {
-    const m = matchRecords(item, proposed);
+    const m = matchRecords(item, proposed, memo);
     if (!m) continue;
     if (!best || (m.strength === "strong" && best.strength === "possible")) best = { ...m, itemId: item.id };
   }
@@ -67,8 +67,9 @@ export function planCalendarImport(events: CalendarEvent[], existing: VisibleIte
 }
 
 export function planProposals(proposals: ProposedItem[], existing: (VisibleItem | Item)[], raw: unknown[] = proposals, unparsed: string[][] = []): InboxEntryDraft[] {
+  const memo = new Memo();
   return consolidate(proposals).map((cluster) => {
-    const match = matchAgainst(cluster.proposed, existing);
+    const match = matchAgainst(cluster.proposed, existing, memo);
     return {
       proposed: cluster.proposed,
       raw: cluster.sources.map((i) => raw[i]),
