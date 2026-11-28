@@ -1,8 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { buildInput, changesApp, evaluate, GateDataError, isWorkflowRefusal, lastCodeCommit, semverOf, WORKFLOW_REASON } from "./merge-gate-lib.mjs";
+import { createHash } from "node:crypto";
+import { buildInput, changesApp, evaluate, GateDataError, HOLD_LABELS, isWorkflowRefusal, lastCodeCommit, pushStart, semverOf, WORKFLOW_REASON } from "./merge-gate-lib.mjs";
 
 const REPO = "kenneth-yu/trip-planner";
 const MARKER = "<!-- merge-gate -->";
+const GATE_SECRET = process.env.GATE_TOKEN;
+delete process.env.GATE_TOKEN;
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const sweep = args.includes("--sweep");
@@ -12,14 +15,47 @@ if (!sweep && !single) {
   process.exit(2);
 }
 
+const RESERVE = 150;
+let apiCalls = 0;
+
+class RateLimited extends Error {
+  constructor(detail) {
+    super(`GitHub's API rate limit is used up (${detail}). Nothing was merged and nothing was commented.`);
+    this.name = "RateLimited";
+  }
+}
+
 function gh(parameters, token) {
   const env = token ? { ...process.env, GH_TOKEN: token } : process.env;
-  return execFileSync("gh", parameters, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 120000, env });
+  apiCalls += 1;
+  try {
+    return execFileSync("gh", parameters, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 120000, env });
+  } catch (error) {
+    const said = error instanceof Error ? [error.message, ...["stdout", "stderr"].map((key) => (key in error && typeof error[key] === "string" ? error[key] : ""))].join("\n") : "";
+    if (/rate limit/i.test(said)) throw new RateLimited(describe(error));
+    throw error;
+  }
+}
+
+function budgetLine() {
+  try {
+    const limits = JSON.parse(gh(["api", "rate_limit"])).resources.core;
+    apiCalls -= 1;
+    return { remaining: limits.remaining, limit: limits.limit, resetsAt: new Date(limits.reset * 1000).toISOString() };
+  } catch (error) {
+    if (error instanceof RateLimited) throw error;
+    return null;
+  }
+}
+
+function reportBudget() {
+  const budget = budgetLine();
+  say(budget ? `Rate budget: ${budget.remaining} of ${budget.limit} calls left, resets at ${budget.resetsAt}. This run made ${apiCalls}.` : `Rate budget: unavailable. This run made ${apiCalls}.`);
 }
 
 function gateToken() {
   if (!process.env.GITHUB_ACTIONS) return { ok: true, token: undefined };
-  const token = process.env.GATE_TOKEN;
+  const token = GATE_SECRET;
   return token ? { ok: true, token } : { ok: false, token: undefined };
 }
 
@@ -40,54 +76,112 @@ function git(parameters) {
   return execFileSync("git", parameters, { encoding: "utf8", timeout: 120000 }).trim();
 }
 
-function mergeAddsNothing(commit) {
+function isAncestorOfMain(sha) {
   try {
-    const fresh = git(["merge-tree", "--write-tree", "--no-messages", commit.parents[0], commit.parents[1]]).split("\n")[0];
-    return fresh === git(["rev-parse", `${commit.sha}^{tree}`]);
+    git(["merge-base", "--is-ancestor", sha, "origin/main"]);
+    return true;
   } catch (error) {
     if (error instanceof Error && "status" in error) return false;
     throw error;
   }
 }
 
-function firstCheckStart(sha) {
-  const starts = apiList(`repos/${REPO}/commits/${sha}/check-runs`, ".check_runs[] | {t: .started_at}").map((value) => Date.parse(value.t)).filter((value) => Number.isFinite(value));
-  return starts.length > 0 ? Math.min(...starts) : null;
+const ownDiffs = new Map();
+
+function ownDiff(sha) {
+  if (ownDiffs.has(sha)) return ownDiffs.get(sha);
+  let digest = null;
+  try {
+    const base = git(["merge-base", "origin/main", sha]);
+    const patch = git(["diff", "-U0", "--text", "--no-color", "--no-ext-diff", "--no-renames", base, sha]);
+    const kept = patch.split("\n").filter((line) => line.startsWith("diff --git") || line.startsWith("+") || line.startsWith("-"));
+    digest = createHash("sha256").update(kept.join("\n")).digest("hex");
+  } catch (error) {
+    if (!(error instanceof Error && "status" in error)) throw error;
+  }
+  ownDiffs.set(sha, digest);
+  return digest;
+}
+
+function mergeOutput(commit) {
+  try {
+    return git(["merge-tree", "--write-tree", "--name-only", "--no-messages", commit.parents[0], commit.parents[1]]);
+  } catch (error) {
+    if (error instanceof Error && "status" in error && error.status === 1 && typeof error.stdout === "string") return error.stdout.trim();
+    if (error instanceof Error && "status" in error) return null;
+    throw error;
+  }
+}
+
+function resolvesOnly(commit) {
+  const output = mergeOutput(commit);
+  if (output === null) return null;
+  const [tree, ...names] = output.split("\n");
+  const conflicted = new Set(names.filter((name) => name.length > 0));
+  try {
+    const differing = git(["diff-tree", "-r", "--name-only", "--no-renames", tree, `${commit.sha}^{tree}`]).split("\n").filter((name) => name.length > 0);
+    return differing.every((name) => conflicted.has(name)) ? { conflicted: conflicted.size > 0 } : null;
+  } catch (error) {
+    if (error instanceof Error && "status" in error) return null;
+    throw error;
+  }
+}
+
+function checkRunPages(sha) {
+  const pages = apiList(`repos/${REPO}/commits/${sha}/check-runs?per_page=100`, "{total: .total_count, runs: .check_runs}");
+  return { total: pages.length > 0 ? pages[0].total : null, runs: pages.flatMap((page) => (Array.isArray(page.runs) ? page.runs : [])) };
+}
+
+let whoAmI = null;
+
+function me() {
+  whoAmI ??= api("user").login;
+  return whoAmI;
 }
 
 function reviewerLogin() {
-  return process.env.GATE_OWNER || api("user").login;
+  return process.env.GATE_OWNER || me();
 }
 
 function gather(number) {
   const pr = api(`repos/${REPO}/pulls/${number}`);
   const head = pr.head.sha;
-  const files = apiList(`repos/${REPO}/pulls/${number}/files`, ".[]");
-  const comments = apiList(`repos/${REPO}/issues/${number}/comments`, ".[]");
-  const commits = apiList(`repos/${REPO}/pulls/${number}/commits`, ".[]").map((c) => ({ sha: c.sha, parents: c.parents }));
-  const checkRuns = apiList(`repos/${REPO}/commits/${head}/check-runs`, ".check_runs[]");
-  const checkRunsTotal = api(`repos/${REPO}/commits/${head}/check-runs?per_page=1`).total_count;
+  const files = apiList(`repos/${REPO}/pulls/${number}/files?per_page=100`, ".[]");
+  const comments = apiList(`repos/${REPO}/issues/${number}/comments?per_page=100`, ".[]");
+  seenComments.set(number, comments);
+  const commits = apiList(`repos/${REPO}/pulls/${number}/commits?per_page=100`, ".[]").map((c) => ({ sha: c.sha, parents: c.parents }));
+  const { total: checkRunsTotal, runs: checkRuns } = checkRunPages(head);
   const compare = api(`repos/${REPO}/compare/main...${head}`);
   git(["fetch", "-q", "origin", "main", `pull/${number}/head`]);
   const verifiedMerges = new Set();
+  const conflictMerges = new Set();
   for (const commit of commits.filter((c) => c.parents.length === 2)) {
-    const status = api(`repos/${REPO}/compare/${commit.parents[1].sha}...main`).status;
-    if ((status === "ahead" || status === "identical") && mergeAddsNothing({ sha: commit.sha, parents: commit.parents.map((p) => p.sha) })) verifiedMerges.add(commit.sha);
+    if (!isAncestorOfMain(commit.parents[1].sha)) continue;
+    const parents = commit.parents.map((p) => p.sha);
+    const resolution = resolvesOnly({ sha: commit.sha, parents });
+    if (resolution === null) continue;
+    const unchanged = ownDiff(commit.sha) !== null && ownDiff(commit.sha) === ownDiff(parents[0]);
+    if (!resolution.conflicted || unchanged) verifiedMerges.add(commit.sha);
+    else conflictMerges.add(commit.sha);
   }
   const normalized = commits.map((c) => ({ sha: c.sha, parents: c.parents.map((p) => p.sha) }));
   const lastCode = lastCodeCommit(normalized, verifiedMerges);
-  const lastCodePushedAt = lastCode ? firstCheckStart(lastCode.sha) : null;
-  return { pr, files, comments, commits, checkRuns, checkRunsTotal, compare, verifiedMerges, lastCodePushedAt };
+  const lastCodePushedAt = lastCode ? pushStart(normalized, lastCode.sha, (sha) => (sha === head ? checkRuns : checkRunPages(sha).runs)) : null;
+  return { pr, files, comments, commits, checkRuns, checkRunsTotal, compare, verifiedMerges, conflictMerges, lastCodePushedAt };
 }
 
 function commentAuthor() {
-  return process.env.GITHUB_ACTIONS ? "github-actions[bot]" : api("user").login;
+  return process.env.GITHUB_ACTIONS ? "github-actions[bot]" : me();
 }
+
+const seenComments = new Map();
 
 function upsertComment(number, lines) {
   const body = `${MARKER}\n## Merge gate\n\n${lines.join("\n")}\n`;
   const author = commentAuthor();
-  const existing = apiList(`repos/${REPO}/issues/${number}/comments`, ".[] | {id, body, author: .user.login}").find((c) => c.author === author && typeof c.body === "string" && c.body.startsWith(MARKER));
+  const known = seenComments.get(number) ?? apiList(`repos/${REPO}/issues/${number}/comments?per_page=100`, ".[]");
+  seenComments.delete(number);
+  const existing = known.map((c) => ({ id: c.id, body: c.body, author: c.user?.login })).find((c) => c.author === author && typeof c.body === "string" && c.body.startsWith(MARKER));
   if (existing && existing.body === body) return;
   if (existing) gh(["api", "-X", "PATCH", `repos/${REPO}/issues/comments/${existing.id}`, "-f", `body=${body}`]);
   else gh(["api", "-X", "POST", `repos/${REPO}/issues/${number}/comments`, "-f", `body=${body}`]);
@@ -97,13 +191,25 @@ function say(message) {
   process.stdout.write(`${message}\n`);
 }
 
-function processPullRequest(number) {
+function processPullRequest(number, defer = false) {
+  const callsBefore = apiCalls;
+  const outcome = evaluateAndAct(number, defer);
+  say(`#${number}: ${apiCalls - callsBefore} API calls`);
+  return outcome;
+}
+
+function checksRunning(checkRuns) {
+  return checkRuns.some((run) => run.appSlug === "github-actions" && run.status !== "completed");
+}
+
+function evaluateAndAct(number, defer) {
   let raw;
   let input;
   try {
     raw = gather(number);
     input = buildInput(raw, reviewerLogin(), REPO);
   } catch (error) {
+    if (error instanceof RateLimited) throw error;
     const reason = error instanceof GateDataError ? error.message : `GitHub data could not be read (${error instanceof Error ? error.message.split("\n")[0].slice(0, 120) : "unknown error"}).`;
     say(`#${number}: not merging, ${reason}`);
     if (!dryRun) upsertComment(number, ["Not merging: the gate could not read everything it needs, so it merges nothing.", "", `- ${reason}`]);
@@ -111,7 +217,8 @@ function processPullRequest(number) {
   }
   const verdict = evaluate(input);
   const branch = raw.pr.head.ref;
-  if (!verdict.ok) {
+  const updatable = verdict.behind && verdict.approved;
+  if (!verdict.ok && !updatable) {
     say(`#${number}: blocked\n${verdict.reasons.map((r) => `  - ${r}`).join("\n")}`);
     if (!dryRun) {
       upsertComment(number, ["Not merging yet. What is missing:", "", ...verdict.reasons.map((r) => `- ${r}`)]);
@@ -119,22 +226,35 @@ function processPullRequest(number) {
     }
     return "blocked";
   }
-  const paths = input.files.flatMap((f) => [f.filename, f.previousFilename].filter((p) => typeof p === "string"));
   const gate = gateToken();
   if (verdict.behind) {
-    say(`#${number}: passes, but the branch is behind main`);
-    if (dryRun) return "updated";
-    if (!gate.ok) return missingToken(number);
-    try {
-      gh(["api", "-X", "PUT", `repos/${REPO}/pulls/${number}/update-branch`, "-f", `expected_head_sha=${raw.pr.head.sha}`], gate.token);
-    } catch (error) {
-      return refused(number, "update the branch with main", error, input.labels);
+    if (checksRunning(input.checkRuns)) {
+      say(`#${number}: behind main, but its checks are running, so it is not updated again`);
+      return "waiting";
     }
-    upsertComment(number, ["Everything else passes. The branch was behind main, so the gate updated it. The checks run again, and it merges once they pass."]);
-    return "updated";
+    say(verdict.ok ? `#${number}: passes, but the branch is behind main` : `#${number}: approved, but the branch is behind main and its checks have not passed, so it is updated to run them again`);
+    if (dryRun) return "updated";
+    const update = () => {
+      if (!gate.ok) return missingToken(number);
+      try {
+        gh(["api", "-X", "PUT", `repos/${REPO}/pulls/${number}/update-branch`, "-f", `expected_head_sha=${raw.pr.head.sha}`], gate.token);
+      } catch (error) {
+        return refused(number, "update the branch with main", error, input.labels);
+      }
+      upsertComment(number, ["The reviews pass. The branch was behind main, so the gate updated it. The checks run again, and it merges once they pass."]);
+      say(`#${number}: updated`);
+      return "updated";
+    };
+    return defer ? { status: "behind", number, run: update } : update();
   }
   say(`#${number}: passes at ${raw.pr.head.sha}`);
   if (dryRun) return "merged";
+  const merge = () => mergeNow(number, raw, input, gate, branch);
+  return defer ? { status: "ready", number, run: merge } : merge();
+}
+
+function mergeNow(number, raw, input, gate, branch) {
+  const paths = input.files.flatMap((f) => [f.filename, f.previousFilename].filter((p) => typeof p === "string"));
   if (!gate.ok) return missingToken(number);
   const mergeArguments = ["api", "-X", "PUT", `repos/${REPO}/pulls/${number}/merge`, "-f", "merge_method=merge", "-f", `sha=${raw.pr.head.sha}`];
   if (changesApp(paths)) mergeArguments.push("-f", `commit_message=Semver: ${semverOf(input.body).level}`);
@@ -149,6 +269,7 @@ function processPullRequest(number) {
     try {
       gh(["api", "-X", "DELETE", `repos/${REPO}/git/refs/heads/${branch.split("/").map(encodeURIComponent).join("/")}`], gate.token);
     } catch (error) {
+      if (error instanceof RateLimited) throw error;
       say(`#${number}: merged, but the branch could not be deleted (${describe(error)}).`);
     }
   }
@@ -178,9 +299,10 @@ function missingToken(number) {
   try {
     upsertComment(number, ["Everything the gate checks passes, but:", "", `- ${MISSING_TOKEN}`]);
   } catch (commentError) {
+    if (commentError instanceof RateLimited) throw commentError;
     say(`#${number}: the comment could not be written either (${describe(commentError)}).`);
   }
-  return "failed";
+  return "missing-token";
 }
 
 const SAFE_BRANCH = /^[A-Za-z0-9._/-]+$/;
@@ -203,13 +325,22 @@ function refusalText(error) {
 }
 
 function refused(number, action, error, labels = []) {
+  if (error instanceof RateLimited) throw error;
   if (isWorkflowRefusal(refusalText(error))) {
     say(`#${number}: ${WORKFLOW_REASON}`);
     try {
       upsertComment(number, ["Everything the gate checks passes, but:", "", `- ${WORKFLOW_REASON}`]);
-      if (!labels.includes("needs-owner")) gh(["api", "-X", "POST", `repos/${REPO}/issues/${number}/labels`, "-f", "labels[]=needs-owner"]);
     } catch (commentError) {
-      say(`#${number}: the comment or the label could not be written (${describe(commentError)}).`);
+      if (commentError instanceof RateLimited) throw commentError;
+      say(`#${number}: the comment could not be written (${describe(commentError)}).`);
+    }
+    if (!labels.includes("needs-owner")) {
+      try {
+        gh(["api", "-X", "POST", `repos/${REPO}/issues/${number}/labels`, "-f", "labels[]=needs-owner"]);
+      } catch (labelError) {
+        if (labelError instanceof RateLimited) throw labelError;
+        say(`#${number}: the needs-owner label could not be applied (${describe(labelError)}).`);
+      }
     }
     return "blocked";
   }
@@ -218,25 +349,73 @@ function refused(number, action, error, labels = []) {
   try {
     upsertComment(number, ["Everything the gate checks passes, but:", "", `- ${reason}`]);
   } catch (commentError) {
+    if (commentError instanceof RateLimited) throw commentError;
     say(`#${number}: the comment could not be written either (${describe(commentError)}).`);
   }
   return "failed";
 }
 
-if (single) {
-  const outcome = processPullRequest(single);
-  process.exit(outcome === "blocked" || outcome === "failed" ? 1 : 0);
+function finish(code) {
+  try {
+    reportBudget();
+  } catch (error) {
+    say(error instanceof Error ? error.message : "Rate budget: unavailable.");
+  }
+  process.exit(code);
 }
 
-let numbers;
+function main() {
+  if (single) {
+    const outcome = processPullRequest(single);
+    return outcome === "blocked" || outcome === "failed" || outcome === "missing-token" ? 1 : 0;
+  }
+  let open;
+  try {
+    open = apiList(`repos/${REPO}/pulls?state=open&per_page=100`, '.[] | select(.draft == false and .head.repo.full_name == "' + REPO + '" and .base.ref == "main") | {number, labels: [.labels[].name]}').sort((a, b) => a.number - b.number);
+  } catch (error) {
+    if (error instanceof RateLimited) throw error;
+    process.stderr.write(`The open pull requests could not be listed (${error instanceof Error ? error.message.split("\n")[0].slice(0, 120) : "unknown error"}). Merging nothing.\n`);
+    return 1;
+  }
+  const budget = budgetLine();
+  if (budget && budget.remaining < RESERVE) {
+    process.stdout.write(`::warning::Merge gate skipped: ${budget.remaining} API calls left, below the ${RESERVE} it needs. It resets at ${budget.resetsAt}.\n`);
+    return 0;
+  }
+  const pending = [];
+  for (const { number, labels } of open) {
+    const held = HOLD_LABELS.filter((label) => labels.includes(label));
+    if (held.length > 0) {
+      say(`#${number}: skipped, it carries the ${held.join(" and ")} label`);
+      continue;
+    }
+    const outcome = processPullRequest(number, true);
+    if (typeof outcome === "object") pending.push(outcome);
+    else if (outcome === "missing-token") return 1;
+  }
+  const act = (item) => {
+    const callsBefore = apiCalls;
+    const outcome = item.run();
+    say(`#${item.number}: ${apiCalls - callsBefore} API calls to ${item.status === "ready" ? "merge" : "update"}`);
+    return outcome;
+  };
+  for (const ready of pending.filter((item) => item.status === "ready")) {
+    const outcome = act(ready);
+    if (outcome === "missing-token") return 1;
+    if (outcome === "merged") break;
+  }
+  for (const behind of pending.filter((item) => item.status === "behind")) {
+    if (act(behind) === "missing-token") return 1;
+  }
+  return 0;
+}
+
+let exitCode;
 try {
-  numbers = apiList(`repos/${REPO}/pulls?state=open&per_page=100`, '.[] | select(.draft == false and .head.repo.full_name == "' + REPO + '" and .base.ref == "main") | .number').sort((a, b) => a - b);
+  exitCode = main();
 } catch (error) {
-  process.stderr.write(`The open pull requests could not be listed (${error instanceof Error ? error.message.split("\n")[0].slice(0, 120) : "unknown error"}). Merging nothing.\n`);
-  process.exit(1);
+  if (!(error instanceof RateLimited)) throw error;
+  process.stderr.write(`${error.message}\n`);
+  exitCode = 1;
 }
-for (const number of numbers) {
-  const outcome = processPullRequest(number);
-  if (outcome === "merged" || outcome === "updated") break;
-}
-process.exit(0);
+finish(exitCode);

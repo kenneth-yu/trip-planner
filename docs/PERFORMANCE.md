@@ -15,7 +15,7 @@ Budgets live in `perf/budgets.json`. A new hot path, MCP call or route with no e
 
 ## Hot paths
 
-Median of 31 samples, each the mean of 20 calls after 20 warm up calls, per call, on `src/fixtures/december-trip.json` (owner view) and the packed demo trip (`PACKED_TRIP`). `planCalendarImport` imports the fixture's 16 calendar events against the trip's visible items.
+Median of 21 samples (always the same count), per call, on `src/fixtures/december-trip.json` (owner view) and the packed demo trip (`PACKED_TRIP`). `planCalendarImport` imports the fixture's 16 calendar events against the trip's visible items. Each sample is the mean of as many calls as fit in about 25 ms (one call for the slow paths, up to 50 for the fast ones), chosen from 8 warm up calls, so the work per test stays near half a second however fast or slow the runner is. A test also has a wall clock cap of 12 s: it stops sampling at the cap, and fails as too slow if it has fewer than 9 samples by then, which only a regression of tens of times can cause. The 60 s test timeout is unchanged. Before this, a test made 640 calls whatever they cost, so `planCalendarImport` (about 55 ms a call) took 25 s on one runner and 52 s on another, and timed out at 60 s on #47.
 
 Re-baselined on Nov 27 on the CI runner that enforces them: GitHub-hosted ubuntu-latest (4 vCPU), perf run on #51. Each budget is 2 times that median, rounded up, with a floor of 1 ms: below a millisecond the median moves by more than its own size with scheduler jitter on a shared VM (projectTrip failed at 0.0402 ms against 0.04 ms), while any real regression in a hot path (an extra pass over the items, a lookup inside a loop) costs well over a millisecond on these trips. The first budgets, from a WSL2 development machine, were 2 to 3 times tighter and failed on the slower runner.
 
@@ -31,12 +31,34 @@ Re-baselined on Nov 27 on the CI runner that enforces them: GitHub-hosted ubuntu
 | runChecks | packed | 4.4 ms | 9 ms | Same |
 | planCalendarImport | december | 72.3 ms | 145 ms | Calendar import and the inbox |
 | planCalendarImport | packed | 71.6 ms | 144 ms | Same |
+| planCalendarImport | 500 events at one moment (the import limit) | 63 ms (was 2,477 ms before the matching fix, over its 150 ms budget) | 150 ms | The worst case for an import: every event on the same day with a different title |
+
+### Runner noise
+
+Medians of one run on eleven hosted runs of the perf workflow (Nov 27, main and branches), per call. `max/min` is how far the same code moved between runs, with no change to it.
+
+| Measure | Trip | Fastest | Median | Slowest | max/min | Budget |
+|---|---|---|---|---|---|---|
+| projectTrip | december | 0.016 ms | 0.029 ms | 0.036 ms | 2.3 | 1 ms |
+| projectTrip | packed | 0.061 ms | 0.082 ms | 0.130 ms | 2.1 | 1 ms |
+| buildTripGrid | december | 8.8 ms | 12.7 ms | 18.9 ms | 2.2 | 33 ms |
+| buildTripGrid | packed | 5.1 ms | 7.5 ms | 11.1 ms | 2.2 | 21 ms |
+| buildDays | december | 6.1 ms | 8.6 ms | 11.5 ms | 1.9 | 22 ms |
+| buildDays | packed | 2.3 ms | 3.4 ms | 5.1 ms | 2.2 | 10 ms |
+| runChecks | december | 12.6 ms | 18.1 ms | 25.1 ms | 2.0 | 46 ms |
+| runChecks | packed | 2.4 ms | 3.4 ms | 4.8 ms | 2.0 | 9 ms |
+| planCalendarImport | december | 38.9 ms | 56.9 ms | 102.5 ms | 2.6 | 145 ms |
+| planCalendarImport | packed | 39.3 ms | 54.7 ms | 94.6 ms | 2.4 | 144 ms |
+
+The same code runs 1.9 to 2.6 times slower on the slowest hosted runner than on the fastest. The budgets sit above the slowest healthy run by 1.75 to 2.0 times for `buildTripGrid`, `buildDays` and `runChecks`, by 1.4 to 1.5 times for `planCalendarImport`, and at the 1 ms floor for `projectTrip`, so they do not fire on a bad runner. The price is plain: an absolute budget cannot both tolerate that spread and catch a 2 times regression. A regression of `planCalendarImport` to 2 times its median (114 ms) stays inside its 145 ms budget; one to 3 times (170 ms) fails. A budget tight enough to catch 2 times (about 105 ms) would fail healthy runs on the slowest runners. The budgets are unchanged here, because they change only with a new measurement by the architect. A measurement that cannot take 9 samples inside the 12 s cap is recorded in the results and the summary as "slower than the cap", with its budget, and fails the test.
+
+Each measurement now also records `referenceMs`, the median time of a fixed CPU workload (sorting 60 000 numbers) measured in the same run. Once a few more runs have collected it, the budgets can be expressed against it, which removes the runner speed and would let them sit near 2 times the median. That needs the data first, so it is recorded and not yet used.
 
 These are slower than they look necessary because every time conversion goes through Luxon. Making them faster is welcome; lowering a budget needs a new measurement here.
 
 ## MCP get_trip
 
-Median of 31 calls after 5 warm up calls. In memory goes through the official MCP client over an in memory transport (service and projection, no network). HTTP is a JSON-RPC `tools/call` with a bearer token against the built app's `/api/mcp`, which adds the proxy, token lookup, a fresh MCP server per request and serialisation. Re-baselined on the hosted runner (perf run on #51): 2 times the median, rounded up to 10 ms.
+Median of 21 calls after 8 warm up calls, under the same 12 s wall clock cap. In memory goes through the official MCP client over an in memory transport (service and projection, no network). HTTP is a JSON-RPC `tools/call` with a bearer token against the built app's `/api/mcp`, which adds the proxy, token lookup, a fresh MCP server per request and serialisation. Re-baselined on the hosted runner (perf run on #51): 2 times the median, rounded up to 10 ms.
 
 | Measure | Hosted median | Budget | Reason |
 |---|---|---|---|
@@ -58,8 +80,11 @@ Sizes are bytes, and the kB in the CI report is 1024 bytes (137.3 kB is 140,6xx 
 | /sign-in | 137,612 B | 148,000 B |
 | /trips/[tripId] | 140,651 B | 151,000 B |
 | /trips/[tripId]/add | 165,922 B | 178,000 B |
+| /trips/[tripId]/activity | 144,384 B (141.0 kB on the runner) | 155,000 B |
 | /trips/[tripId]/connect | 140,802 B | 151,000 B |
 | /trips/[tripId]/deadlines | 139,647 B | 150,000 B |
+| /trips/[tripId]/import | about 143,500 B (140.1 kB on the runner) | 154,000 B |
+| /trips/[tripId]/import/google | 144,384 B (141.0 kB on the runner) | 155,000 B |
 | /trips/[tripId]/inbox | 140,613 B | 151,000 B |
 | /trips/[tripId]/items/[itemId] | 140,352 B | 151,000 B |
 | /trips/[tripId]/items/[itemId]/edit | 170,372 B (166.4 kB on the runner) | 183,000 B |

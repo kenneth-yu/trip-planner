@@ -10,7 +10,7 @@ if (!SHA || !/^[0-9a-f]{40}$/.test(SHA)) {
 }
 
 function run(command, parameters) {
-  return execFileSync(command, parameters, { encoding: "utf8", timeout: 120000 }).trim();
+  return execFileSync(command, parameters, { encoding: "utf8", timeout: 120000, stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
 function done(message) {
@@ -21,6 +21,18 @@ function done(message) {
 function tags() {
   run("git", ["fetch", "--tags", "--force", "--quiet", "origin"]);
   return run("git", ["tag", "--list", "v*.*.*"]).split("\n");
+}
+
+function refuse(message) {
+  process.stderr.write(`${message}\n`);
+  process.exit(1);
+}
+
+try {
+  run("git", ["merge-base", "--is-ancestor", SHA, "refs/remotes/origin/main"]);
+} catch (error) {
+  if (error && typeof error === "object" && "status" in error && error.status === 1) refuse(`${SHA} is not part of main, so it is not released.`);
+  refuse(`${SHA} could not be checked against main, so nothing is released (${error instanceof Error ? error.message.split("\n")[0].slice(0, 120) : "unknown error"}).`);
 }
 
 if (run("git", ["tag", "--points-at", SHA, "--list", "v*.*.*"])) done(`${SHA} is already tagged.`);

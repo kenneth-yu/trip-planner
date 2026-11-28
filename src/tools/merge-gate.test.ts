@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildInput, changesApp, evaluate, GateDataError, isDocsOnly, isIntegrationPath, isReplyTo, lastCodeCommit, parseVerdict, REQUIRED_CHECKS, requiredReviewers, semverOf, touchesOwnerOnly, touchesWorkflowFiles, isWorkflowRefusal, WORKFLOW_REASON } from "../../tools/merge-gate-lib.mjs";
+import { buildInput, changesApp, evaluate, GateDataError, isDocsOnly, isIntegrationPath, isReplyTo, lastCodeCommit, parseVerdict, pushStart, REPLY_FORMAT, REQUIRED_CHECKS, requiredReviewers, semverOf, touchesOwnerOnly, touchesWorkflowFiles, isWorkflowRefusal, WORKFLOW_REASON } from "../../tools/merge-gate-lib.mjs";
 
 const T = (minute: number) => `2026-11-27T10:${String(minute).padStart(2, "0")}:00Z`;
 const ME = "kenneth-yu";
@@ -428,13 +428,149 @@ describe("merge gate", () => {
     });
   });
 
+  describe("when the last code was pushed", () => {
+    const runs = (startedAt: string) => [{ started_at: startedAt }, { started_at: "2026-11-27T12:00:00Z" }];
+    const commits = [commit("a"), { sha: sha("m"), parents: [sha("a"), "main-tip"] }, { sha: sha("n"), parents: [sha("m"), "main-tip"] }];
+    const asked: string[] = [];
+    const lookup = (table: Record<string, Array<{ started_at: string }>>) => (at: string) => {
+      asked.push(at);
+      return table[at] ?? [];
+    };
+
+    it("is the earliest check start of the code commit itself when it ran", () => {
+      asked.length = 0;
+      expect(pushStart(commits, sha("a"), lookup({ [sha("a")]: runs("2026-11-27T10:00:00Z") }))).toBe(Date.parse("2026-11-27T10:00:00Z"));
+      expect(asked).toEqual([sha("a")]);
+    });
+
+    it("is the checks of the merge commit it was pushed with, when the code commit has no runs of its own", () => {
+      asked.length = 0;
+      expect(pushStart(commits, sha("a"), lookup({ [sha("m")]: runs("2026-11-27T11:00:00Z") }))).toBe(Date.parse("2026-11-27T11:00:00Z"));
+      expect(asked).toEqual([sha("a"), sha("m")]);
+    });
+
+    it("walks on to the first later commit that has runs, not further, and never back before the code commit", () => {
+      asked.length = 0;
+      expect(pushStart(commits, sha("m"), lookup({ [sha("a")]: runs("2026-11-27T09:00:00Z"), [sha("n")]: runs("2026-11-27T11:30:00Z") }))).toBe(Date.parse("2026-11-27T11:30:00Z"));
+      expect(asked).toEqual([sha("m"), sha("n")]);
+    });
+
+    it("is null, so the gate fails closed, when no commit from the code commit to the head has runs", () => {
+      expect(pushStart(commits, sha("a"), () => [])).toBeNull();
+      expect(pushStart(commits, sha("a"), lookup({ [sha("a")]: [{ started_at: "never" }] }))).toBeNull();
+    });
+
+    it("is null when the code commit is not in the list", () => {
+      expect(pushStart(commits, sha("z"), () => runs("2026-11-27T10:00:00Z"))).toBeNull();
+    });
+  });
+
+  describe("verdicts that carry over a merge of main", () => {
+    const plain = { sha: sha("m"), parents: [sha("a"), "main-tip"] };
+    const conflict = { sha: sha("c"), parents: [sha("a"), "main-tip"] };
+    const architectAt = (letter: string, minute = 14) => say(minute, `## Architect review\n\nVerdict: approve${at(letter)}`);
+
+    it("carries every role's verdict over a merge of main that left the pull request's own diff unchanged", () => {
+      const verdict = evaluate(pull({ commits: [commit("a"), plain], verifiedMerges: new Set([sha("m")]) }));
+      expect(verdict.ok).toBe(true);
+    });
+
+    it("needs only a fresh Architect verdict, and not every role again, after a merge that resolved a conflict", () => {
+      const commits = [commit("a"), conflict];
+      const conflictMerges = new Set([sha("c")]);
+      const without = evaluate(pull({ commits, conflictMerges }));
+      expect(without.ok).toBe(false);
+      expect(without.reasons).toEqual(["A merge of main resolved a conflict and changed this pull request's own diff since QA, Security, Product reviewed it. The Architect needs a fresh verdict at or after that merge; the others carry over."]);
+      expect(evaluate(pull({ commits, conflictMerges, comments: [...reviews, architectAt("c")] })).ok).toBe(true);
+    });
+
+    it("does not take an Architect verdict from before the merge that resolved the conflict", () => {
+      const verdict = evaluate(pull({ commits: [commit("a"), conflict], conflictMerges: new Set([sha("c")]), comments: [...reviews, architectAt("a")] }));
+      expect(verdict.ok).toBe(false);
+      expect(verdict.reasons[0]).toMatch(/needs a fresh verdict/);
+    });
+
+    it("asks the Architect again when the pull request already needs one and its verdict is from before the conflict merge", () => {
+      const files = [{ filename: "package.json" }];
+      const verdict = evaluate(pull({ files, changedFiles: 1, commits: [commit("a"), conflict], conflictMerges: new Set([sha("c")]), comments: [...reviews, architectAt("a")] }));
+      expect(verdict.reasons).toContain("The Architect verdict is older than the head: a merge of main resolved a conflict after it, so the Architect needs to review again at or after that merge.");
+    });
+
+    it("still needs a full re-review when code was pushed after the verdict, even next to a merge of main", () => {
+      const verdict = evaluate(pull({ commits: [commit("a"), plain, commit("b")], verifiedMerges: new Set([sha("m")]), comments: [...reviews, architectAt("b")] }));
+      expect(verdict.ok).toBe(false);
+      expect(verdict.reasons).toHaveLength(3);
+      expect(verdict.reasons[0]).toMatch(/older than the head/);
+      const mixed = evaluate(pull({ commits: [commit("a"), conflict, commit("b")], conflictMerges: new Set([sha("c")]), comments: [...reviews, architectAt("b")] }));
+      expect(mixed.reasons).toHaveLength(3);
+    });
+
+    it("does not treat a merge from somewhere other than main as a merge of main", () => {
+      const verdict = evaluate(pull({ commits: [commit("a"), { sha: sha("o"), parents: [sha("a"), sha("z")] }] }));
+      expect(verdict.ok).toBe(false);
+    });
+
+    it("carries a changes-requested verdict, with its reply, over a conflict merge when the Architect is fresh", () => {
+      const withChanges = [say(10, `## QA review\n\nVerdict: approve with changes${at("a")}`), say(11, `## Security review\n\nVerdict: clear${at("a")}`), say(12, `## Product review\n\nVerdict: approve${at("a")}`), say(13, "QA: Applied 1 and 2.")];
+      const commits = [commit("a"), conflict];
+      const conflictMerges = new Set([sha("c")]);
+      expect(evaluate(pull({ commits, conflictMerges, comments: withChanges })).ok).toBe(false);
+      expect(evaluate(pull({ commits, conflictMerges, comments: [...withChanges, architectAt("c", 20)] })).ok).toBe(true);
+    });
+
+    it("says it is approved, not blocked, so a behind pull request can be updated while its checks are not green", () => {
+      const red = greenRuns.map((run, index) => (index === 0 ? { ...run, conclusion: "failure" } : run));
+      const verdict = evaluate(pull({ checkRuns: red, behindBy: 2 }));
+      expect(verdict.ok).toBe(false);
+      expect(verdict.approved).toBe(true);
+      expect(verdict.behind).toBe(true);
+      expect(evaluate(pull({ checkRuns: red, behindBy: 2, comments: [] })).approved).toBe(false);
+    });
+  });
+
+  describe("lenient replies", () => {
+    it.each([
+      ["QA: Applied 1 and 2, Declined 3."],
+      ["QA\nApplied 1 and 2"],
+      ["QA:\nApplied 1, 2"],
+      ["QA:\n\nDeclined 3 because it is out of scope"],
+      ["- **QA**:\n- Applied 1"],
+      ["Thanks for the review.\nQA: Applied 1 and 2.\nSecurity: Declined 1."],
+      ["QA — Declined 2"],
+    ])("reads %j as a reply to QA", (body) => {
+      expect(isReplyTo("qa", body)).toBe(true);
+    });
+
+    it.each([
+      ["QA is reviewing it now"],
+      ["QA\n\nSecurity: Applied 1"],
+      ["Applied 1 and 2"],
+      ["QA looked at it. We will see.\nSomeone else: Applied 1"],
+      ["## QA review\n\nVerdict: approve\nApplied nothing"],
+    ])("does not read %j as a reply to QA", (body) => {
+      expect(isReplyTo("qa", body)).toBe(false);
+    });
+
+    it("tells the person the exact format when it refuses", () => {
+      const comments = [say(10, `## QA review\n\nVerdict: approve with changes${at("a")}`), reviews[1], reviews[2]];
+      const reasons = evaluate(pull({ comments })).reasons;
+      expect(reasons).toHaveLength(1);
+      expect(reasons[0]).toContain('Name the role, then Applied or Declined, on one line or on two lines in a row, for example "QA: Applied 1 and 2, Declined 3."');
+    });
+
+    it("passes when the reply is split over two lines", () => {
+      const comments = [say(10, `## QA review\n\nVerdict: approve with changes${at("a")}`), reviews[1], reviews[2], say(20, "QA:\nApplied 1, 2")];
+      expect(evaluate(pull({ comments })).ok).toBe(true);
+    });
+  });
+
   describe("approve with changes", () => {
     const withChanges = [say(10, `## QA review\n\nVerdict: approve with changes${at("a")}`), say(11, `## Security review\n\nVerdict: clear with fixes${at("a")}`), reviews[2]];
 
     it("needs a reply that names the reviewer it answers", () => {
       expect(evaluate(pull({ comments: withChanges })).reasons).toEqual([
-        'The latest QA verdict asks for changes ("approve with changes at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") and no reply naming QA with Applied or Declined follows it.'.replace("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", sha("a")),
-        'The latest Security verdict asks for changes ("clear with fixes at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") and no reply naming Security with Applied or Declined follows it.'.replace("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", sha("a")),
+        'The latest QA verdict asks for changes ("approve with changes at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") and no reply naming QA with Applied or Declined follows it.'.replace("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", sha("a")) + ` ${REPLY_FORMAT}`,
+        'The latest Security verdict asks for changes ("clear with fixes at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") and no reply naming Security with Applied or Declined follows it.'.replace("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", sha("a")) + ` ${REPLY_FORMAT}`,
       ]);
       const wrongName = [...withChanges, say(13, "Security: Applied the fixes.")];
       expect(evaluate(pull({ comments: wrongName })).reasons).toHaveLength(1);

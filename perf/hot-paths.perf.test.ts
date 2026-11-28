@@ -1,4 +1,5 @@
 import { describe, it } from "vitest";
+import type { CalendarEvent } from "@/domain/import/calendar-event";
 import { buildFixtureTrip, fixture, TRAVELERS, USERS } from "@/fixtures/december-trip";
 import { buildDemoTrip, PACKED_TRIP } from "@/fixtures/demo-trips";
 import { runChecks } from "@/domain/checks/checks";
@@ -12,9 +13,6 @@ import { check, measureSync } from "./harness";
 
 const owner: Requester = { kind: "member", userId: USERS.kenny.id, homeZone: USERS.kenny.homeZone };
 const NOW = Date.parse(fixture.today);
-const SAMPLES = 31;
-const WARMUP = 20;
-const BATCH = 20;
 
 const trips: { label: string; agg: TripAggregate }[] = [
   { label: "december", agg: buildFixtureTrip() },
@@ -32,7 +30,8 @@ describe.each(trips)("hot paths on the $label trip", ({ label, agg }) => {
   const run = (name: string, fn: () => unknown) => {
     it(`${name} stays inside its budget`, () => {
       const key = `${name}/${label}`;
-      check("hot-paths", key, measureSync(fn, { samples: SAMPLES, batch: BATCH, warmup: WARMUP }), budgetFor(key), SAMPLES);
+      const budgetMs = budgetFor(key);
+      check("hot-paths", key, measureSync(fn, { name: key, target: { name: key, file: "hot-paths", budgetMs } }), budgetMs);
     });
   };
 
@@ -47,4 +46,16 @@ describe.each(trips)("hot paths on the $label trip", ({ label, agg }) => {
       homeZone: owner.homeZone,
     }),
   );
+});
+
+describe("an import at the size limit", () => {
+  const events: CalendarEvent[] = Array.from({ length: 500 }, (_, i) => ({ summary: `Event ${i}`, start: { dateTime: "2026-12-05T10:00:00Z" }, end: { dateTime: "2026-12-05T11:00:00Z" } }));
+
+  it("planCalendarImport on 500 events at one moment stays inside its budget", () => {
+    const view = projectTrip(buildDemoTrip(PACKED_TRIP), owner);
+    const run = () => planCalendarImport(events, view.items, { calendarTravelers: {}, defaultTravelerIds: [TRAVELERS.kenny], homeZone: owner.homeZone });
+    const key = "planCalendarImport/500events";
+    const budgetMs = budgetFor(key);
+    check("hot-paths", key, measureSync(run, { name: key, target: { name: key, file: "hot-paths", budgetMs } }), budgetMs);
+  });
 });

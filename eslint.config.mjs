@@ -29,6 +29,19 @@ const principles = { rules: { "no-comments": noComments } };
 
 const outsideLayer = (layers) => layers.flatMap((l) => [`@/${l}/*`, `**/${l}/*`]);
 
+const icalMessage = "Import ical.js only in src/domain/import/ics.ts, which turns .ics text into calendar events. Call that module instead. See docs/SECURITY.md, outbound calls.";
+
+const icalOnlyInIcs = { name: "ical.js", message: icalMessage };
+
+const icalSubpaths = { group: ["ical.js/*", "ical.js/**"], message: icalMessage };
+
+const luxonPath = { name: "luxon", message: "Import DateTime from src/domain/time/luxon." };
+
+const domainPatterns = [
+  { group: outsideLayer(["server", "app"]), message: "src/domain is pure and sits at the center. Move the logic into src/domain or pass what it needs in as data. See docs/ARCHITECTURE.md, Layers." },
+  { group: ["next", "next/*", "drizzle-orm", "drizzle-orm/*", "pg", "@electric-sql/*", "node:*", "react", "react-dom"], message: "src/domain does no I/O and knows no framework. Do the I/O in a service and pass the result in. See docs/ARCHITECTURE.md, Layers." },
+];
+
 export default defineConfig([
   ...nextVitals,
   ...nextTs,
@@ -61,7 +74,7 @@ export default defineConfig([
       "no-empty": ["error", { allowEmptyCatch: false }],
       "no-useless-catch": "error",
       "no-console": ["error", { allow: ["error"] }],
-      "no-restricted-imports": ["error", { paths: [{ name: "luxon", message: "Import DateTime from src/domain/time/luxon, which turns on throwOnInvalid." }] }],
+      "no-restricted-imports": ["error", { paths: [{ name: "luxon", message: "Import DateTime from src/domain/time/luxon, which turns on throwOnInvalid." }, icalOnlyInIcs], patterns: [icalSubpaths] }],
     },
   },
   {
@@ -75,22 +88,15 @@ export default defineConfig([
   },
   {
     files: ["src/domain/**"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          paths: [{ name: "luxon", message: "Import DateTime from src/domain/time/luxon." }],
-          patterns: [
-            { group: outsideLayer(["server", "app"]), message: "src/domain is pure and sits at the center. Move the logic into src/domain or pass what it needs in as data. See docs/ARCHITECTURE.md, Layers." },
-            { group: ["next", "next/*", "drizzle-orm", "drizzle-orm/*", "pg", "@electric-sql/*", "node:*", "react", "react-dom"], message: "src/domain does no I/O and knows no framework. Do the I/O in a service and pass the result in. See docs/ARCHITECTURE.md, Layers." },
-          ],
-        },
-      ],
-    },
+    rules: { "no-restricted-imports": ["error", { paths: [luxonPath, icalOnlyInIcs], patterns: [...domainPatterns, icalSubpaths] }] },
+  },
+  {
+    files: ["src/domain/import/ics.ts"],
+    rules: { "no-restricted-imports": ["error", { paths: [luxonPath], patterns: domainPatterns }] },
   },
   {
     files: ["src/domain/time/luxon.ts"],
-    rules: { "no-restricted-imports": "off" },
+    rules: { "no-restricted-imports": ["error", { paths: [icalOnlyInIcs], patterns: [icalSubpaths] }] },
   },
   {
     files: ["src/server/**"],
@@ -98,8 +104,8 @@ export default defineConfig([
       "no-restricted-imports": [
         "error",
         {
-          paths: [{ name: "luxon", message: "Import DateTime from src/domain/time/luxon." }],
-          patterns: [{ group: outsideLayer(["app"]), message: "src/server must not depend on src/app. Move shared code down into src/server or src/domain. See docs/ARCHITECTURE.md, Layers." }],
+          paths: [luxonPath, icalOnlyInIcs],
+          patterns: [icalSubpaths, { group: outsideLayer(["app"]), message: "src/server must not depend on src/app. Move shared code down into src/server or src/domain. See docs/ARCHITECTURE.md, Layers." }],
         },
       ],
     },

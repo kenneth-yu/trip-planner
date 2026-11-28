@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -188,7 +188,33 @@ describe("Vercel ignore rule for production", () => {
     expect(production({ body: approved }, sha)).toBe("skip");
   });
 
-  it("applies to production only: a preview never needs the approval", () => {
-    expect(run(repoWith([["src/app/page.tsx"]]), { VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "wp/x" }, { exitCode: 22 })).toBe("build");
+  it("does not ask GitHub for a preview: it never needs the approval", () => {
+    const bin = mkdtempSync(path.join(tmpdir(), "marking-curl-"));
+    const marker = path.join(bin, "asked");
+    writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash\ntouch "${marker}"\nexit 22\n`, { mode: 0o755 });
+    const repo = repoWith([["src/app/page.tsx"]]);
+    const result = spawnSync("bash", [SCRIPT], {
+      cwd: repo.dir,
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ""}`, VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "wp/x", VERCEL_GIT_PREVIOUS_SHA: "", VERCEL_GIT_COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567" },
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    expect(existsSync(marker)).toBe(false);
+  });
+});
+
+describe("Vercel ignore rule for previews", () => {
+  it.each(["src/app/page.tsx", "src/server/services/trip-service.ts", "package.json", "next.config.ts", "public/icon.svg", "tools/ci/vercel-ignore.sh", "docs/UX.md", "src/app/page.test.tsx"])("skips a preview that changes %s", (changed) => {
+    expect(decide(changed, { VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "wp/10b-core-edit" })).toBe("skip");
+  });
+
+  it("skips a preview whatever the branch, including a first commit with nothing to compare with", () => {
+    expect(run(repoWith([["src/app/page.tsx"]], false), { VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "main" })).toBe("skip");
+    expect(run(repoWith([["src/app/page.tsx"]]), { VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "" })).toBe("skip");
+  });
+
+  it("still builds the app when no deployment environment is named, as when the script is run by hand", () => {
+    expect(decide("src/app/page.tsx", { VERCEL_GIT_COMMIT_REF: "wp/10b-core-edit" })).toBe("build");
+    expect(decide("src/app/page.tsx", { VERCEL_ENV: "development", VERCEL_GIT_COMMIT_REF: "wp/10b-core-edit" })).toBe("build");
   });
 });
