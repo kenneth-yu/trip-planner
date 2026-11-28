@@ -1,6 +1,7 @@
 import { DateTime } from "../time/luxon";
 import { formatClockExact } from "../time/format";
 import type { ZonedTime } from "../types";
+import { placeLabel } from "./labels";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -38,11 +39,6 @@ export interface SleepWindow {
   why: string[];
 }
 
-function zoneName(zone: string): string {
-  const last = zone.split("/").pop() ?? zone;
-  return last.replace(/_/g, " ");
-}
-
 function at(ms: number, zone: string): DateTime {
   return DateTime.fromMillis(ms, { zone });
 }
@@ -52,9 +48,9 @@ function clockIn(ms: number, zone: string): string {
 }
 
 function both(ms: number, zone: string, home: string): string {
-  const there = `${clockIn(ms, zone)} ${zoneName(zone)} time`;
+  const there = `${clockIn(ms, zone)} ${placeLabel(zone)} time`;
   if (zone === home) return there;
-  return `${there} (${clockIn(ms, home)} ${zoneName(home)})`;
+  return `${there} (${clockIn(ms, home)} ${placeLabel(home)})`;
 }
 
 function zonesCrossed(flight: SleepFlight): number {
@@ -115,7 +111,7 @@ export function sleepWindow(flight: SleepFlight, homeZone: string): SleepWindow 
   if (!(length >= MIN_WINDOW_MS)) return null;
 
   const endsBeforeMeal = beforeMeal <= morning;
-  const place = zoneName(zone);
+  const place = placeLabel(zone);
   const landing = landingSentences(arriveMs, zone);
   const sleepUntil = `then sleep until about ${both(until, zone, homeZone)}${endsBeforeMeal ? ", before the meal served before landing" : ""}.`;
   return {
