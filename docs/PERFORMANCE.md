@@ -31,6 +31,7 @@ Re-baselined on Nov 27 on the CI runner that enforces them: GitHub-hosted ubuntu
 | runChecks | packed | 4.4 ms | 9 ms | Same |
 | planCalendarImport | december | 72.3 ms | 145 ms | Calendar import and the inbox |
 | planCalendarImport | packed | 71.6 ms | 144 ms | Same |
+| planCalendarImport | 500 events at one moment (the import limit) | 63 ms (was 2,477 ms before the matching fix, over its 150 ms budget) | 150 ms | The worst case for an import: every event on the same day with a different title |
 
 These are slower than they look necessary because every time conversion goes through Luxon. Making them faster is welcome; lowering a budget needs a new measurement here.
 
@@ -58,8 +59,11 @@ Sizes are bytes, and the kB in the CI report is 1024 bytes (137.3 kB is 140,6xx 
 | /sign-in | 137,612 B | 148,000 B |
 | /trips/[tripId] | 140,651 B | 151,000 B |
 | /trips/[tripId]/add | 165,922 B | 178,000 B |
+| /trips/[tripId]/activity | 144,384 B (141.0 kB on the runner) | 155,000 B |
 | /trips/[tripId]/connect | 140,802 B | 151,000 B |
 | /trips/[tripId]/deadlines | 139,647 B | 150,000 B |
+| /trips/[tripId]/import | about 143,500 B (140.1 kB on the runner) | 154,000 B |
+| /trips/[tripId]/import/google | 144,384 B (141.0 kB on the runner) | 155,000 B |
 | /trips/[tripId]/inbox | 140,613 B | 151,000 B |
 | /trips/[tripId]/items/[itemId] | 140,352 B | 151,000 B |
 | /trips/[tripId]/items/[itemId]/edit | 170,372 B (166.4 kB on the runner) | 183,000 B |
@@ -71,6 +75,7 @@ Sizes are bytes, and the kB in the CI report is 1024 bytes (137.3 kB is 140,6xx 
 | /trips/[tripId]/settings/delete | 144,384 B (141.0 kB on the runner) | 155,000 B |
 | /trips/[tripId]/settings | 145,785 B | 156,000 B |
 | /trips/new | 139,957 B | 150,000 B |
+| /v/[token] | 143,673 B (140.3 kB on the runner) | 154,000 B |
 
 About 133 kB of every route is the React and Next.js runtime; the add form adds about 25 kB, and the edit page loads the same form, so it measures the same as /add (170,372 B for both in the same build).
 

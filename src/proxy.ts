@@ -34,7 +34,10 @@ export async function proxy(request: NextRequest) {
   if (rule) {
     const verdict = await checkRateLimit(rule, request);
     if (verdict === "unavailable") return plain("This page is unavailable right now. Try again in a moment.", 503, headers, 30);
-    if (!verdict.allowed) return plain("Too many requests. Wait a little while and try again.", 429, headers, verdict.retryAfterS);
+    if (!verdict.allowed) {
+      const visitor = path.startsWith("/v/");
+      return plain(visitor ? "Too many visits from this connection. Wait a minute and try again." : "Too many requests. Wait a little while and try again.", 429, headers, verdict.retryAfterS);
+    }
   }
 
   const requestHeaders = new Headers(request.headers);

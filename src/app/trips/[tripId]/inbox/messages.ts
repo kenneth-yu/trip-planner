@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { airportByCode } from "@/domain/time/places";
 import type { ProposedItem } from "@/domain/import/proposal";
 import type { AddAllResult, DecidedEntry } from "@/server/services/inbox-service";
@@ -67,4 +68,19 @@ export function addAllText(r: AddAllResult): string {
   if (r.withoutRemovedTraveler > 0) parts.push(`${r.withoutRemovedTraveler} ${be(r.withoutRemovedTraveler)} saved without a removed traveler.`);
   if (r.needYou > 0) parts.push(`${r.needYou} still ${r.needYou === 1 ? "needs" : "need"} you: see below.`);
   return parts.join(" ");
+}
+
+const Count = z.coerce.number().int().min(0).max(100_000);
+
+export function importedOutcome(imported: unknown, matched: unknown, left: unknown = undefined): Outcome | null {
+  const waiting = Count.safeParse(imported);
+  if (!waiting.success) return null;
+  const same = Count.safeParse(matched);
+  const out = Count.safeParse(left);
+  const parts = [`${waiting.data} ${waiting.data === 1 ? "event is" : "events are"} waiting in your inbox.`];
+  const count = same.success ? same.data : 0;
+  if (count > 0) parts.push(`${count} ${count === 1 ? "looks like a thing" : "look like things"} already on the trip.`);
+  const gone = out.success ? out.data : 0;
+  if (gone > 0) parts.push(`${gone} ${gone === 1 ? "was" : "were"} left out: cancelled, outside your dates, or with no readable time.`);
+  return { text: parts.join(" "), role: "status" };
 }

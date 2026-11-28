@@ -1,8 +1,18 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import styles from "./phone.module.css";
 import type { UpNextEntry } from "@/domain/timeline/trip-grid";
 import { phoneAlert, type Attention } from "@/server/attention";
 import type { OpenCheck } from "@/server/services/check-service";
+
+function Wrapper({ linked, href, children }: { linked: boolean; href: string; children: ReactNode }) {
+  if (!linked) return <div className={styles.next}>{children}</div>;
+  return (
+    <Link className={styles.next} href={href}>
+      {children}
+    </Link>
+  );
+}
 
 const more = (n: number) => `and ${n} more`;
 
@@ -30,7 +40,7 @@ function Alert({ attention, checks, tripId }: { attention: Attention; checks: Op
   );
 }
 
-export function UpNext({ entries, attention, checks, tripId }: { entries: UpNextEntry[]; attention: Attention; checks: OpenCheck[]; tripId: string }) {
+export function UpNext({ entries, attention, checks, tripId, linked = true }: { entries: UpNextEntry[]; attention: Attention; checks: OpenCheck[]; tripId: string; linked?: boolean }) {
   return (
     <section className={styles.upNext}>
       <Alert attention={attention} checks={checks} tripId={tripId} />
@@ -38,7 +48,7 @@ export function UpNext({ entries, attention, checks, tripId }: { entries: UpNext
         <>
           <h2>Up next</h2>
           {entries.map((e) => (
-            <Link key={e.key} className={styles.next} href={`/trips/${tripId}/items/${e.itemId}`}>
+            <Wrapper key={e.key} linked={linked} href={`/trips/${tripId}/items/${e.itemId}`}>
               <b>{e.time}</b>
               <span>
                 {e.title}
@@ -47,7 +57,7 @@ export function UpNext({ entries, attention, checks, tripId }: { entries: UpNext
                   {e.place ? `, ${e.place}` : ""} · {e.inHowLong}
                 </small>
               </span>
-            </Link>
+            </Wrapper>
           ))}
         </>
       )}

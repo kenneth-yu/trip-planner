@@ -4,7 +4,7 @@ import { DECEMBER_TRIP } from "./trips";
 
 test("the inbox mounts its result lines before anything is decided, and axe is clean", async ({ pageSignedInAs }) => {
   const kenny = await pageSignedInAs("kenny", `/trips/${DECEMBER_TRIP}/inbox`);
-  await expect(kenny.getByText("Nothing waiting.")).toBeVisible();
+  await expect(kenny.getByText("Nothing to review.")).toBeVisible();
   const status = kenny.locator("p[role=status]");
   await expect(status).toHaveCount(1);
   await expect(status).toBeEmpty();

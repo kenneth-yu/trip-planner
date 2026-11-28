@@ -21,10 +21,11 @@ describe("empty trip", () => {
   it("shows editors the add action and the connect link", async () => {
     const { view } = await emptyTripFor(kenny);
     const html = render(view);
-    expect(html).toContain("Add your first flight or stay.");
-    expect(html).toContain(`href="/trips/${TRIP_ID}/add"`);
-    expect(html).toContain(">Add flight or stay<");
-    expect(html).toContain("Connect Claude or ChatGPT");
+    expect(html).toContain("Start with your flights.");
+    expect(html).toContain("Booked or not, add the flights first. The app works out which nights you need a bed, in local time.");
+    expect(html).toContain(`href="/trips/${TRIP_ID}/add?type=flight"`);
+    expect(html).toContain(">Add a flight<");
+    expect(html).not.toContain("Connect Claude");
     expect(html).not.toContain("You review everything");
   });
 
@@ -32,7 +33,7 @@ describe("empty trip", () => {
     const { ctx } = await emptyTripFor(jacob);
     const id = await createTrip(ctx, { id: USERS.jacob.id, name: USERS.jacob.name }, "Lisbon in March");
     const html = render(await getTripView(ctx, id, jacob));
-    expect(html).toContain(`href="/trips/${id}/add"`);
+    expect(html).toContain(`href="/trips/${id}/add?type=flight"`);
   });
 
   it("shows viewers a plain sentence and no button", async () => {
@@ -40,7 +41,7 @@ describe("empty trip", () => {
     const html = render({ ...view, permissions: { ...view.permissions, canEdit: false, role: "viewer" } });
     expect(html).toContain("Nothing here yet.");
     expect(html).not.toContain("/add");
-    expect(html).not.toContain("Add flight or stay");
+    expect(html).not.toContain("Add a flight");
     expect(html).not.toContain("Connect Claude");
   });
 });

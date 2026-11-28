@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildInput, changesApp, evaluate, GateDataError, isDocsOnly, isIntegrationPath, isReplyTo, lastCodeCommit, parseVerdict, REQUIRED_CHECKS, requiredReviewers, semverOf, touchesOwnerOnly } from "../../tools/merge-gate-lib.mjs";
+import { buildInput, changesApp, evaluate, GateDataError, isDocsOnly, isIntegrationPath, isReplyTo, lastCodeCommit, parseVerdict, pushStart, REQUIRED_CHECKS, requiredReviewers, semverOf, touchesOwnerOnly, touchesWorkflowFiles, isWorkflowRefusal, WORKFLOW_REASON } from "../../tools/merge-gate-lib.mjs";
 
 const T = (minute: number) => `2026-11-27T10:${String(minute).padStart(2, "0")}:00Z`;
 const ME = "kenneth-yu";
@@ -273,8 +273,34 @@ describe("merge gate", () => {
     });
   });
 
+  describe("workflow files", () => {
+    it("are recognised by their new or old name", () => {
+      expect(touchesWorkflowFiles([".github/workflows/ci.yml"])).toBe(true);
+      expect(touchesWorkflowFiles(["docs/x.md", ".github/workflows/deep/x.yaml"])).toBe(true);
+      expect(touchesWorkflowFiles([".github/CODEOWNERS", "tools/ci/x.mjs", "src/a.ts"])).toBe(false);
+    });
+
+    it("always need the owner, however many verdicts and green checks there are", () => {
+      const architect = say(13, `## Architect review\n\nVerdict: approve${at("a")}`);
+      for (const files of [[{ filename: ".github/workflows/ci.yml" }], [{ filename: "docs/old.md", previousFilename: ".github/workflows/ci.yml" }]]) {
+        const verdict = evaluate(pull({ files, changedFiles: files.length, comments: [...reviews, architect] }));
+        expect(verdict.ok).toBe(false);
+        expect(verdict.needsOwner).toBe(true);
+        expect(verdict.reasons).toContain(WORKFLOW_REASON);
+      }
+      expect(WORKFLOW_REASON).toBe("The pull request touches workflow files: needs the owner to merge.");
+    });
+
+    it("recognises the refusal GitHub gives a token without the workflows permission", () => {
+      expect(isWorkflowRefusal("refusing to allow a Personal Access Token to create or update workflow `.github/workflows/ci.yml` without `workflow` scope")).toBe(true);
+      expect(isWorkflowRefusal("Resource not accessible by personal access token: cannot modify .github/workflows/ci.yml")).toBe(true);
+      expect(isWorkflowRefusal("Required status check \"test\" is expected.")).toBe(false);
+      expect(isWorkflowRefusal("")).toBe(false);
+    });
+  });
+
   describe("labels", () => {
-    it.each(["hold", "do-not-merge"])("stops on the %s label", (label) => {
+    it.each(["hold", "do-not-merge", "needs-owner"])("stops on the %s label", (label) => {
       const verdict = evaluate(pull({ labels: [label] }));
       expect(verdict.ok).toBe(false);
       expect(verdict.held).toBe(true);
@@ -399,6 +425,43 @@ describe("merge gate", () => {
       expect(lastCodeCommit([commit("a"), merge], new Set([sha("m")]))?.sha).toBe(sha("a"));
       expect(lastCodeCommit([commit("a"), merge], new Set())?.sha).toBe(sha("m"));
       expect(lastCodeCommit([merge], new Set([sha("m")]))).toBeNull();
+    });
+  });
+
+  describe("when the last code was pushed", () => {
+    const runs = (startedAt: string) => [{ started_at: startedAt }, { started_at: "2026-11-27T12:00:00Z" }];
+    const commits = [commit("a"), { sha: sha("m"), parents: [sha("a"), "main-tip"] }, { sha: sha("n"), parents: [sha("m"), "main-tip"] }];
+    const asked: string[] = [];
+    const lookup = (table: Record<string, Array<{ started_at: string }>>) => (at: string) => {
+      asked.push(at);
+      return table[at] ?? [];
+    };
+
+    it("is the earliest check start of the code commit itself when it ran", () => {
+      asked.length = 0;
+      expect(pushStart(commits, sha("a"), lookup({ [sha("a")]: runs("2026-11-27T10:00:00Z") }))).toBe(Date.parse("2026-11-27T10:00:00Z"));
+      expect(asked).toEqual([sha("a")]);
+    });
+
+    it("is the checks of the merge commit it was pushed with, when the code commit has no runs of its own", () => {
+      asked.length = 0;
+      expect(pushStart(commits, sha("a"), lookup({ [sha("m")]: runs("2026-11-27T11:00:00Z") }))).toBe(Date.parse("2026-11-27T11:00:00Z"));
+      expect(asked).toEqual([sha("a"), sha("m")]);
+    });
+
+    it("walks on to the first later commit that has runs, not further, and never back before the code commit", () => {
+      asked.length = 0;
+      expect(pushStart(commits, sha("m"), lookup({ [sha("a")]: runs("2026-11-27T09:00:00Z"), [sha("n")]: runs("2026-11-27T11:30:00Z") }))).toBe(Date.parse("2026-11-27T11:30:00Z"));
+      expect(asked).toEqual([sha("m"), sha("n")]);
+    });
+
+    it("is null, so the gate fails closed, when no commit from the code commit to the head has runs", () => {
+      expect(pushStart(commits, sha("a"), () => [])).toBeNull();
+      expect(pushStart(commits, sha("a"), lookup({ [sha("a")]: [{ started_at: "never" }] }))).toBeNull();
+    });
+
+    it("is null when the code commit is not in the list", () => {
+      expect(pushStart(commits, sha("z"), () => runs("2026-11-27T10:00:00Z"))).toBeNull();
     });
   });
 

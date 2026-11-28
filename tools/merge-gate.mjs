@@ -1,8 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { buildInput, changesApp, evaluate, GateDataError, lastCodeCommit, semverOf } from "./merge-gate-lib.mjs";
+import { buildInput, changesApp, evaluate, GateDataError, HOLD_LABELS, isWorkflowRefusal, lastCodeCommit, pushStart, semverOf, WORKFLOW_REASON } from "./merge-gate-lib.mjs";
 
 const REPO = "kenneth-yu/trip-planner";
 const MARKER = "<!-- merge-gate -->";
+const GATE_SECRET = process.env.GATE_TOKEN;
+delete process.env.GATE_TOKEN;
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const sweep = args.includes("--sweep");
@@ -12,9 +14,51 @@ if (!sweep && !single) {
   process.exit(2);
 }
 
-function gh(parameters) {
-  return execFileSync("gh", parameters, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 120000 });
+const RESERVE = 150;
+let apiCalls = 0;
+
+class RateLimited extends Error {
+  constructor(detail) {
+    super(`GitHub's API rate limit is used up (${detail}). Nothing was merged and nothing was commented.`);
+    this.name = "RateLimited";
+  }
 }
+
+function gh(parameters, token) {
+  const env = token ? { ...process.env, GH_TOKEN: token } : process.env;
+  apiCalls += 1;
+  try {
+    return execFileSync("gh", parameters, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 120000, env });
+  } catch (error) {
+    const said = error instanceof Error ? [error.message, ...["stdout", "stderr"].map((key) => (key in error && typeof error[key] === "string" ? error[key] : ""))].join("\n") : "";
+    if (/rate limit/i.test(said)) throw new RateLimited(describe(error));
+    throw error;
+  }
+}
+
+function budgetLine() {
+  try {
+    const limits = JSON.parse(gh(["api", "rate_limit"])).resources.core;
+    apiCalls -= 1;
+    return { remaining: limits.remaining, limit: limits.limit, resetsAt: new Date(limits.reset * 1000).toISOString() };
+  } catch (error) {
+    if (error instanceof RateLimited) throw error;
+    return null;
+  }
+}
+
+function reportBudget() {
+  const budget = budgetLine();
+  say(budget ? `Rate budget: ${budget.remaining} of ${budget.limit} calls left, resets at ${budget.resetsAt}. This run made ${apiCalls}.` : `Rate budget: unavailable. This run made ${apiCalls}.`);
+}
+
+function gateToken() {
+  if (!process.env.GITHUB_ACTIONS) return { ok: true, token: undefined };
+  const token = GATE_SECRET;
+  return token ? { ok: true, token } : { ok: false, token: undefined };
+}
+
+const MISSING_TOKEN = "The GATE_TOKEN secret is not set, so the gate cannot update this branch or merge it. The owner needs to add the GATE_TOKEN repository secret. The gate does not fall back to the workflow token.";
 
 function api(path, extra = []) {
   return JSON.parse(gh(["api", path, ...extra]));
@@ -41,23 +85,30 @@ function mergeAddsNothing(commit) {
   }
 }
 
-function firstCheckStart(sha) {
-  const starts = apiList(`repos/${REPO}/commits/${sha}/check-runs`, ".check_runs[] | {t: .started_at}").map((value) => Date.parse(value.t)).filter((value) => Number.isFinite(value));
-  return starts.length > 0 ? Math.min(...starts) : null;
+function checkRunPages(sha) {
+  const pages = apiList(`repos/${REPO}/commits/${sha}/check-runs?per_page=100`, "{total: .total_count, runs: .check_runs}");
+  return { total: pages.length > 0 ? pages[0].total : null, runs: pages.flatMap((page) => (Array.isArray(page.runs) ? page.runs : [])) };
+}
+
+let whoAmI = null;
+
+function me() {
+  whoAmI ??= api("user").login;
+  return whoAmI;
 }
 
 function reviewerLogin() {
-  return process.env.GATE_OWNER || api("user").login;
+  return process.env.GATE_OWNER || me();
 }
 
 function gather(number) {
   const pr = api(`repos/${REPO}/pulls/${number}`);
   const head = pr.head.sha;
-  const files = apiList(`repos/${REPO}/pulls/${number}/files`, ".[]");
-  const comments = apiList(`repos/${REPO}/issues/${number}/comments`, ".[]");
-  const commits = apiList(`repos/${REPO}/pulls/${number}/commits`, ".[]").map((c) => ({ sha: c.sha, parents: c.parents }));
-  const checkRuns = apiList(`repos/${REPO}/commits/${head}/check-runs`, ".check_runs[]");
-  const checkRunsTotal = api(`repos/${REPO}/commits/${head}/check-runs?per_page=1`).total_count;
+  const files = apiList(`repos/${REPO}/pulls/${number}/files?per_page=100`, ".[]");
+  const comments = apiList(`repos/${REPO}/issues/${number}/comments?per_page=100`, ".[]");
+  seenComments.set(number, comments);
+  const commits = apiList(`repos/${REPO}/pulls/${number}/commits?per_page=100`, ".[]").map((c) => ({ sha: c.sha, parents: c.parents }));
+  const { total: checkRunsTotal, runs: checkRuns } = checkRunPages(head);
   const compare = api(`repos/${REPO}/compare/main...${head}`);
   git(["fetch", "-q", "origin", "main", `pull/${number}/head`]);
   const verifiedMerges = new Set();
@@ -67,18 +118,22 @@ function gather(number) {
   }
   const normalized = commits.map((c) => ({ sha: c.sha, parents: c.parents.map((p) => p.sha) }));
   const lastCode = lastCodeCommit(normalized, verifiedMerges);
-  const lastCodePushedAt = lastCode ? firstCheckStart(lastCode.sha) : null;
+  const lastCodePushedAt = lastCode ? pushStart(normalized, lastCode.sha, (sha) => (sha === head ? checkRuns : checkRunPages(sha).runs)) : null;
   return { pr, files, comments, commits, checkRuns, checkRunsTotal, compare, verifiedMerges, lastCodePushedAt };
 }
 
 function commentAuthor() {
-  return process.env.GITHUB_ACTIONS ? "github-actions[bot]" : api("user").login;
+  return process.env.GITHUB_ACTIONS ? "github-actions[bot]" : me();
 }
+
+const seenComments = new Map();
 
 function upsertComment(number, lines) {
   const body = `${MARKER}\n## Merge gate\n\n${lines.join("\n")}\n`;
   const author = commentAuthor();
-  const existing = apiList(`repos/${REPO}/issues/${number}/comments`, ".[] | {id, body, author: .user.login}").find((c) => c.author === author && typeof c.body === "string" && c.body.startsWith(MARKER));
+  const known = seenComments.get(number) ?? apiList(`repos/${REPO}/issues/${number}/comments?per_page=100`, ".[]");
+  seenComments.delete(number);
+  const existing = known.map((c) => ({ id: c.id, body: c.body, author: c.user?.login })).find((c) => c.author === author && typeof c.body === "string" && c.body.startsWith(MARKER));
   if (existing && existing.body === body) return;
   if (existing) gh(["api", "-X", "PATCH", `repos/${REPO}/issues/comments/${existing.id}`, "-f", `body=${body}`]);
   else gh(["api", "-X", "POST", `repos/${REPO}/issues/${number}/comments`, "-f", `body=${body}`]);
@@ -89,12 +144,20 @@ function say(message) {
 }
 
 function processPullRequest(number) {
+  const callsBefore = apiCalls;
+  const outcome = evaluateAndAct(number);
+  say(`#${number}: ${apiCalls - callsBefore} API calls`);
+  return outcome;
+}
+
+function evaluateAndAct(number) {
   let raw;
   let input;
   try {
     raw = gather(number);
     input = buildInput(raw, reviewerLogin(), REPO);
   } catch (error) {
+    if (error instanceof RateLimited) throw error;
     const reason = error instanceof GateDataError ? error.message : `GitHub data could not be read (${error instanceof Error ? error.message.split("\n")[0].slice(0, 120) : "unknown error"}).`;
     say(`#${number}: not merging, ${reason}`);
     if (!dryRun) upsertComment(number, ["Not merging: the gate could not read everything it needs, so it merges nothing.", "", `- ${reason}`]);
@@ -111,43 +174,38 @@ function processPullRequest(number) {
     return "blocked";
   }
   const paths = input.files.flatMap((f) => [f.filename, f.previousFilename].filter((p) => typeof p === "string"));
+  const gate = gateToken();
   if (verdict.behind) {
     say(`#${number}: passes, but the branch is behind main`);
     if (dryRun) return "updated";
+    if (!gate.ok) return missingToken(number);
     try {
-      gh(["api", "-X", "PUT", `repos/${REPO}/pulls/${number}/update-branch`, "-f", `expected_head_sha=${raw.pr.head.sha}`]);
-      for (const workflow of ["ci.yml", "security.yml"]) gh(["workflow", "run", workflow, "--repo", REPO, "--ref", branch]);
+      gh(["api", "-X", "PUT", `repos/${REPO}/pulls/${number}/update-branch`, "-f", `expected_head_sha=${raw.pr.head.sha}`], gate.token);
     } catch (error) {
-      return refused(number, "update the branch with main", error);
+      return refused(number, "update the branch with main", error, input.labels);
     }
-    upsertComment(number, ["Everything else passes. The branch was behind main, so the gate updated it and started the checks again. It merges once they pass."]);
+    upsertComment(number, ["Everything else passes. The branch was behind main, so the gate updated it. The checks run again, and it merges once they pass."]);
     return "updated";
   }
   say(`#${number}: passes at ${raw.pr.head.sha}`);
   if (dryRun) return "merged";
+  if (!gate.ok) return missingToken(number);
   const mergeArguments = ["api", "-X", "PUT", `repos/${REPO}/pulls/${number}/merge`, "-f", "merge_method=merge", "-f", `sha=${raw.pr.head.sha}`];
   if (changesApp(paths)) mergeArguments.push("-f", `commit_message=Semver: ${semverOf(input.body).level}`);
   try {
-    gh(mergeArguments);
+    gh(mergeArguments, gate.token);
   } catch (error) {
-    return refused(number, "merge", error);
+    return refused(number, "merge", error, input.labels);
   }
   const keep = branchToKeep(branch, raw.pr.base.ref);
   if (keep) say(`#${number}: merged, and the branch was not deleted because ${keep}.`);
   else {
     try {
-      gh(["api", "-X", "DELETE", `repos/${REPO}/git/refs/heads/${branch.split("/").map(encodeURIComponent).join("/")}`]);
+      gh(["api", "-X", "DELETE", `repos/${REPO}/git/refs/heads/${branch.split("/").map(encodeURIComponent).join("/")}`], gate.token);
     } catch (error) {
+      if (error instanceof RateLimited) throw error;
       say(`#${number}: merged, but the branch could not be deleted (${describe(error)}).`);
     }
-  }
-  try {
-    const merged = api(`repos/${REPO}/pulls/${number}`).merge_commit_sha;
-    if (typeof merged !== "string" || !/^[0-9a-f]{40}$/.test(merged)) throw new GateDataError("The merge commit id could not be read.");
-    gh(["workflow", "run", "release.yml", "--repo", REPO, "--ref", "main", "-f", `sha=${merged}`]);
-    for (const workflow of ["ci.yml", "perf.yml"]) gh(["workflow", "run", workflow, "--repo", REPO, "--ref", "main"]);
-  } catch (error) {
-    say(`#${number}: merged, but a follow-up workflow could not be started (${describe(error)}).`);
   }
   say(`#${number}: merged`);
   return "merged";
@@ -170,6 +228,17 @@ function describe(error) {
   return (reason || error.message.split("\n")[0]).replace(/[^\x20-\x7e]/g, "").slice(0, 200);
 }
 
+function missingToken(number) {
+  say(`#${number}: ${MISSING_TOKEN}`);
+  try {
+    upsertComment(number, ["Everything the gate checks passes, but:", "", `- ${MISSING_TOKEN}`]);
+  } catch (commentError) {
+    if (commentError instanceof RateLimited) throw commentError;
+    say(`#${number}: the comment could not be written either (${describe(commentError)}).`);
+  }
+  return "missing-token";
+}
+
 const SAFE_BRANCH = /^[A-Za-z0-9._/-]+$/;
 
 function branchToKeep(branch, base) {
@@ -183,31 +252,89 @@ function codeSpan(text) {
   return `\`${text.replace(/[`\s]+/g, " ").trim()}\``;
 }
 
-function refused(number, action, error) {
+function refusalText(error) {
+  if (!(error instanceof Error)) return "";
+  const said = ["stdout", "stderr"].map((key) => (key in error && typeof error[key] === "string" ? error[key] : ""));
+  return `${error.message}\n${said.join("\n")}`;
+}
+
+function refused(number, action, error, labels = []) {
+  if (error instanceof RateLimited) throw error;
+  if (isWorkflowRefusal(refusalText(error))) {
+    say(`#${number}: ${WORKFLOW_REASON}`);
+    try {
+      upsertComment(number, ["Everything the gate checks passes, but:", "", `- ${WORKFLOW_REASON}`]);
+    } catch (commentError) {
+      if (commentError instanceof RateLimited) throw commentError;
+      say(`#${number}: the comment could not be written (${describe(commentError)}).`);
+    }
+    if (!labels.includes("needs-owner")) {
+      try {
+        gh(["api", "-X", "POST", `repos/${REPO}/issues/${number}/labels`, "-f", "labels[]=needs-owner"]);
+      } catch (labelError) {
+        if (labelError instanceof RateLimited) throw labelError;
+        say(`#${number}: the needs-owner label could not be applied (${describe(labelError)}).`);
+      }
+    }
+    return "blocked";
+  }
   const reason = `GitHub refused to ${action}: ${codeSpan(describe(error))}. Someone needs to look at it.`;
   say(`#${number}: ${reason}`);
   try {
     upsertComment(number, ["Everything the gate checks passes, but:", "", `- ${reason}`]);
   } catch (commentError) {
+    if (commentError instanceof RateLimited) throw commentError;
     say(`#${number}: the comment could not be written either (${describe(commentError)}).`);
   }
   return "failed";
 }
 
-if (single) {
-  const outcome = processPullRequest(single);
-  process.exit(outcome === "blocked" || outcome === "failed" ? 1 : 0);
+function finish(code) {
+  try {
+    reportBudget();
+  } catch (error) {
+    say(error instanceof Error ? error.message : "Rate budget: unavailable.");
+  }
+  process.exit(code);
 }
 
-let numbers;
+function main() {
+  if (single) {
+    const outcome = processPullRequest(single);
+    return outcome === "blocked" || outcome === "failed" || outcome === "missing-token" ? 1 : 0;
+  }
+  let open;
+  try {
+    open = apiList(`repos/${REPO}/pulls?state=open&per_page=100`, '.[] | select(.draft == false and .head.repo.full_name == "' + REPO + '" and .base.ref == "main") | {number, labels: [.labels[].name]}').sort((a, b) => a.number - b.number);
+  } catch (error) {
+    if (error instanceof RateLimited) throw error;
+    process.stderr.write(`The open pull requests could not be listed (${error instanceof Error ? error.message.split("\n")[0].slice(0, 120) : "unknown error"}). Merging nothing.\n`);
+    return 1;
+  }
+  const budget = budgetLine();
+  if (budget && budget.remaining < RESERVE) {
+    process.stdout.write(`::warning::Merge gate skipped: ${budget.remaining} API calls left, below the ${RESERVE} it needs. It resets at ${budget.resetsAt}.\n`);
+    return 0;
+  }
+  for (const { number, labels } of open) {
+    const held = HOLD_LABELS.filter((label) => labels.includes(label));
+    if (held.length > 0) {
+      say(`#${number}: skipped, it carries the ${held.join(" and ")} label`);
+      continue;
+    }
+    const outcome = processPullRequest(number);
+    if (outcome === "merged" || outcome === "updated") break;
+    if (outcome === "missing-token") return 1;
+  }
+  return 0;
+}
+
+let exitCode;
 try {
-  numbers = apiList(`repos/${REPO}/pulls?state=open&per_page=100`, '.[] | select(.draft == false and .head.repo.full_name == "' + REPO + '" and .base.ref == "main") | .number').sort((a, b) => a - b);
+  exitCode = main();
 } catch (error) {
-  process.stderr.write(`The open pull requests could not be listed (${error instanceof Error ? error.message.split("\n")[0].slice(0, 120) : "unknown error"}). Merging nothing.\n`);
-  process.exit(1);
+  if (!(error instanceof RateLimited)) throw error;
+  process.stderr.write(`${error.message}\n`);
+  exitCode = 1;
 }
-for (const number of numbers) {
-  const outcome = processPullRequest(number);
-  if (outcome === "merged" || outcome === "updated") break;
-}
-process.exit(0);
+finish(exitCode);
