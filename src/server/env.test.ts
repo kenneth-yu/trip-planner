@@ -76,6 +76,11 @@ describe("server environment", () => {
     }
   });
 
+  it("refuses the fake Google import flag on a production deployment, and allows it elsewhere", () => {
+    expect(failure({ ...production, GOOGLE_IMPORT_FAKE: "1" }).message).toContain("GOOGLE_IMPORT_FAKE");
+    expect(() => parseServerEnv({ ...production, GOOGLE_IMPORT_FAKE: "0" })).not.toThrow();
+  });
+
   it("refuses dev sign in on a production deployment", () => {
     expect(failure({ ...production, DEV_SIGN_IN: "1" }).message).toContain("DEV_SIGN_IN");
   });

@@ -12,19 +12,28 @@ import GoogleImportPage from "./page";
 class NotFound extends Error {}
 
 const world = vi.hoisted(() => {
-  const holder: { ctx: ServiceContext | null; canEdit: boolean; open: boolean; configured: boolean; cookie: string | undefined; google: unknown; items: boolean } = {
+  const holder: { ctx: ServiceContext | null; canEdit: boolean; open: boolean; configured: boolean; cookie: string | undefined; seen: boolean; google: unknown; items: boolean } = {
     ctx: null,
     canEdit: true,
     open: true,
     configured: true,
     cookie: undefined,
+    seen: false,
     google: null,
     items: true,
   };
   return { holder };
 });
 
-vi.mock("next/headers", () => ({ cookies: async () => ({ get: (name: string) => (name === "google_import" && world.holder.cookie ? { name, value: world.holder.cookie } : undefined) }) }));
+vi.mock("next/headers", () => ({
+  cookies: async () => ({
+    get: (name: string) => {
+      if (name === "google_import" && world.holder.cookie) return { name, value: world.holder.cookie };
+      if (name === "google_import_seen" && world.holder.seen) return { name, value: "1" };
+      return undefined;
+    },
+  }),
+}));
 vi.mock("next/navigation", () => ({
   notFound: () => {
     throw new NotFound("not found");
@@ -61,6 +70,7 @@ beforeEach(async () => {
   world.holder.google = null;
   world.holder.items = true;
   world.holder.cookie = undefined;
+  world.holder.seen = false;
 });
 
 const withToken = () => {
@@ -185,9 +195,30 @@ describe("the Google import page", () => {
     expect(await render()).toContain("Continue to Google</a>");
   });
 
-  it("says it is not open yet while no rate rule covers it", async () => {
+  it("says it is not open yet while no rate rule covers it, with a way back to the inbox", async () => {
     world.holder.open = false;
-    expect(await render()).toContain("Google Calendar import is not open yet.");
+    const html = await render();
+    expect(html).toContain("Google Calendar import is not open yet.");
+    expect(html).toContain(`href="/trips/${TRIP_ID}/inbox">Back to the review inbox</a>`);
+  });
+
+  it("says the permission ran out when the person connected but the 10 minute token is gone", async () => {
+    world.holder.seen = true;
+    const html = await render();
+    expect(html).toContain("That took a while, so Google&#x27;s permission ran out. Continue to Google again.");
+    expect(html).toContain("Continue to Google</a>");
+  });
+
+  it("says nothing about it running out when the person never connected, still has the token, or was just sent back with a reason", async () => {
+    expect(await render()).not.toContain("ran out");
+    withToken();
+    world.holder.seen = true;
+    world.holder.google = new FakeGoogleCalendar();
+    expect(await render()).not.toContain("ran out");
+    world.holder.cookie = undefined;
+    const html = await render("declined");
+    expect(html).not.toContain("ran out");
+    expect(html).toContain("Google Calendar was not connected, so nothing was imported.");
   });
 
   it("does not read the token cookie of another trip", async () => {
