@@ -41,7 +41,7 @@ export function openState(value: string | null, userId: string, nowMs = Date.now
   return state.userId === userId && state.exp > nowMs ? state : null;
 }
 
-export function authorizationUrl(cfg: GoogleOAuthConfig, scope: string, state: string, loginHint?: string, options: { offline?: boolean } = {}): string {
+export function authorizationUrl(cfg: GoogleOAuthConfig, scope: string, state: string, loginHint?: string, options: { offline?: boolean; challenge?: string } = {}): string {
   const params = new URLSearchParams({
     client_id: cfg.clientId,
     redirect_uri: cfg.redirectUri,
@@ -53,6 +53,10 @@ export function authorizationUrl(cfg: GoogleOAuthConfig, scope: string, state: s
     state,
   });
   if (loginHint) params.set("login_hint", loginHint);
+  if (options.challenge) {
+    params.set("code_challenge", options.challenge);
+    params.set("code_challenge_method", "S256");
+  }
   return `${AUTH_URL}?${params}`;
 }
 

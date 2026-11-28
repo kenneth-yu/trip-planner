@@ -5,9 +5,9 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { InputProblem } from "@/domain/import/problem";
-import { GoogleAuthorizationError, googleCalendarReader } from "@/server/google/calendar-api";
+import { GoogleApiError, GoogleAuthorizationError } from "@/server/google/calendar-api";
 import { importFromGoogle } from "@/server/google/import";
-import { IMPORT_CLOSED, importIsRateLimited, importPagePath } from "@/server/google/import-guard";
+import { IMPORT_CLOSED, importIsRateLimited, importPagePath, importReader } from "@/server/google/import-guard";
 import { IMPORT_COOKIE, openImportToken } from "@/server/google/import-oauth";
 import { loadTripPage } from "@/server/web";
 
@@ -29,13 +29,14 @@ export async function runGoogleImport(_previous: ImportState, form: FormData): P
   const calendarIds = form.getAll("calendar").filter((v): v is string => typeof v === "string");
   let events: number;
   try {
-    events = (await importFromGoogle(ctx, googleCalendarReader(async () => token), tripId, requester, { calendarIds, from, to })).events;
+    events = (await importFromGoogle(ctx, await importReader(token), tripId, requester, { calendarIds, from, to })).events;
   } catch (e) {
     if (e instanceof InputProblem) return { message: e.message, error: true };
     if (e instanceof GoogleAuthorizationError) {
       jar.delete({ name: IMPORT_COOKIE, path });
       return { message: "Google did not allow that. Connect Google Calendar again.", error: true };
     }
+    if (e instanceof GoogleApiError) return { message: "Google did not answer. Try again in a minute.", error: true };
     throw e;
   }
   jar.delete({ name: IMPORT_COOKIE, path });

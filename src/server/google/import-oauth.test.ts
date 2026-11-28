@@ -1,6 +1,9 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { IMPORT_SCOPE, MIRROR_SCOPE } from "./calendar-api";
-import { exchangeImportCode, IMPORT_WINDOW_MS, ImportConsentMissing, openImportState, openImportToken, sealImportState, sealImportToken } from "./import-oauth";
+import { createHash } from "node:crypto";
+import { present } from "@/testing/present";
+import { encryptSecret } from "../auth/tokens";
+import { exchangeImportCode, IMPORT_WINDOW_MS, ImportConsentMissing, openImportFlow, openImportState, openImportToken, sealImportState, sealImportToken, startImportFlow } from "./import-oauth";
 import { authorizationUrl, openState, sealState, type GoogleOAuthConfig } from "./oauth";
 
 const cfg: GoogleOAuthConfig = { clientId: "client", clientSecret: "secret", redirectUri: "https://trips.test/api/google/import/callback" };
@@ -26,13 +29,20 @@ describe("asking Google for read access", () => {
     expect(new URL(authorizationUrl(cfg, MIRROR_SCOPE, "state")).searchParams.get("access_type")).toBe("offline");
   });
 
+  it("adds a PKCE challenge only when one is given", () => {
+    const withChallenge = new URL(authorizationUrl(cfg, IMPORT_SCOPE, "state", undefined, { offline: false, challenge: "abc" }));
+    expect(withChallenge.searchParams.get("code_challenge")).toBe("abc");
+    expect(withChallenge.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(new URL(authorizationUrl(cfg, MIRROR_SCOPE, "state")).searchParams.has("code_challenge")).toBe(false);
+  });
+
   it("keeps the import scope away from sign in: it is only ever used with this call", () => {
     expect(IMPORT_SCOPE).toBe("https://www.googleapis.com/auth/calendar.readonly");
   });
 });
 
 describe("the state that comes back from Google", () => {
-  const state = { userId: USER, tripId: TRIP, exp: NOW + IMPORT_WINDOW_MS };
+  const state = { userId: USER, tripId: TRIP, exp: NOW + IMPORT_WINDOW_MS, nonce: "n".repeat(32) };
 
   it("opens for the same person before it expires", () => {
     expect(openImportState(sealImportState(state), USER, NOW)).toEqual(state);
@@ -55,22 +65,58 @@ describe("the state that comes back from Google", () => {
   });
 });
 
+describe("the flow cookie that binds the callback to the browser that started it", () => {
+  it("opens for the state it was started with, and the challenge is the hash of the verifier it holds", () => {
+    const flow = startImportFlow(USER, TRIP, NOW);
+    const held = openImportFlow(flow.cookie.value, present(openImportState(flow.state, USER, NOW)), NOW);
+    expect(held?.verifier).toMatch(/^[A-Za-z0-9_-]{64}$/);
+    expect(createHash("sha256").update(held?.verifier ?? "").digest("base64url")).toBe(flow.challenge);
+    expect(flow.cookie.maxAgeS).toBe(IMPORT_WINDOW_MS / 1000);
+  });
+
+  it("does not open for the state of another start, another person, another trip, or after it expired", () => {
+    const flow = startImportFlow(USER, TRIP, NOW);
+    const other = present(openImportState(startImportFlow(USER, TRIP, NOW).state, USER, NOW));
+    expect(openImportFlow(flow.cookie.value, other, NOW)).toBeNull();
+    const mine = present(openImportState(flow.state, USER, NOW));
+    expect(openImportFlow(flow.cookie.value, { ...mine, userId: "someone-else" }, NOW)).toBeNull();
+    expect(openImportFlow(flow.cookie.value, { ...mine, tripId: "other" }, NOW)).toBeNull();
+    expect(openImportFlow(flow.cookie.value, mine, NOW + IMPORT_WINDOW_MS + 1)).toBeNull();
+  });
+
+  it("does not open when it is missing, damaged, or not JSON", () => {
+    const mine = present(openImportState(startImportFlow(USER, TRIP, NOW).state, USER, NOW));
+    expect(openImportFlow(undefined, mine, NOW)).toBeNull();
+    expect(openImportFlow("not a cookie", mine, NOW)).toBeNull();
+    expect(openImportFlow(encryptSecret("not json"), mine, NOW)).toBeNull();
+  });
+});
+
 describe("exchanging the code", () => {
   const fetchWith = (scope: string, extra: Record<string, unknown> = {}) => async () => new Response(JSON.stringify({ access_token: "ya29.read", expires_in: 3599, scope, ...extra }), { status: 200 });
 
+  it("sends the PKCE verifier with the code", async () => {
+    const bodies: string[] = [];
+    await exchangeImportCode(cfg, "code", "the-verifier", async (_url, init) => {
+      bodies.push(String(init?.body));
+      return new Response(JSON.stringify({ access_token: "t", expires_in: 3599, scope: IMPORT_SCOPE }), { status: 200 });
+    });
+    expect(new URLSearchParams(bodies[0]).get("code_verifier")).toBe("the-verifier");
+  });
+
   it("returns an access token and keeps nothing else, and needs no refresh token", async () => {
-    const held = await exchangeImportCode(cfg, "code", fetchWith(`openid email ${IMPORT_SCOPE}`));
+    const held = await exchangeImportCode(cfg, "code", "verifier", fetchWith(`openid email ${IMPORT_SCOPE}`));
     expect(held).toEqual({ accessToken: "ya29.read", expiresInS: 3599 });
   });
 
   it("never returns a refresh token even when Google sends one", async () => {
-    const held = await exchangeImportCode(cfg, "code", fetchWith(`openid ${IMPORT_SCOPE}`, { refresh_token: "1//refresh" }));
+    const held = await exchangeImportCode(cfg, "code", "verifier", fetchWith(`openid ${IMPORT_SCOPE}`, { refresh_token: "1//refresh" }));
     expect(JSON.stringify(held)).not.toContain("refresh");
   });
 
   it("refuses a grant that does not include the read scope", async () => {
-    await expect(exchangeImportCode(cfg, "code", fetchWith("openid email"))).rejects.toThrow(ImportConsentMissing);
-    await expect(exchangeImportCode(cfg, "code", fetchWith(MIRROR_SCOPE))).rejects.toThrow(ImportConsentMissing);
+    await expect(exchangeImportCode(cfg, "code", "verifier", fetchWith("openid email"))).rejects.toThrow(ImportConsentMissing);
+    await expect(exchangeImportCode(cfg, "code", "verifier", fetchWith(MIRROR_SCOPE))).rejects.toThrow(ImportConsentMissing);
   });
 });
 
@@ -104,5 +150,6 @@ describe("holding the token between the consent and the import", () => {
     expect(openImportToken("not a token", USER, TRIP, NOW)).toBeNull();
     expect(openImportToken("", USER, TRIP, NOW)).toBeNull();
     expect(openImportToken(undefined, USER, TRIP, NOW)).toBeNull();
+    expect(openImportToken(encryptSecret("{not json"), USER, TRIP, NOW)).toBeNull();
   });
 });

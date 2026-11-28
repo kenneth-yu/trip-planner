@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { fixture, TRIP_ID, USERS } from "@/fixtures/december-trip";
 import type { CalendarEvent } from "@/domain/import/calendar-event";
-import { FakeGoogleCalendar, GoogleAuthorizationError } from "@/server/google/calendar-api";
+import { FakeGoogleCalendar, GoogleApiError, GoogleAuthorizationError } from "@/server/google/calendar-api";
 import { IMPORT_COOKIE, sealImportToken } from "@/server/google/import-oauth";
 import { kenny, testContext } from "@/server/testing";
 import { listInbox } from "@/server/services/inbox-service";
@@ -135,6 +135,23 @@ describe("running the Google import", () => {
     google.failNext = new GoogleAuthorizationError(401, "Google Calendar GET failed: 401");
     expect(await runGoogleImport(idle, form({ calendars: [calendar] }))).toEqual({ message: "Google did not allow that. Connect Google Calendar again.", error: true });
     expect(world.deleted).toEqual([{ name: IMPORT_COOKIE, path: PAGE }]);
+  });
+
+  it("keeps the token and says to try again when Google fails or does not answer, so the editor can retry", async () => {
+    const { google, calendar, ctx } = await startWith();
+    google.failNext = new GoogleApiError(503, "Google Calendar GET could not be reached: TimeoutError");
+    expect(await runGoogleImport(idle, form({ calendars: [calendar] }))).toEqual({ message: "Google did not answer. Try again in a minute.", error: true });
+    expect(world.deleted).toEqual([]);
+    expect(world.jar.has(IMPORT_COOKIE)).toBe(true);
+    expect(await listInbox(ctx, TRIP_ID, kenny)).toEqual([]);
+  });
+
+  it("says plainly when the range holds more than 500 events and keeps the token", async () => {
+    const { calendar, google } = await startWith();
+    const many = Array.from({ length: 501 }, (_, i) => ({ id: `e${i}`, summary: `Event ${i}`, start: { date: "2026-12-02" }, end: { date: "2026-12-03" } }));
+    google.readable.set(calendar, { summary: "kenny primary", events: many, primary: true });
+    expect(await runGoogleImport(idle, form({ calendars: [calendar] }))).toEqual({ message: "That range has more than 500 events. Choose fewer calendars or a shorter range.", error: true });
+    expect(world.jar.has(IMPORT_COOKIE)).toBe(true);
   });
 
   it("clears the token and says nothing was found when the range holds no events", async () => {

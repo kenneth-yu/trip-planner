@@ -18,6 +18,34 @@ export interface GoogleCalendarApi {
 export interface ListedCalendar {
   id: string;
   summary: string;
+  primary: boolean;
+}
+
+export interface RawCalendar extends ListedCalendar {
+  description?: string;
+}
+
+export const MIRROR_DESCRIPTION = "Kept in sync by Trip planner. Edit the trip in the app.";
+export const MIRROR_SUFFIX = " (Trip planner)";
+const SYSTEM_CALENDAR = /@group\.v\.calendar\.google\.com$|@import\.calendar\.google\.com$|#(holiday|contacts|weeknum)@/;
+
+export function offerableCalendars(all: RawCalendar[]): ListedCalendar[] {
+  return all
+    .filter((c) => !SYSTEM_CALENDAR.test(c.id) && c.description !== MIRROR_DESCRIPTION && !c.summary.endsWith(MIRROR_SUFFIX))
+    .map(({ id, summary, primary }) => ({ id, summary, primary }))
+    .sort((a, b) => Number(b.primary) - Number(a.primary) || a.summary.localeCompare(b.summary, "en", { sensitivity: "base" }) || a.id.localeCompare(b.id));
+}
+
+export const SUMMARY_MAX = 300;
+export const DESCRIPTION_MAX = 8000;
+export const LOCATION_MAX = 500;
+export const READ_TIMEOUT_MS = 15_000;
+
+export class EventLimitExceeded extends Error {
+  constructor(readonly limit: number) {
+    super(`More than ${limit} events`);
+    this.name = "EventLimitExceeded";
+  }
 }
 
 export interface EventRange {
@@ -27,7 +55,7 @@ export interface EventRange {
 
 export interface GoogleCalendarReader {
   listCalendars(): Promise<ListedCalendar[]>;
-  listEvents(calendarId: string, range: EventRange): Promise<CalendarEvent[]>;
+  listEvents(calendarId: string, range: EventRange, limit?: number): Promise<CalendarEvent[]>;
 }
 
 export class GoogleApiError extends Error {
@@ -87,7 +115,7 @@ export function googleCalendarRest(getAccessToken: () => Promise<string>, fetchI
   const cal = (id: string) => encodeURIComponent(id);
   return {
     createCalendar: async (summary, timeZone) =>
-      Created.parse(await call("POST", "/calendars", { summary, timeZone, description: "Kept in sync by Trip planner. Edit the trip in the app." })),
+      Created.parse(await call("POST", "/calendars", { summary, timeZone, description: MIRROR_DESCRIPTION })),
     deleteCalendar: async (calendarId) => {
       try {
         await call("DELETE", `/calendars/${cal(calendarId)}`);
@@ -111,55 +139,70 @@ export function googleCalendarRest(getAccessToken: () => Promise<string>, fetchI
   };
 }
 
+const capped = (max: number) => z.string().transform((text) => text.slice(0, max)).optional();
 const EventTime = z.object({ dateTime: z.string().optional(), date: z.string().optional(), timeZone: z.string().optional() });
 const EventResource = z.object({
   id: z.string().optional(),
   status: z.string().optional(),
-  summary: z.string().optional(),
-  description: z.string().optional(),
-  location: z.string().optional(),
+  summary: capped(SUMMARY_MAX),
+  description: capped(DESCRIPTION_MAX),
+  location: capped(LOCATION_MAX),
   htmlLink: z.string().optional(),
   start: EventTime,
   end: EventTime,
 });
 const CalendarListPage = z.object({
   nextPageToken: z.string().optional(),
-  items: z.array(z.object({ id: z.string(), summary: z.string().optional(), summaryOverride: z.string().optional() })).default([]),
+  items: z.array(z.object({ id: z.string(), summary: z.string().optional(), summaryOverride: z.string().optional(), description: z.string().optional(), primary: z.boolean().optional() })).default([]),
 });
-const EventsPage = z.object({ nextPageToken: z.string().optional(), items: z.array(z.unknown()).default([]) });
+const EventsPage = z.object({ nextPageToken: z.string().optional(), timeZone: z.string().optional(), items: z.array(z.unknown()).default([]) });
 const MAX_PAGES = 20;
+
+function zonedBy(time: z.infer<typeof EventTime>, calendarZone: string | undefined): z.infer<typeof EventTime> {
+  return time.dateTime && !time.timeZone && calendarZone ? { ...time, timeZone: calendarZone } : time;
+}
 
 export function googleCalendarReader(getAccessToken: () => Promise<string>, fetchImpl: typeof fetch = fetch): GoogleCalendarReader {
   async function get(path: string, params: URLSearchParams): Promise<unknown> {
-    const res = await fetchImpl(`${BASE}${path}?${params}`, { method: "GET", headers: { authorization: `Bearer ${await getAccessToken()}` } });
+    const authorization = `Bearer ${await getAccessToken()}`;
+    let res: Response;
+    try {
+      res = await fetchImpl(`${BASE}${path}?${params}`, { method: "GET", headers: { authorization }, signal: AbortSignal.timeout(READ_TIMEOUT_MS) });
+    } catch (e) {
+      if (e instanceof Error) throw new GoogleApiError(503, `Google Calendar GET could not be reached: ${e.name}`);
+      throw e;
+    }
     if (!res.ok) throw await failureFor("GET", res);
     return res.json();
   }
   return {
     listCalendars: async () => {
-      const found: ListedCalendar[] = [];
+      const found: RawCalendar[] = [];
       let pageToken: string | undefined;
       for (let page = 0; page < MAX_PAGES; page++) {
         const params = new URLSearchParams({ maxResults: "250", minAccessRole: "reader" });
         if (pageToken) params.set("pageToken", pageToken);
         const parsed = CalendarListPage.parse(await get("/users/me/calendarList", params));
-        for (const item of parsed.items) found.push({ id: item.id, summary: item.summaryOverride ?? item.summary ?? item.id });
+        for (const item of parsed.items) found.push({ id: item.id, summary: item.summaryOverride ?? item.summary ?? item.id, primary: item.primary === true, description: item.description });
         pageToken = parsed.nextPageToken;
-        if (!pageToken) return found;
+        if (!pageToken) return offerableCalendars(found);
       }
       throw new GoogleApiError(502, "Google Calendar listing did not end");
     },
-    listEvents: async (calendarId, range) => {
+    listEvents: async (calendarId, range, limit = Number.POSITIVE_INFINITY) => {
       const events: CalendarEvent[] = [];
+      let calendarZone: string | undefined;
       let pageToken: string | undefined;
       for (let page = 0; page < MAX_PAGES; page++) {
         const params = new URLSearchParams({ singleEvents: "true", orderBy: "startTime", maxResults: "250", timeMin: range.timeMin, timeMax: range.timeMax });
         if (pageToken) params.set("pageToken", pageToken);
         const parsed = EventsPage.parse(await get(`/calendars/${encodeURIComponent(calendarId)}/events`, params));
+        calendarZone = parsed.timeZone ?? calendarZone;
         for (const raw of parsed.items) {
           const event = EventResource.parse(raw);
           if (event.status === "cancelled") continue;
-          events.push({ id: event.id, summary: event.summary, description: event.description, location: event.location, htmlLink: event.htmlLink, start: event.start, end: event.end });
+          events.push({ id: event.id, summary: event.summary, description: event.description, location: event.location, htmlLink: event.htmlLink, start: zonedBy(event.start, calendarZone), end: zonedBy(event.end, calendarZone) });
+          if (events.length > limit) throw new EventLimitExceeded(limit);
         }
         pageToken = parsed.nextPageToken;
         if (!pageToken) return events;
@@ -170,20 +213,20 @@ export function googleCalendarReader(getAccessToken: () => Promise<string>, fetc
 }
 
 export class FakeGoogleCalendar implements GoogleCalendarApi, GoogleCalendarReader {
-  readable = new Map<string, { summary: string; events: CalendarEvent[] }>();
+  readable = new Map<string, { summary: string; events: CalendarEvent[]; primary: boolean; description?: string }>();
   reads: string[] = [];
 
-  seedCalendar(summary: string, events: CalendarEvent[]): string {
-    const id = `read-${this.readable.size + 1}@group.calendar.google.com`;
-    this.readable.set(id, { summary, events: structuredClone(events) });
+  seedCalendar(summary: string, events: CalendarEvent[], options: { primary?: boolean; id?: string; description?: string } = {}): string {
+    const id = options.id ?? `read-${this.readable.size + 1}@group.calendar.google.com`;
+    this.readable.set(id, { summary, events: structuredClone(events), primary: options.primary === true, description: options.description });
     return id;
   }
   async listCalendars(): Promise<ListedCalendar[]> {
     this.maybeFail();
     this.reads.push("listCalendars");
-    return [...this.readable.entries()].map(([id, c]) => ({ id, summary: c.summary }));
+    return offerableCalendars([...this.readable.entries()].map(([id, c]) => ({ id, summary: c.summary, primary: c.primary, description: c.description })));
   }
-  async listEvents(calendarId: string, range: EventRange): Promise<CalendarEvent[]> {
+  async listEvents(calendarId: string, range: EventRange, limit = Number.POSITIVE_INFINITY): Promise<CalendarEvent[]> {
     this.maybeFail();
     this.reads.push(`listEvents ${calendarId}`);
     const calendar = this.readable.get(calendarId);
@@ -191,7 +234,9 @@ export class FakeGoogleCalendar implements GoogleCalendarApi, GoogleCalendarRead
     const from = Date.parse(range.timeMin);
     const to = Date.parse(range.timeMax);
     const edge = (time: { dateTime?: string; date?: string }) => Date.parse(time.dateTime ?? `${time.date}T00:00:00Z`);
-    return structuredClone(calendar.events.filter((e) => edge(e.end) > from && edge(e.start) < to));
+    const inRange = calendar.events.filter((e) => edge(e.end) > from && edge(e.start) < to);
+    if (inRange.length > limit) throw new EventLimitExceeded(limit);
+    return structuredClone(inRange);
   }
 
   calendars = new Map<string, { summary: string; timeZone: string; events: Map<string, MirrorEvent> }>();

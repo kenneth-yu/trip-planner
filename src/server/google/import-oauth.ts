@@ -1,13 +1,24 @@
-import { createHmac } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { appSecret, decryptSecret, encryptSecret, safeEqual } from "../auth/tokens";
 import { IMPORT_SCOPE } from "./calendar-api";
 import { tokenRequest, type GoogleOAuthConfig } from "./oauth";
 
 export const IMPORT_COOKIE = "google_import";
+export const IMPORT_FLOW_COOKIE = "google_import_flow";
+export const IMPORT_FLOW_PATH = "/api/google/import";
 export const IMPORT_WINDOW_MS = 10 * 60_000;
 
-const ImportState = z.object({ userId: z.string(), tripId: z.string(), exp: z.number() });
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    if (e instanceof SyntaxError) return null;
+    throw e;
+  }
+}
+
+const ImportState = z.object({ userId: z.string(), tripId: z.string(), exp: z.number(), nonce: z.string().min(16) });
 export type ImportState = z.infer<typeof ImportState>;
 
 const mac = (body: string) => createHmac("sha256", appSecret()).update(`google-import-state:${body}`).digest("base64url");
@@ -21,7 +32,7 @@ export function openImportState(value: string | null, userId: string, nowMs = Da
   if (!value) return null;
   const [body, signature] = value.split(".");
   if (!body || !signature || !safeEqual(signature, mac(body))) return null;
-  const parsed = ImportState.safeParse(JSON.parse(Buffer.from(body, "base64url").toString("utf8")));
+  const parsed = ImportState.safeParse(parseJson(Buffer.from(body, "base64url").toString("utf8")));
   return parsed.success && parsed.data.userId === userId && parsed.data.exp > nowMs ? parsed.data : null;
 }
 
@@ -32,8 +43,37 @@ export class ImportConsentMissing extends Error {
   }
 }
 
-export async function exchangeImportCode(cfg: GoogleOAuthConfig, code: string, fetchImpl: typeof fetch = fetch): Promise<{ accessToken: string; expiresInS: number }> {
-  const tokens = await tokenRequest({ code, client_id: cfg.clientId, client_secret: cfg.clientSecret, redirect_uri: cfg.redirectUri, grant_type: "authorization_code" }, fetchImpl);
+const Flow = z.object({ userId: z.string(), tripId: z.string(), nonce: z.string(), verifier: z.string(), exp: z.number() });
+export type ImportFlow = z.infer<typeof Flow>;
+
+export function startImportFlow(userId: string, tripId: string, nowMs = Date.now()): { state: string; challenge: string; cookie: { value: string; maxAgeS: number } } {
+  const nonce = randomBytes(24).toString("base64url");
+  const verifier = randomBytes(48).toString("base64url");
+  const exp = nowMs + IMPORT_WINDOW_MS;
+  return {
+    state: sealImportState({ userId, tripId, exp, nonce }),
+    challenge: createHash("sha256").update(verifier).digest("base64url"),
+    cookie: { value: encryptSecret(JSON.stringify({ userId, tripId, nonce, verifier, exp })), maxAgeS: IMPORT_WINDOW_MS / 1000 },
+  };
+}
+
+export function openImportFlow(sealed: string | undefined, state: ImportState, nowMs = Date.now()): ImportFlow | null {
+  if (!sealed) return null;
+  let text: string;
+  try {
+    text = decryptSecret(sealed);
+  } catch (e) {
+    if (e instanceof Error) return null;
+    throw e;
+  }
+  const parsed = Flow.safeParse(parseJson(text));
+  if (!parsed.success) return null;
+  const flow = parsed.data;
+  return flow.exp > nowMs && flow.userId === state.userId && flow.tripId === state.tripId && safeEqual(flow.nonce, state.nonce) ? flow : null;
+}
+
+export async function exchangeImportCode(cfg: GoogleOAuthConfig, code: string, verifier: string, fetchImpl: typeof fetch = fetch): Promise<{ accessToken: string; expiresInS: number }> {
+  const tokens = await tokenRequest({ code, code_verifier: verifier, client_id: cfg.clientId, client_secret: cfg.clientSecret, redirect_uri: cfg.redirectUri, grant_type: "authorization_code" }, fetchImpl);
   if (!tokens.scope.split(" ").includes(IMPORT_SCOPE)) throw new ImportConsentMissing();
   return { accessToken: tokens.access_token, expiresInS: tokens.expires_in };
 }
@@ -55,6 +95,6 @@ export function openImportToken(sealed: string | undefined, userId: string, trip
     if (e instanceof Error) return null;
     throw e;
   }
-  const parsed = Held.safeParse(JSON.parse(text));
+  const parsed = Held.safeParse(parseJson(text));
   return parsed.success && parsed.data.userId === userId && parsed.data.tripId === tripId && parsed.data.exp > nowMs ? parsed.data.accessToken : null;
 }
