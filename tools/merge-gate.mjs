@@ -264,8 +264,13 @@ function mergeNow(number, raw, input, gate, branch) {
     return refused(number, "merge", error, input.labels);
   }
   const keep = branchToKeep(branch, raw.pr.base.ref);
+  const stuck = keep ? [] : retargetStacked(branch, raw.pr.base.ref);
   if (keep) say(`#${number}: merged, and the branch was not deleted because ${keep}.`);
-  else {
+  else if (stuck.length > 0) {
+    const reason = `The branch ${codeSpan(branch)} was kept: ${stuck.join("; ")}. Deleting it would close whatever is stacked on it.`;
+    say(`#${number}: merged. ${reason}`);
+    upsertComment(number, ["Merged.", "", `- ${reason}`]);
+  } else {
     try {
       gh(["api", "-X", "DELETE", `repos/${REPO}/git/refs/heads/${branch.split("/").map(encodeURIComponent).join("/")}`], gate.token);
     } catch (error) {
@@ -275,6 +280,27 @@ function mergeNow(number, raw, input, gate, branch) {
   }
   say(`#${number}: merged`);
   return "merged";
+}
+
+function retargetStacked(branch, base) {
+  let stacked;
+  try {
+    stacked = apiList(`repos/${REPO}/pulls?base=${encodeURIComponent(branch)}&state=open&per_page=100`, ".[] | .number");
+  } catch (error) {
+    if (error instanceof RateLimited) throw error;
+    return ["the pull requests stacked on it could not be listed"];
+  }
+  const stuck = [];
+  for (const stackedNumber of stacked) {
+    try {
+      gh(["api", "-X", "PATCH", `repos/${REPO}/pulls/${stackedNumber}`, "-f", `base=${base}`]);
+      say(`#${stackedNumber}: moved onto ${base}, because the branch it was stacked on merged`);
+    } catch (error) {
+      if (error instanceof RateLimited) throw error;
+      stuck.push(`#${stackedNumber} could not be moved onto ${base}`);
+    }
+  }
+  return stuck;
 }
 
 function reasonFrom(text) {

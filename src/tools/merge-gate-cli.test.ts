@@ -61,6 +61,7 @@ function routesFor(options: Options): Route[] {
     { match: `-X PUT ${base}/pulls/${number}/merge`, ...(options.mergeFails ? { fail: "gh: refused (HTTP 405)", failBody: JSON.stringify({ message: options.mergeFailMessage ?? 'Required status check "test" is expected.', status: "405" }) } : { out: "{}" }) },
     { match: `-X DELETE ${base}/git/refs/heads/`, ...(options.deleteFails ? { fail: "gh: Reference does not exist (HTTP 422)" } : { out: "" }) },
     { match: "workflow run", out: "" },
+    { match: `${base}/pulls?base=`, out: "" },
     { match: `${base}/commits/${head}/check-runs?per_page=100`, out: lines([{ total: options.checkRunsTotal ?? checks.length, runs: checks }]) },
     { match: `${base}/compare/main...${head}`, out: JSON.stringify(options.behindBy === null ? {} : { behind_by: options.behindBy ?? 0, status: "ahead" }) },
     { match: `${base}/pulls/${number}/files`, out: lines(files.map((filename) => ({ filename }))) },
@@ -161,12 +162,12 @@ describe("merge-gate.mjs against a fake GitHub", () => {
   describe("spending as little of GitHub's API budget as it can", () => {
     it("reads a pull request with six calls, and says how many each one took and what is left of the budget", () => {
       const { result, calls } = sweep([7], [{ number: 7 }]);
-      const reads = calls.filter((c) => c.startsWith("api") && !c.includes("-X") && !c.includes("pulls?state=open") && !c.includes("rate_limit"));
+      const reads = calls.filter((c) => c.startsWith("api") && !c.includes("-X") && !c.includes("pulls?state=open") && !c.includes("pulls?base=") && !c.includes("rate_limit"));
       expect(reads).toHaveLength(6);
       expect(result.stdout).toContain("#7: 6 API calls");
-      expect(result.stdout).toContain("#7: 2 API calls to merge");
+      expect(result.stdout).toContain("#7: 3 API calls to merge");
       expect(result.stdout).toContain("Rate budget: 900 of 1000 calls left, resets at 2026-");
-      expect(result.stdout).toContain("This run made 9.");
+      expect(result.stdout).toContain("This run made 10.");
     });
 
     it("asks for whole pages", () => {
@@ -237,6 +238,64 @@ describe("merge-gate.mjs against a fake GitHub", () => {
       expect(result.stderr).toContain("GitHub's API rate limit is used up");
       const calls = harness.calls();
       expect(calls.some((c) => c.includes("-X POST") || c.includes("-X PUT") || c.includes("-X PATCH") || c.includes("/pulls/8"))).toBe(false);
+    });
+  });
+
+  describe("pull requests stacked on the branch that merges", () => {
+    const stackedList = (branch: string, numbers: number[]): Route => ({ match: `${REPO_BASE}/pulls?base=${encodeURIComponent(branch)}&state=open`, out: numbers.map((n) => `${n}\n`).join("") });
+
+    it("moves a pull request stacked on the branch onto main, and only then deletes the branch", () => {
+      const harness = makeHarness({ pullRefs: [7] });
+      harness.setRoutes([budget(900), { match: "pulls?state=open", out: listed(7) }, stackedList("wp/7", [12]), { match: `-X PATCH ${REPO_BASE}/pulls/12`, out: "{}" }, ...routesFor({ number: 7 })]);
+      const result = harness.run(process.execPath, [tool, "--sweep"], actions);
+      const calls = harness.calls();
+      const moved = calls.findIndex((c) => c.startsWith(`api -X PATCH repos/${REPO}/pulls/12 -f base=main`));
+      const deleted = calls.findIndex((c) => c.includes("-X DELETE") && c.includes("heads/wp/7"));
+      expect(moved).toBeGreaterThan(-1);
+      expect(deleted).toBeGreaterThan(moved);
+      expect(result.stdout).toContain("#12: moved onto main, because the branch it was stacked on merged");
+    });
+
+    it("moves every stacked pull request, and deletes the branch as before when none is stacked", () => {
+      const many = makeHarness({ pullRefs: [7] });
+      many.setRoutes([budget(900), { match: "pulls?state=open", out: listed(7) }, stackedList("wp/7", [12, 13]), { match: `-X PATCH ${REPO_BASE}/pulls/`, out: "{}" }, ...routesFor({ number: 7 })]);
+      many.run(process.execPath, [tool, "--sweep"], actions);
+      expect(many.calls().filter((c) => c.includes("-X PATCH") && c.includes("base=main"))).toHaveLength(2);
+      const { calls } = sweep([7], [{ number: 7 }]);
+      expect(calls.some((c) => c.includes("-X PATCH") && c.includes("base="))).toBe(false);
+      expect(calls).toContain(`api -X DELETE repos/${REPO}/git/refs/heads/wp/7 [gate]`);
+    });
+
+    it("keeps the branch, and says why in the gate comment, when a stacked pull request cannot be moved", () => {
+      const harness = makeHarness({ pullRefs: [7] });
+      harness.setRoutes([budget(900), { match: "pulls?state=open", out: listed(7) }, stackedList("wp/7", [12, 13]), { match: `-X PATCH ${REPO_BASE}/pulls/12`, fail: "gh: Validation Failed (HTTP 422)" }, { match: `-X PATCH ${REPO_BASE}/pulls/13`, out: "{}" }, ...routesFor({ number: 7 })]);
+      const result = harness.run(process.execPath, [tool, "--sweep"], actions);
+      const calls = harness.calls();
+      expect(calls.some((c) => c.includes("-X DELETE"))).toBe(false);
+      expect(result.stdout).toContain("#7: merged. The branch `wp/7` was kept: #12 could not be moved onto main.");
+      expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/comments`) && c.includes("was kept: #12 could not be moved onto main"))).toBe(true);
+      expect(calls.some((c) => c.includes("pulls/13") && c.includes("base=main"))).toBe(true);
+    });
+
+    it("keeps the branch when the stacked pull requests cannot even be listed", () => {
+      const harness = makeHarness({ pullRefs: [7] });
+      harness.setRoutes([budget(900), { match: "pulls?state=open", out: listed(7) }, { match: `${REPO_BASE}/pulls?base=`, fail: "gh: Bad gateway (HTTP 502)" }, ...routesFor({ number: 7 })]);
+      const result = harness.run(process.execPath, [tool, "--sweep"], actions);
+      expect(harness.calls().some((c) => c.includes("-X DELETE"))).toBe(false);
+      expect(result.stdout).toContain("the pull requests stacked on it could not be listed");
+    });
+
+    it("does not look for stacked pull requests when the branch is not deleted at all", () => {
+      const { calls } = sweep([7], [{ number: 7, headRef: "main" }]);
+      expect(calls.some((c) => c.includes("pulls?base="))).toBe(false);
+    });
+
+    it("stops the run when the limit is hit while moving a stacked pull request", () => {
+      const harness = makeHarness({ pullRefs: [7] });
+      harness.setRoutes([budget(900), { match: "pulls?state=open", out: listed(7) }, stackedList("wp/7", [12]), { match: `-X PATCH ${REPO_BASE}/pulls/12`, fail: "gh: API rate limit exceeded for installation. (HTTP 403)" }, ...routesFor({ number: 7 })]);
+      const result = harness.run(process.execPath, [tool, "--sweep"], actions);
+      expect(result.status).toBe(1);
+      expect(harness.calls().some((c) => c.includes("-X DELETE"))).toBe(false);
     });
   });
 
