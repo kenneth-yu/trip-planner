@@ -43,8 +43,11 @@ test("continuing through the fake Google lists the person's calendars in 44px ro
   expect(await seriousViolations(kenny)).toEqual([]);
 });
 
-test("the review inbox links to the import page for an editor", async ({ pageSignedInAs }) => {
+test("the review inbox leads to the import page, which lists Google Calendar first for an editor", async ({ pageSignedInAs }) => {
   const kenny = await pageSignedInAs("kenny", `/trips/${DECEMBER_TRIP}/inbox`);
-  const link = kenny.getByRole("link", { name: "Import from Google Calendar" });
+  await kenny.getByRole("link", { name: "Import bookings", exact: true }).click();
+  await expect(kenny.getByRole("heading", { name: "Import bookings" })).toBeVisible();
+  const link = kenny.getByRole("link", { name: "Google Calendar", exact: true });
   await expect(link).toHaveAttribute("href", PAGE);
+  await expect(kenny.getByText("Pick calendars and dates. Read only.")).toBeVisible();
 });

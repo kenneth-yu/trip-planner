@@ -1,4 +1,5 @@
 import { describe, it } from "vitest";
+import type { CalendarEvent } from "@/domain/import/calendar-event";
 import { buildFixtureTrip, fixture, TRAVELERS, USERS } from "@/fixtures/december-trip";
 import { buildDemoTrip, PACKED_TRIP } from "@/fixtures/demo-trips";
 import { runChecks } from "@/domain/checks/checks";
@@ -47,4 +48,14 @@ describe.each(trips)("hot paths on the $label trip", ({ label, agg }) => {
       homeZone: owner.homeZone,
     }),
   );
+});
+
+describe("an import at the size limit", () => {
+  const events: CalendarEvent[] = Array.from({ length: 500 }, (_, i) => ({ summary: `Event ${i}`, start: { dateTime: "2026-12-05T10:00:00Z" }, end: { dateTime: "2026-12-05T11:00:00Z" } }));
+
+  it("planCalendarImport on 500 events at one moment stays inside its budget", () => {
+    const view = projectTrip(buildDemoTrip(PACKED_TRIP), owner);
+    const run = () => planCalendarImport(events, view.items, { calendarTravelers: {}, defaultTravelerIds: [TRAVELERS.kenny], homeZone: owner.homeZone });
+    check("hot-paths", "planCalendarImport/500events", measureSync(run, { samples: 11, batch: 2, warmup: 3 }), budgetFor("planCalendarImport/500events"), 11);
+  });
 });
