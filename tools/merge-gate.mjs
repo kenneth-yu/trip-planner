@@ -125,12 +125,21 @@ function processPullRequest(number) {
   }
   say(`#${number}: passes at ${raw.pr.head.sha}`);
   if (dryRun) return "merged";
-  const mergeArguments = ["pr", "merge", String(number), "--repo", REPO, "--merge", "--delete-branch", "--match-head-commit", raw.pr.head.sha];
-  if (changesApp(paths)) mergeArguments.push("--body", `Semver: ${semverOf(input.body).level}`);
+  const mergeArguments = ["api", "-X", "PUT", `repos/${REPO}/pulls/${number}/merge`, "-f", "merge_method=merge", "-f", `sha=${raw.pr.head.sha}`];
+  if (changesApp(paths)) mergeArguments.push("-f", `commit_message=Semver: ${semverOf(input.body).level}`);
   try {
     gh(mergeArguments);
   } catch (error) {
     return refused(number, "merge", error);
+  }
+  const keep = branchToKeep(branch, raw.pr.base.ref);
+  if (keep) say(`#${number}: merged, and the branch was not deleted because ${keep}.`);
+  else {
+    try {
+      gh(["api", "-X", "DELETE", `repos/${REPO}/git/refs/heads/${branch.split("/").map(encodeURIComponent).join("/")}`]);
+    } catch (error) {
+      say(`#${number}: merged, but the branch could not be deleted (${describe(error)}).`);
+    }
   }
   try {
     const merged = api(`repos/${REPO}/pulls/${number}`).merge_commit_sha;
@@ -144,12 +153,38 @@ function processPullRequest(number) {
   return "merged";
 }
 
+function reasonFrom(text) {
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === "object" && "message" in parsed && typeof parsed.message === "string" ? parsed.message : null;
+  } catch (error) {
+    if (error instanceof SyntaxError) return null;
+    throw error;
+  }
+}
+
 function describe(error) {
-  return error instanceof Error ? error.message.split("\n")[0].slice(0, 160) : "unknown error";
+  if (!(error instanceof Error)) return "unknown error";
+  const said = ["stdout", "stderr"].map((key) => (key in error && typeof error[key] === "string" ? error[key].trim() : ""));
+  const reason = reasonFrom(said[0]) ?? said[1].split("\n")[0];
+  return (reason || error.message.split("\n")[0]).replace(/[^\x20-\x7e]/g, "").slice(0, 200);
+}
+
+const SAFE_BRANCH = /^[A-Za-z0-9._/-]+$/;
+
+function branchToKeep(branch, base) {
+  if (typeof branch !== "string" || !SAFE_BRANCH.test(branch)) return "its name has characters the gate never deletes";
+  if (branch.split("/").some((segment) => segment === "" || segment === "." || segment === "..")) return "its name has an empty or dot segment";
+  if (branch === base || branch === "main") return "it is the base branch";
+  return null;
+}
+
+function codeSpan(text) {
+  return `\`${text.replace(/[`\s]+/g, " ").trim()}\``;
 }
 
 function refused(number, action, error) {
-  const reason = `GitHub refused to ${action} (${describe(error)}). Someone needs to look at it.`;
+  const reason = `GitHub refused to ${action}: ${codeSpan(describe(error))}. Someone needs to look at it.`;
   say(`#${number}: ${reason}`);
   try {
     upsertComment(number, ["Everything the gate checks passes, but:", "", `- ${reason}`]);
