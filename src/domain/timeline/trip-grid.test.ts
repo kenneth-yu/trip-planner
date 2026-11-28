@@ -130,6 +130,26 @@ describe("trip grid on the fixture trip", () => {
       expect(spanText(span)).toMatch(/^Planning, [A-Z][a-z]{2} \d+ to \d+$/);
     });
 
+    it("goes through the projection: the editor of an all-draft trip sees Planning, an invited viewer and a link visitor see no line at all", () => {
+      const agg = buildFixtureTrip();
+      for (const item of agg.items) item.booked = false;
+      agg.memberships.push({ tripId: TRIP_ID, userId: "user-mom", role: "viewer" });
+      agg.shareLink = { enabled: true, showsDeadlines: false };
+      const owner = projectTrip(agg, kenny);
+      expect(spanText(present(tripSpan(owner, now)))).toBe("Planning, Dec 1 to 15");
+      expect(tripSpan(projectTrip(agg, { kind: "member", userId: "user-mom", homeZone: NY }), now)).toBeNull();
+      expect(tripSpan(projectTrip(agg, { kind: "link", homeZone: NY }), now)).toBeNull();
+    });
+
+    it("keeps the normal line for an invited viewer when only some items are not booked", () => {
+      const agg = buildFixtureTrip();
+      agg.items[0].booked = false;
+      agg.memberships.push({ tripId: TRIP_ID, userId: "user-mom", role: "viewer" });
+      const span = present(tripSpan(projectTrip(agg, { kind: "member", userId: "user-mom", homeZone: NY }), now));
+      expect(span.planning).toBe(false);
+      expect(spanText(span)).toMatch(/^[A-Z][a-z]{2} \d+ to .+ · You leave in \d+ days$/);
+    });
+
     it("shows nothing for a trip with no items, planning or not", () => {
       expect(tripSpan({ ...view, items: [] }, now)).toBeNull();
     });
