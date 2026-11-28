@@ -3,6 +3,8 @@ import { buildInput, changesApp, evaluate, GateDataError, isWorkflowRefusal, las
 
 const REPO = "kenneth-yu/trip-planner";
 const MARKER = "<!-- merge-gate -->";
+const GATE_SECRET = process.env.GATE_TOKEN;
+delete process.env.GATE_TOKEN;
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const sweep = args.includes("--sweep");
@@ -19,7 +21,7 @@ function gh(parameters, token) {
 
 function gateToken() {
   if (!process.env.GITHUB_ACTIONS) return { ok: true, token: undefined };
-  const token = process.env.GATE_TOKEN;
+  const token = GATE_SECRET;
   return token ? { ok: true, token } : { ok: false, token: undefined };
 }
 
@@ -180,7 +182,7 @@ function missingToken(number) {
   } catch (commentError) {
     say(`#${number}: the comment could not be written either (${describe(commentError)}).`);
   }
-  return "failed";
+  return "missing-token";
 }
 
 const SAFE_BRANCH = /^[A-Za-z0-9._/-]+$/;
@@ -207,9 +209,15 @@ function refused(number, action, error, labels = []) {
     say(`#${number}: ${WORKFLOW_REASON}`);
     try {
       upsertComment(number, ["Everything the gate checks passes, but:", "", `- ${WORKFLOW_REASON}`]);
-      if (!labels.includes("needs-owner")) gh(["api", "-X", "POST", `repos/${REPO}/issues/${number}/labels`, "-f", "labels[]=needs-owner"]);
     } catch (commentError) {
-      say(`#${number}: the comment or the label could not be written (${describe(commentError)}).`);
+      say(`#${number}: the comment could not be written (${describe(commentError)}).`);
+    }
+    if (!labels.includes("needs-owner")) {
+      try {
+        gh(["api", "-X", "POST", `repos/${REPO}/issues/${number}/labels`, "-f", "labels[]=needs-owner"]);
+      } catch (labelError) {
+        say(`#${number}: the needs-owner label could not be applied (${describe(labelError)}).`);
+      }
     }
     return "blocked";
   }
@@ -225,7 +233,7 @@ function refused(number, action, error, labels = []) {
 
 if (single) {
   const outcome = processPullRequest(single);
-  process.exit(outcome === "blocked" || outcome === "failed" ? 1 : 0);
+  process.exit(outcome === "blocked" || outcome === "failed" || outcome === "missing-token" ? 1 : 0);
 }
 
 let numbers;
@@ -238,5 +246,6 @@ try {
 for (const number of numbers) {
   const outcome = processPullRequest(number);
   if (outcome === "merged" || outcome === "updated") break;
+  if (outcome === "missing-token") process.exit(1);
 }
 process.exit(0);

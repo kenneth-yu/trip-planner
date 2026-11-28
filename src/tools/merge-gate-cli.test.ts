@@ -76,6 +76,10 @@ describe("merge-gate.mjs against a fake GitHub", () => {
     expect(result.status).toBe(0);
     expect(calls.find((c) => c.includes("/pulls/7/merge"))).toBe(`api -X PUT repos/${REPO}/pulls/7/merge -f merge_method=merge -f sha=${headOf(7)} [gate]`);
     expect(calls).toContain(`api -X DELETE repos/${REPO}/git/refs/heads/wp/7 [gate]`);
+    expect(calls.filter((c) => c.endsWith(" [gate]"))).toEqual([
+      `api -X PUT repos/${REPO}/pulls/7/merge -f merge_method=merge -f sha=${headOf(7)} [gate]`,
+      `api -X DELETE repos/${REPO}/git/refs/heads/wp/7 [gate]`,
+    ]);
     expect(calls.some((c) => c.startsWith("workflow run"))).toBe(false);
   });
 
@@ -116,10 +120,16 @@ describe("merge-gate.mjs against a fake GitHub", () => {
     const harness = makeHarness({ pullRefs: [7] });
     harness.setRoutes([{ match: "pulls?state=open", out: "7\n" }, ...routesFor({ number: 7, ...options })]);
     const result = harness.run(process.execPath, [tool, "--sweep"], { ...actions, GATE_TOKEN: "" });
-    expect(result.status).toBe(0);
+    expect(result.status).toBe(1);
     const calls = harness.calls();
     expect(calls.some((c) => c.includes("update-branch") || c.includes("/pulls/7/merge") || c.startsWith("workflow run"))).toBe(false);
     expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/comments`) && c.includes("GATE_TOKEN secret is not set") && c.includes("does not fall back"))).toBe(true);
+  });
+
+  it("takes the gate token out of the environment, so no gh call sees it", () => {
+    const { calls } = sweep([7, 8], [{ number: 7, behindBy: 1 }, { number: 8 }]);
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.filter((c) => c.includes("[leak]"))).toEqual([]);
   });
 
   it("never prints either token, in its output or in what it posts", () => {
@@ -198,6 +208,29 @@ describe("merge-gate.mjs against a fake GitHub", () => {
     expect(calls.filter((c) => c.includes("/pulls/7/merge"))).toHaveLength(1);
     expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/labels`) && c.includes("labels[]=needs-owner"))).toBe(true);
     expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/comments`) && c.includes("touches workflow files: needs the owner to merge") && !c.includes("Someone needs to look at it"))).toBe(true);
+  });
+
+  it("treats a workflow-scope refusal on update-branch as needs-owner, once, without a retry", () => {
+    const message = "refusing to allow a Personal Access Token to create or update workflow `.github/workflows/ci.yml` without `workflow` scope";
+    const refusing = routesFor({ number: 7, behindBy: 1 }).map((route) => (route.match.includes("update-branch") ? { match: route.match, fail: "gh: refused (HTTP 422)", failBody: JSON.stringify({ message }) } : route));
+    const harness = makeHarness({ pullRefs: [7] });
+    harness.setRoutes([{ match: "pulls?state=open", out: "7\n" }, ...refusing]);
+    const result = harness.run(process.execPath, [tool, "--sweep"], actions);
+    const calls = harness.calls();
+    expect(result.status).toBe(0);
+    expect(calls.filter((c) => c.includes("update-branch"))).toHaveLength(1);
+    expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/labels`) && c.includes("labels[]=needs-owner"))).toBe(true);
+    expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/comments`) && c.includes("touches workflow files: needs the owner to merge"))).toBe(true);
+  });
+
+  it("still applies the needs-owner label when the comment cannot be written", () => {
+    const message = "refusing to allow a Personal Access Token to create or update workflow `.github/workflows/ci.yml` without `workflow` scope";
+    const routes = routesFor({ number: 7, mergeFails: true, mergeFailMessage: message }).map((route) => (route.match.startsWith("-X POST") && route.match.includes("issues/7/comments") ? { match: route.match, fail: "gh: forbidden (HTTP 403)" } : route));
+    const harness = makeHarness({ pullRefs: [7] });
+    harness.setRoutes([{ match: "pulls?state=open", out: "7\n" }, ...routes]);
+    harness.run(process.execPath, [tool, "--sweep"], actions);
+    const calls = harness.calls();
+    expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/labels`) && c.includes("labels[]=needs-owner"))).toBe(true);
   });
 
   it("does not try a pull request again once it carries the needs-owner label", () => {
