@@ -185,7 +185,7 @@ interface Parse {
 
 const MAX_FLIGHT_HOURS = 48;
 
-function wholeNumber(text: string, max: number): number | null {
+function boundedWhole(text: string, max: number): number | null {
   if (text === "") return 0;
   if (!/^\d{1,3}$/.test(text)) return null;
   const value = Number(text);
@@ -217,8 +217,8 @@ function flight(e: Entries, p: Parse): void {
   if (!to) p.errors.to = MESSAGES.place;
   const date = requireDate(e, "date", p);
   const departs = requireClock(e, "departs", p);
-  const hoursPart = wholeNumber(e.get("hours"), MAX_FLIGHT_HOURS);
-  const minutesPart = wholeNumber(e.get("minutes"), 59);
+  const hoursPart = boundedWhole(e.get("hours"), MAX_FLIGHT_HOURS);
+  const minutesPart = boundedWhole(e.get("minutes"), 59);
   const byDuration = p.draft && !e.get("arrives");
   if (byDuration && hoursPart === null) p.errors.hours = MESSAGES.hours;
   if (byDuration && minutesPart === null) p.errors.minutes = MESSAGES.minutes;
