@@ -29,6 +29,9 @@
     },
     "planCalendarImport/packed": {
       "budgetMs": 144
+    },
+    "planCalendarImport/500events": {
+      "budgetMs": 150
     }
   },
   "mcp": {

@@ -16,57 +16,61 @@ export interface Match {
 const TWO_HOURS = 2 * 3600_000;
 const COMMON_WORDS = new Set(["hotel", "the", "stay", "at", "a", "an", "and", "of", "in", "inn", "airbnb", "by", "room", "rooms"]);
 
-const CACHE_LIMIT = 5000;
-const normalized = new Map<string, readonly string[]>();
-const dayKeys = new Map<string, string>();
+export class Memo {
+  private readonly names = new Map<string, readonly string[]>();
+  private readonly days = new Map<string, string>();
+  private readonly instants = new Map<string, number>();
 
-function remembered<T>(cache: Map<string, T>, key: string, compute: () => T): T {
-  const known = cache.get(key);
-  if (known !== undefined) return known;
-  if (cache.size >= CACHE_LIMIT) cache.clear();
-  const value = compute();
-  cache.set(key, value);
-  return value;
+  words(title: string): readonly string[] {
+    const known = this.names.get(title);
+    if (known) return known;
+    const value = normalizeName(title);
+    this.names.set(title, value);
+    return value;
+  }
+
+  day(t: Mergeable["start"]): string {
+    const key = `${t.at}|${t.zone}`;
+    const known = this.days.get(key);
+    if (known !== undefined) return known;
+    const value = localDateKey(t);
+    this.days.set(key, value);
+    return value;
+  }
+
+  instant(t: Mergeable["start"]): number {
+    const known = this.instants.get(t.at);
+    if (known !== undefined) return known;
+    const parsed = Date.parse(t.at);
+    const value = Number.isNaN(parsed) ? instantMs(t) : parsed;
+    this.instants.set(t.at, value);
+    return value;
+  }
 }
 
 export function normalizeName(s: string): readonly string[] {
-  return remembered(normalized, s, () =>
-    s
-      .toLowerCase()
-      .replace(/\([^)]*\)/g, " ")
-      .replace(/[^\p{L}\p{N}\s]/gu, " ")
-      .split(/\s+/)
-      .filter((w) => w && !COMMON_WORDS.has(w)),
-  );
+  return s
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .split(/\s+/)
+    .filter((w) => w && !COMMON_WORDS.has(w));
 }
 
-const instants = new Map<string, number>();
-
-function instantOf(t: Mergeable["start"]): number {
-  return remembered(instants, t.at, () => {
-    const parsed = Date.parse(t.at);
-    return Number.isNaN(parsed) ? instantMs(t) : parsed;
-  });
-}
-
-function dayKey(t: Mergeable["start"]): string {
-  return remembered(dayKeys, `${t.at}|${t.zone}`, () => localDateKey(t));
-}
-
-export function similarNames(a: string, b: string): boolean {
-  const [x, y] = [normalizeName(a), normalizeName(b)];
+export function similarNames(a: string, b: string, memo: Memo = new Memo()): boolean {
+  const [x, y] = [memo.words(a), memo.words(b)];
   if (!x.length || !y.length) return false;
   const shared = x.filter((w) => y.includes(w)).length;
   return shared / Math.min(x.length, y.length) >= 0.6;
 }
 
-function nightsOverlap(a: Mergeable, b: Mergeable): boolean {
-  const [as, ae, bs, be] = [dayKey(a.start), dayKey(a.end), dayKey(b.start), dayKey(b.end)];
+function nightsOverlap(a: Mergeable, b: Mergeable, memo: Memo): boolean {
+  const [as, ae, bs, be] = [memo.day(a.start), memo.day(a.end), memo.day(b.start), memo.day(b.end)];
   return as < be && bs < ae;
 }
 
-function timesOverlap(a: Mergeable, b: Mergeable): boolean {
-  return instantOf(a.start) < instantOf(b.end) && instantOf(b.start) < instantOf(a.end);
+function timesOverlap(a: Mergeable, b: Mergeable, memo: Memo): boolean {
+  return memo.instant(a.start) < memo.instant(b.end) && memo.instant(b.start) < memo.instant(a.end);
 }
 
 const showTime = (t: Mergeable["start"]) => formatClock(toLocal(t));
@@ -91,21 +95,21 @@ export function sharedDifferences(existing: Mergeable, incoming: Mergeable): Dif
   return out;
 }
 
-export function matchRecords(existing: Mergeable, incoming: Mergeable): Match | null {
+export function matchRecords(existing: Mergeable, incoming: Mergeable, memo: Memo = new Memo()): Match | null {
   if (existing.type !== incoming.type) return null;
   switch (incoming.type) {
     case "flight": {
       const [a, b] = [existing.flight, incoming.flight];
       if (!a || !b || a.flightNumber !== b.flightNumber) return null;
-      if (Math.abs(instantOf(existing.start) - instantOf(incoming.start)) > TWO_HOURS) return null;
-      if (dayKey(existing.start) !== dayKey(incoming.start)) return null;
+      if (Math.abs(memo.instant(existing.start) - memo.instant(incoming.start)) > TWO_HOURS) return null;
+      if (memo.day(existing.start) !== memo.day(incoming.start)) return null;
       return { strength: "strong", differences: sharedDifferences(existing, incoming) };
     }
     case "stay": {
-      if (!nightsOverlap(existing, incoming)) return null;
+      if (!nightsOverlap(existing, incoming, memo)) return null;
       const nameMatch =
-        similarNames(existing.title, incoming.title) ||
-        Boolean(existing.location?.address && incoming.location?.address && similarNames(existing.location.address, incoming.location.address));
+        similarNames(existing.title, incoming.title, memo) ||
+        Boolean(existing.location?.address && incoming.location?.address && similarNames(existing.location.address, incoming.location.address, memo));
       if (nameMatch) return { strength: "strong", differences: sharedDifferences(existing, incoming) };
       if (!incoming.location?.address && !incoming.location?.city && existing.start.zone === incoming.start.zone) {
         return { strength: "possible", differences: [] };
@@ -114,9 +118,9 @@ export function matchRecords(existing: Mergeable, incoming: Mergeable): Match | 
     }
     case "plan":
     case "transfer": {
-      if (!timesOverlap(existing, incoming)) return null;
-      if (dayKey(existing.start) !== dayKey(incoming.start)) return null;
-      if (!similarNames(existing.title, incoming.title)) return null;
+      if (!timesOverlap(existing, incoming, memo)) return null;
+      if (memo.day(existing.start) !== memo.day(incoming.start)) return null;
+      if (!similarNames(existing.title, incoming.title, memo)) return null;
       return { strength: "strong", differences: sharedDifferences(existing, incoming) };
     }
   }
@@ -207,19 +211,20 @@ export interface Cluster {
   differences: Difference[];
 }
 
-function bucketKey(p: ProposedItem): string {
+function bucketKey(p: ProposedItem, memo: Memo): string {
   if (p.type === "stay") return "stay";
-  const day = dayKey(p.start);
+  const day = memo.day(p.start);
   return p.type === "flight" ? `flight|${p.flight?.flightNumber ?? ""}|${day}` : `${p.type}|${day}`;
 }
 
 export function consolidate(records: ProposedItem[]): Cluster[] {
   const clusters: Cluster[] = [];
   const buckets = new Map<string, Cluster[]>();
+  const memo = new Memo();
   records.forEach((rec, i) => {
-    const key = bucketKey(rec);
+    const key = bucketKey(rec, memo);
     const bucket = buckets.get(key) ?? [];
-    const target = bucket.find((c) => matchRecords(c.proposed, rec)?.strength === "strong");
+    const target = bucket.find((c) => matchRecords(c.proposed, rec, memo)?.strength === "strong");
     if (!target) {
       const created: Cluster = { proposed: structuredClone(rec), sources: [i], differences: [] };
       clusters.push(created);

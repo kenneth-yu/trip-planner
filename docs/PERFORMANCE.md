@@ -31,6 +31,7 @@ Re-baselined on Nov 27 on the CI runner that enforces them: GitHub-hosted ubuntu
 | runChecks | packed | 4.4 ms | 9 ms | Same |
 | planCalendarImport | december | 72.3 ms | 145 ms | Calendar import and the inbox |
 | planCalendarImport | packed | 71.6 ms | 144 ms | Same |
+| planCalendarImport | 500 events at one moment (the import limit) | 63 ms (was 2,477 ms before the matching fix, over its 150 ms budget) | 150 ms | The worst case for an import: every event on the same day with a different title |
 
 These are slower than they look necessary because every time conversion goes through Luxon. Making them faster is welcome; lowering a budget needs a new measurement here.
 
