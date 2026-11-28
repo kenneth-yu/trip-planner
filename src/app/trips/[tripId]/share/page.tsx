@@ -6,8 +6,10 @@ import { loadTripPage } from "@/server/web";
 import { listInvites, listMembers, listUnlinkedTravelers } from "@/server/services/sharing-service";
 import { DateTime } from "@/domain/time/luxon";
 import { roleName } from "../../../invite/role-words";
+import { getViewLinkSettings } from "@/server/services/view-link-service";
 import { listCoTravelers } from "@/server/services/member-service";
 import { InviteForm, RemoveControl, RoleControl } from "./forms";
+import { LinkControls, ViewerDeadlines } from "./link-controls";
 import { PastPeople } from "./past-people";
 import { revokeInviteAction } from "./actions";
 
@@ -17,6 +19,7 @@ export default async function SharePage({ params }: PageProps<"/trips/[tripId]/s
   const { tripId } = await params;
   const { ctx, requester, view } = await loadTripPage(tripId);
   if (!view.permissions.canManageSharing) notFound();
+  const settings = await getViewLinkSettings(ctx, tripId, requester);
   const [members, invites, travelers] = await Promise.all([
     listMembers(ctx, tripId, requester),
     listInvites(ctx, tripId, requester),
@@ -53,6 +56,7 @@ export default async function SharePage({ params }: PageProps<"/trips/[tripId]/s
             </li>
           ))}
         </ul>
+        {settings.hasViewers && <ViewerDeadlines tripId={tripId} checked={settings.viewersSeeDeadlines} />}
       </section>
       {invites.length > 0 && (
         <section className={pageStyles.section}>
@@ -73,6 +77,10 @@ export default async function SharePage({ params }: PageProps<"/trips/[tripId]/s
           </ul>
         </section>
       )}
+      <section className={pageStyles.section}>
+        <h2 className={pageStyles.sectionTitle}>Link for family and friends</h2>
+        <LinkControls tripId={tripId} enabled={settings.enabled} showsDeadlines={settings.showsDeadlines} />
+      </section>
     </div>
   );
 }

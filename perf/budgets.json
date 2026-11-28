@@ -55,6 +55,9 @@
     "/sign-in": {
       "budgetGzipBytes": 148000
     },
+    "/v/[token]": {
+      "budgetGzipBytes": 154000
+    },
     "/trips/[tripId]": {
       "budgetGzipBytes": 151000
     },

@@ -135,9 +135,9 @@ export function DayStrip({ days, selectedKey }: { days: StripDay[]; selectedKey:
             }}
             className={`${styles.chip} ${isChosen ? styles.chosen : ""} ${d.cityIndex !== null ? CITY[d.cityIndex % CITY.length] : ""}`}
             aria-current={isChosen ? "date" : undefined}
-            aria-label={`${d.weekday} ${d.month ?? ""} ${d.day}${d.city ? `, sleeping in ${d.city}` : ""}${d.needsAttention ? ", needs a look" : ""}`}
+            aria-label={`${d.month ?? d.weekday} ${d.day}${d.month ? `, ${d.weekday}` : ""}${d.city ? `, sleeping in ${d.city}` : ""}${d.needsAttention ? ", needs a look" : ""}`}
           >
-            {d.month ?? d.weekday}
+            {d.month ?? d.weekday}{" "}
             <b>{d.day}</b>
             <span className={styles.bar} />
             <span className={styles.dots}>

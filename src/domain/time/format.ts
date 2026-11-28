@@ -79,11 +79,11 @@ export function zoneLabel(zone: Zone): string {
   return last.replace(/_/g, " ");
 }
 
-export function homeReference(t: ZonedTime, homeZone: Zone | null): string | null {
+export function homeReference(t: ZonedTime, homeZone: Zone | null, label?: string): string | null {
   if (!homeZone) return null;
   if (offsetAt(homeZone, t.at) === offsetAt(t.zone, t.at)) return null;
   const local = toLocal(t);
   const home = local.setZone(homeZone);
   const day = home.toISODate() !== local.toISODate() ? ` ${formatWeekday(home)}` : "";
-  return `${formatClock(home)}${day} ${zoneLabel(homeZone)}`;
+  return `${formatClock(home)}${day} ${label ?? zoneLabel(homeZone)}`;
 }
