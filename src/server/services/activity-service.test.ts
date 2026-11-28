@@ -58,14 +58,14 @@ describe("activity lines", () => {
   it("names private changes only as booking details to editors, and leaves them out for viewers", async () => {
     const { ctx, db, flight } = await setup();
     const before = flight;
-    const after = { ...flight, private: [{ travelerId: null, seat: "30Z", confirmationCode: "PLACEHOLDER_Z" }] };
+    const after = { ...flight, private: [{ travelerId: null, seat: "ZQ99", confirmationCode: "PLACEHOLDER_Z" }] };
     await insertActivity(db, { tripId: TRIP_ID, actorId: USERS.jacob.id, action: "updated", itemId: flight.id, before, after });
     const editor = await listActivityLines(ctx, TRIP_ID, kenny);
     expect(editor.lines[0].changed).toEqual(["booking details"]);
     const guest = await listActivityLines(ctx, TRIP_ID, viewer);
     expect(guest.lines.some((l) => l.changed.includes("booking details"))).toBe(false);
     expect(guest.lines).toEqual([]);
-    for (const out of [editor, guest]) expect(JSON.stringify(out)).not.toMatch(/30Z|PLACEHOLDER|seat|confirmation/i);
+    for (const out of [editor, guest]) expect(JSON.stringify(out)).not.toMatch(/ZQ99|PLACEHOLDER|seat|confirmation/i);
   });
 
   it("carries no email, user id, token or value in any line, for anyone", async () => {
