@@ -6,6 +6,7 @@ import { readSnapshot } from "../repo/activity-snapshot";
 import { deleteItem, lockItemRow, saveItem, touchTrip, UnknownTraveler } from "../repo/trip-repo";
 import type { ServiceContext } from "./context";
 import { requireAggregate } from "./trip-service";
+import { canSeeIdea } from "@/domain/ideas/ideas";
 import { firstName } from "@/domain/people/first-name";
 import { localDateKey } from "@/domain/time/format";
 import { AccessDenied, assertCanEditItem, canSeeItem, permissionsFor } from "@/domain/visibility/project";
@@ -13,8 +14,10 @@ import type { Item, Requester, TripAggregate } from "@/domain/types";
 
 export const ACTIVITY_PAGE = 50;
 
-export type ActivityKind = "created" | "updated" | "deleted" | "merged" | "imported" | "undone";
-const KINDS: readonly string[] = ["created", "updated", "deleted", "merged", "imported", "undone"];
+const ACTIVITY_KIND = z.enum(["created", "updated", "deleted", "merged", "imported", "undone", "idea_scheduled", "idea_done", "idea_dropped", "idea_reopened"]);
+export type ActivityKind = z.infer<typeof ACTIVITY_KIND>;
+const KINDS: readonly string[] = ACTIVITY_KIND.options;
+const IdeaActivity = z.object({ ideaId: z.string(), title: z.string(), visibility: z.enum(["everyone", "only_me", "specific"]), createdBy: z.string().nullable(), visibleToUserIds: z.array(z.string()) });
 const UNDOABLE: readonly string[] = ["created", "updated", "deleted", "undone"];
 const UNNAMED = "A trip member";
 
@@ -137,7 +140,7 @@ function requireMember(agg: TripAggregate, requester: Requester): string {
 function undone(entry: StoredActivity, entries: StoredActivity[], names: Map<string, string>, me: string): { kind: ActivityKind; by: string } | null {
   const older = entries.slice(entries.indexOf(entry) + 1).find((x) => x.itemId === entry.itemId);
   if (!older) return null;
-  return { kind: z.enum(["created", "updated", "deleted", "merged", "imported", "undone"]).parse(older.action), by: older.actorId === me ? "You" : (names.get(older.actorId) ?? UNNAMED) };
+  return { kind: ACTIVITY_KIND.parse(older.action), by: older.actorId === me ? "You" : (names.get(older.actorId) ?? UNNAMED) };
 }
 
 export async function listActivityLines(ctx: ServiceContext, tripId: string, requester: Requester, opts: { limit?: number } = {}): Promise<{ lines: ActivityLine[]; more: boolean }> {
@@ -167,9 +170,11 @@ export async function listActivityLines(ctx: ServiceContext, tripId: string, req
     if (!judge(e).visible) hiddenFromBatch.set(e.via, (hiddenFromBatch.get(e.via) ?? 0) + 1);
   }
 
+  const ideaIds = [...new Set(entries.filter((e) => e.action.startsWith("idea_") && e.itemId).map((e) => e.itemId ?? ""))];
+  const nowIdeas = new Map((ideaIds.length > 0 ? await ctx.db.select().from(t.ideas).where(inArray(t.ideas.id, ideaIds)) : []).map((row) => [row.id, row]));
   const lines: ActivityLine[] = [];
   for (const e of entries) {
-    const kind = z.enum(["created", "updated", "deleted", "merged", "imported", "undone"]).parse(e.action);
+    const kind = ACTIVITY_KIND.parse(e.action);
     const by = e.actorId === me ? "You" : (names.get(e.actorId) ?? UNNAMED);
     if (kind === "imported") {
       if (!perms.canEdit) continue;
@@ -177,6 +182,13 @@ export async function listActivityLines(ctx: ServiceContext, tripId: string, req
       const count = payload.count - (hiddenFromBatch.get(e.via) ?? 0);
       if (count <= 0) continue;
       lines.push({ id: e.id, at: e.at, kind, by, title: null, itemId: null, changed: [], via: null, count, source: SOURCE_WORDS[payload.source] ?? "somewhere else", canUndo: false, undid: null });
+      continue;
+    }
+    if (kind.startsWith("idea_")) {
+      const idea = IdeaActivity.parse(e.after);
+      const current = nowIdeas.get(idea.ideaId);
+      if (!canSeeIdea(idea, requester) || (current && !canSeeIdea({ visibility: current.visibility, createdBy: current.createdBy, visibleToUserIds: current.visibleToUserIds }, requester))) continue;
+      lines.push({ id: e.id, at: e.at, kind, by, title: idea.title, itemId: null, changed: [], via: null, count: null, source: null, canUndo: false, undid: null });
       continue;
     }
     const { before, after, ref, visible } = judge(e);
@@ -257,7 +269,7 @@ export async function undoActivity(ctx: ServiceContext, tripId: string, requeste
     }
     await touchTrip(tx, tripId);
     await insertActivity(tx, { tripId, actorId: me, action: "undone", itemId: entry.itemId, before: now, after: target });
-    return { kind: z.enum(["created", "updated", "deleted", "merged", "imported", "undone"]).parse(entry.action), title: target ? target.title : title, itemId: target ? target.id : null, dayKey: target ? dayKeyOf(target) : null, actorId: entry.actorId };
+    return { kind: ACTIVITY_KIND.parse(entry.action), title: target ? target.title : title, itemId: target ? target.id : null, dayKey: target ? dayKeyOf(target) : null, actorId: entry.actorId };
   });
   await ctx.onTripChanged(tripId);
   const who = (await actorNames(ctx, [result.actorId])).get(result.actorId) ?? UNNAMED;

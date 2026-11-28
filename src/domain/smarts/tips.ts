@@ -5,6 +5,7 @@ import { formatClock, instantMs, localDateKey, toLocal } from "../time/format";
 import { exitMs, isDomesticFlight, leadMs, minutesMs } from "../timeline/travel-times";
 import type { TripView, VisibleItem } from "../visibility/project";
 import { TIP_KINDS, type TipKind } from "./kinds";
+import { sleepWindow } from "./sleep-window";
 
 export { TIP_KINDS, type TipKind };
 
@@ -147,6 +148,17 @@ export function bagTips(view: TripView): SmartTip[] {
   return out;
 }
 
+export function sleepTips(view: TripView): SmartTip[] {
+  const out: SmartTip[] = [];
+  for (const flight of view.items) {
+    if (flight.type !== "flight" || !flight.flight) continue;
+    const found = sleepWindow(flight, view.homeZone);
+    if (!found) continue;
+    out.push({ key: found.key, kind: "sleep", itemId: flight.id, row: "flight", itemIds: [flight.id], line: found.line, why: found.why.join("\n") });
+  }
+  return out;
+}
+
 export function smartTips(view: TripView): SmartTip[] {
-  return [...leaveByTips(view), ...bagTips(view)];
+  return [...leaveByTips(view), ...sleepTips(view), ...bagTips(view)];
 }

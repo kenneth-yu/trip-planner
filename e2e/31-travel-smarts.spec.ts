@@ -76,11 +76,13 @@ test("tips show under flights and check ins, and Hide tips like this hides that 
   await expect(visible(kenny, tip)).toBeVisible();
   await kenny.getByRole("button", { name: `Why? ${tip}` }).filter({ visible: true }).first().click();
   await kenny.getByRole("button", { name: "Hide tips like this" }).filter({ visible: true }).first().click();
-  await expect(kenny.getByRole("status").filter({ hasText: "Tips like this are hidden." })).toBeVisible();
+  const message = kenny.getByRole("status").filter({ hasText: "Bag storage tips are off. Turn them back on in Account." });
+  await expect(message).toBeVisible();
+  await expect(message.getByRole("link", { name: "Account" })).toHaveAttribute("href", "/account#travel-smarts");
   await expect(kenny.getByText(tip)).toHaveCount(0);
   await kenny.goto("/account#travel-smarts");
-  await expect(kenny.locator("#travel-smarts").getByLabel("Storing bags between check-in and check-out")).not.toBeChecked();
-  await kenny.locator("#travel-smarts").getByLabel("Storing bags between check-in and check-out").check();
+  await expect(kenny.locator("#travel-smarts").getByLabel("Storing bags around check-in and check-out")).not.toBeChecked();
+  await kenny.locator("#travel-smarts").getByLabel("Storing bags around check-in and check-out").check();
   await kenny.locator("#travel-smarts").getByRole("button", { name: "Save" }).click();
   await expect(kenny.locator("#travel-smarts").getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
 });
@@ -100,7 +102,7 @@ test("a view link visitor sees no tips and no travel smart buttons", async ({ pa
   const guest = await visitor.newPage();
   await guest.goto(new URL(link).pathname);
   await expect(guest.getByRole("heading", { name: "Asia, December 2026" })).toBeVisible();
-  for (const text of ["Be at the airport by", "Store your bags?", "Hide tips like this", "Change to ", "This is fine", "Travel tips are small suggestions"]) {
+  for (const text of ["Be at the airport by", "Store your bags?", "Hide tips like this", "Change to ", "This is fine", "Tips like this are optional."]) {
     await expect(guest.getByText(text)).toHaveCount(0);
   }
   await visitor.close();
@@ -132,15 +134,17 @@ test("Travel tips on the account page: axe with tips on and off, and tips off hi
 
   await kenny.goto("/account#travel-smarts");
   const section = kenny.locator("#travel-smarts");
-  await expect(section.getByRole("heading", { name: "Travel tips" })).toBeVisible();
+  await expect(section.getByRole("heading", { name: "Travel smarts" })).toBeVisible();
   await expect(section.getByText(/always show/)).toBeVisible();
-  await expect(section.getByRole("checkbox")).toHaveCount(6);
+  await expect(section.getByRole("switch", { name: "Travel tips" })).toBeChecked();
+  await expect(section.getByRole("checkbox")).toHaveCount(3);
   await expectNoSeriousViolations(kenny);
-  await section.getByLabel("Show travel tips").uncheck();
+  await section.getByRole("switch", { name: "Travel tips" }).uncheck();
+  await expect(section.getByRole("checkbox")).toHaveCount(0);
   await section.getByRole("button", { name: "Save" }).click();
   await expect(section.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
   await kenny.reload();
-  await expect(kenny.locator("#travel-smarts").getByLabel("Show travel tips")).not.toBeChecked();
+  await expect(kenny.locator("#travel-smarts").getByRole("switch", { name: "Travel tips" })).not.toBeChecked();
   await expectNoSeriousViolations(kenny);
 
   await kenny.goto(tipDay);
@@ -149,7 +153,8 @@ test("Travel tips on the account page: axe with tips on and off, and tips off hi
   await expect(visible(kenny, warning)).toBeVisible();
 
   await kenny.goto("/account#travel-smarts");
-  await kenny.locator("#travel-smarts").getByLabel("Show travel tips").check();
+  await kenny.locator("#travel-smarts").getByRole("switch", { name: "Travel tips" }).check();
+  await expect(kenny.locator("#travel-smarts").getByRole("checkbox")).toHaveCount(3);
   await kenny.locator("#travel-smarts").getByRole("button", { name: "Save" }).click();
   await expect(kenny.locator("#travel-smarts").getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
   await kenny.goto(tipDay);

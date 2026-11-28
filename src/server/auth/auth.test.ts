@@ -7,6 +7,7 @@ import { currentUser, devSignInEnabled, userForSessionToken } from "./session";
 import { testContext } from "../testing";
 import * as t from "../db/schema";
 import { present } from "@/testing/present";
+import { FROZEN_NOW_MS } from "@/testing/clock";
 import { USERS } from "@/fixtures/december-trip";
 import type { Db } from "../db/client";
 
@@ -73,7 +74,7 @@ describe("tokens", () => {
 });
 
 describe("current user", () => {
-  async function signedInCookie(userId: string, expires = new Date(Date.now() + 86400_000)) {
+  async function signedInCookie(userId: string, expires = new Date(FROZEN_NOW_MS + 86400_000)) {
     const db = await present(database.current);
     const token = generateSessionToken();
     await present(createAdapter(db).createSession)({ sessionToken: token, userId, expires });
@@ -103,7 +104,7 @@ describe("current user", () => {
   });
 
   it("is null for an expired session", async () => {
-    await signedInCookie(USERS.kenny.id, new Date(Date.now() - 1000));
+    await signedInCookie(USERS.kenny.id, new Date(FROZEN_NOW_MS - 1000));
     expect(await currentUser()).toBeNull();
   });
 
@@ -150,7 +151,7 @@ describe("devSignInEnabled", () => {
 
 describe("google oauth", () => {
   it("state is bound to the signed in user and expires", () => {
-    const now = Date.now();
+    const now = FROZEN_NOW_MS;
     const s = sealState({ userId: "u1", tripId: "t1", exp: now + 60_000 });
     expect(openState(s, "u1", now)).toEqual({ userId: "u1", tripId: "t1", exp: now + 60_000 });
     expect(openState(s, "u2", now)).toBeNull();

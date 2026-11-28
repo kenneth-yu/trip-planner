@@ -15,6 +15,7 @@ import { WhereSleep } from "./where-sleep";
 import { sleepPlan } from "@/domain/timeline/sleep-plan";
 import { arrangeRows, checkSources, tipSources } from "@/domain/smarts/rows";
 import { acknowledgeTipsIntro, loadTipsForPage } from "@/server/services/smarts-service";
+import { listIdeas } from "@/server/services/idea-service";
 
 export default async function TripPage({ params, searchParams }: PageProps<"/trips/[tripId]">) {
   const { tripId } = await params;
@@ -30,6 +31,7 @@ export default async function TripPage({ params, searchParams }: PageProps<"/tri
   const plan = sleepPlan(view, attention.beforeTrip ? {} : { from: todayKey });
   const fullGrid = buildTripGrid(view, nowMs, plan);
   const days = buildDays(view);
+  const ideas = (await listIdeas(ctx, tripId, requester)).filter((idea) => idea.state === "open");
   const everyDay = requested === "all";
   const onGrid = gridChecks(view, fullGrid, attention.everyFinding, attention.findings);
   const grid = fullGrid && withoutHiddenBubbles(fullGrid, onGrid.hidden);
@@ -37,7 +39,7 @@ export default async function TripPage({ params, searchParams }: PageProps<"/tri
   const tripChecks = checksForTripPage(attention.findings, view, attention.tripStartMs, nowMs);
   const panelChecks = tripChecks.filter((f) => !onGrid.drawn.has(f.anchor));
   const canEdit = view.permissions.canEdit;
-  const hasAttention = plan.summary !== null || attention.pending > 0 || attention.deadlines.some((d) => !d.passed && d.warning) || panelChecks.length > 0;
+  const hasAttention = plan.summary !== null || attention.pending > 0 || attention.deadlines.some((d) => !d.passed && d.warning) || panelChecks.length > 0 || ideas.length > 0 || canEdit;
   return (
     <>
       {grid && (
@@ -50,11 +52,11 @@ export default async function TripPage({ params, searchParams }: PageProps<"/tri
         {hasAttention && (
           <aside>
             <WhereSleep plan={plan} tripId={tripId} canEdit={canEdit} folded={false} />
-            <AttentionPanel data={attention} tripId={tripId} checks={panelChecks} />
+            <AttentionPanel data={attention} tripId={tripId} checks={panelChecks} ideasOpen={ideas.length} />
           </aside>
         )}
         <div>
-          <DayView view={view} days={days} todayKey={todayKey} only={everyDay || !selected ? undefined : selected} anchors={false} smart={smart} />
+          <DayView view={view} days={days} todayKey={todayKey} only={everyDay || !selected ? undefined : selected} anchors={false} smart={smart} ideas={ideas} />
           {days.length > 1 && (
             <p className={styles.muted}>
               <Link href={everyDay ? "?" : "?day=all"}>{everyDay ? "Show one day at a time" : "Show every day"}</Link>
@@ -68,7 +70,7 @@ export default async function TripPage({ params, searchParams }: PageProps<"/tri
         <UpNext entries={upNext(view, nowMs)} attention={attention} checks={tripChecks} tripId={tripId} />
         {grid && <DayStrip days={dayStrip(grid)} selectedKey={everyDay ? null : selected} />}
         <div id={DAY_PANEL_ID}>
-          <DayView view={view} days={days} todayKey={todayKey} only={everyDay || !selected ? undefined : selected} anchors={false} smart={smart} />
+          <DayView view={view} days={days} todayKey={todayKey} only={everyDay || !selected ? undefined : selected} anchors={false} smart={smart} ideas={ideas} />
         </div>
         {days.length > 1 && (
           <p className={styles.muted}>

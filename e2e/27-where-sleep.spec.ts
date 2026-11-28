@@ -40,7 +40,7 @@ test("a new trip starts with the flights, then says which nights need a bed", as
   await expect(page.getByText("Check in Sat Jan 16 · Check out Wed Jan 27").filter({ visible: true })).toBeVisible();
   await expect(page.getByText("Not Fri Jan 15: you're on the plane.").filter({ visible: true })).toBeVisible();
 
-  const why = page.getByRole("button", { name: "Why?" }).filter({ visible: true });
+  const why = page.getByRole("button", { name: /^Why\? Not Fri Jan 15/ }).filter({ visible: true });
   await expect(why).toHaveAttribute("aria-expanded", "false");
   await why.click();
   await expect(why).toHaveAttribute("aria-expanded", "true");
@@ -60,4 +60,6 @@ test("a new trip starts with the flights, then says which nights need a bed", as
   await expect(page.locator("[name=place]")).toHaveValue("Hong Kong");
   await expect(page.locator("[name=checkInDate]")).toHaveValue("2027-01-16");
   await expect(page.locator("[name=checkOutDate]")).toHaveValue("2027-01-27");
+  await expect(page.locator("[name=name]")).toBeFocused();
+  await expect(page.getByText("Time (Hong Kong time)")).toHaveCount(2);
 });

@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import Link from "next/link";
 import { createPortal } from "react-dom";
 import styles from "./item-form.module.css";
-import { FLASH_COOKIE, FLASH_KINDS, FLASH_TEXT, flashPath, type FlashKind } from "./flash";
+import { FLASH_COOKIE, FLASH_KINDS, FLASH_MESSAGE, flashPath, type FlashKind, type FlashLink } from "./flash";
 
 const subscribeNever = () => () => undefined;
 
@@ -25,10 +26,16 @@ function statusHost(): HTMLElement | null {
   return host.isConnected ? host : null;
 }
 
-export function StatusLine({ text }: { text: string | null }) {
+export function StatusLine({ text, link }: { text: string | null; link?: FlashLink }) {
   return (
     <p role="status" className={text ? styles.flash : undefined}>
-      {text}
+      {text && link ? (
+        <>
+          {text} <Link href={link.href}>{link.label}</Link>.
+        </>
+      ) : (
+        text
+      )}
     </p>
   );
 }
@@ -69,5 +76,5 @@ export function FlashStatus({ kind, tripId, focusId }: { kind: FlashKind; tripId
     [],
   );
 
-  return <div ref={holder}>{host && createPortal(<StatusLine text={announced ? FLASH_TEXT[kind] : null} />, host)}</div>;
+  return <div ref={holder}>{host && createPortal(<StatusLine text={announced ? FLASH_MESSAGE[kind].lead : null} link={FLASH_MESSAGE[kind].link} />, host)}</div>;
 }
