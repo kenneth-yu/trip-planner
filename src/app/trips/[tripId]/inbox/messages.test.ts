@@ -96,11 +96,14 @@ describe("the line after a Google import", () => {
     [["1", "1"], "1 event is waiting in your inbox. 1 looks like a thing already on the trip."],
     [["3", undefined], "3 events are waiting in your inbox."],
     [["3", "nonsense"], "3 events are waiting in your inbox."],
+    [["3", " 1 "], "3 events are waiting in your inbox."],
+    [["3", "1e3"], "3 events are waiting in your inbox."],
+    [["3", "0x10"], "3 events are waiting in your inbox."],
   ])("%j", ([imported, matched], text) => {
     expect(importedOutcome(imported, matched)).toEqual({ text, role: "status" });
   });
 
-  it.each([[undefined], ["abc"], ["-1"], ["1.5"], [["1", "2"]], ["999999999"]])("shows nothing for %j", (imported) => {
+  it.each([[undefined], ["abc"], ["-1"], ["1.5"], [["1", "2"]], ["999999999"], [""], [" 7 "], ["1e3"], ["0x10"], ["+7"], ["７"]])("shows nothing for %j", (imported) => {
     expect(importedOutcome(imported, "0")).toBeNull();
   });
 });

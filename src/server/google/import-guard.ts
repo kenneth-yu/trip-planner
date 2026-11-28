@@ -12,7 +12,8 @@ export const FAKE_ACCESS_TOKEN = "fake-google-access-token";
 type Env = Record<string, string | undefined>;
 
 export function fakeGoogleActive(env: Env = process.env): boolean {
-  return env.GOOGLE_IMPORT_FAKE === "1" && env.DEV_SIGN_IN === "1" && env.VERCEL_ENV !== "production";
+  const realGoogle = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
+  return env.GOOGLE_IMPORT_FAKE === "1" && env.DEV_SIGN_IN === "1" && env.VERCEL_ENV !== "production" && !realGoogle;
 }
 
 export function importOAuthConfig(appUrl: string): GoogleOAuthConfig | null {
