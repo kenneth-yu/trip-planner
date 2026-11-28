@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createPgliteDb } from "@/server/db/client";
 
@@ -31,6 +31,15 @@ async function statuses(method: string, url: string, times: number) {
 }
 
 describe("proxy rate limits sign in", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-27T10:07:30Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("refuses POST /api/auth/signin/email after 10 in 15 minutes", async () => {
     store.db = createPgliteDb();
     const seen = await statuses("POST", "https://trips.test/api/auth/signin/email", 11);
