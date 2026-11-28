@@ -1,10 +1,13 @@
 import styles from "../../../ui/page.module.css";
+import { appUrl } from "@/server/app-context";
+import { importOAuthConfig, importPagePath } from "@/server/google/import-guard";
 import { loadTripPage } from "@/server/web";
 import { listInbox } from "@/server/services/inbox-service";
 import { formatClock, formatDayHeader, toLocal } from "@/domain/time/format";
 import { buildFlightCard } from "@/domain/time/flight-card";
 import { AddAllForm } from "./add-all-form";
 import { EntryForm } from "./entry-form";
+import { importedOutcome } from "./messages";
 import { InboxResults } from "./result";
 
 const SOURCE: Record<string, string> = {
@@ -15,17 +18,28 @@ const SOURCE: Record<string, string> = {
   assistant: "AI assistant",
 };
 
-export default async function InboxPage({ params }: PageProps<"/trips/[tripId]/inbox">) {
+export default async function InboxPage({ params, searchParams }: PageProps<"/trips/[tripId]/inbox">) {
   const { tripId } = await params;
+  const { imported, matched } = await searchParams;
   const { ctx, requester, view } = await loadTripPage(tripId);
   if (!view.permissions.canEdit) return <p className={styles.muted}>Only editors review imports.</p>;
   const entries = await listInbox(ctx, tripId, requester);
   const clean = entries.filter((e) => e.clean).map((e) => e.id);
+  const importLink = importOAuthConfig(appUrl()) ? importPagePath(tripId) : null;
   return (
     <div className={styles.narrow}>
-      <InboxResults>
+      <InboxResults initial={importedOutcome(imported, matched)}>
         {clean.length > 0 && <AddAllForm tripId={tripId} entryIds={clean} />}
-        {!entries.length && <p className={styles.muted}>Nothing waiting. Items from calendars and assistants show up here first.</p>}
+        {!entries.length && (
+          <p className={styles.muted}>
+            Nothing waiting. {importLink ? <><a href={importLink}>Import from Google Calendar</a> to bring your bookings in.</> : "Items from calendars and assistants show up here first."}
+          </p>
+        )}
+        {entries.length > 0 && importLink && (
+          <p>
+            <a href={importLink}>Import from Google Calendar</a>
+          </p>
+        )}
       <ul className={styles.list}>
         {entries.map((e) => {
           const p = e.proposed;

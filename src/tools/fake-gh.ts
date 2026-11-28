@@ -17,7 +17,7 @@ const fixture = JSON.parse(fs.readFileSync(process.env.FAKE_GH_FIXTURE, "utf8"))
 const line = process.argv.slice(2).join(" ").replace(/\\n/g, " ");
 const asGate = fixture.gateToken && process.env.GH_TOKEN === fixture.gateToken;
 const before = fs.readFileSync(fixture.log, "utf8").split("\\n");
-fs.appendFileSync(fixture.log, line + (asGate ? " [gate]" : "") + "\\n");
+fs.appendFileSync(fixture.log, line + (asGate ? " [gate]" : "") + (process.env.GATE_TOKEN ? " [leak]" : "") + "\\n");
 const route = fixture.routes.find((r) => line.includes(r.match));
 if (!route) {
   process.stderr.write("no route for: " + line + "\\n");
