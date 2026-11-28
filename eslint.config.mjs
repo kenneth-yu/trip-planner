@@ -93,8 +93,16 @@ export default defineConfig([
           message: "Tests run on a frozen clock (src/testing/clock.ts). Use frozenNow(), or pass the instant you mean to new Date(...).",
         },
         {
+          selector: "CallExpression[callee.object.object.name='globalThis'][callee.object.property.name='Date'][callee.property.name='now']",
+          message: "Tests run on a frozen clock (src/testing/clock.ts). Use frozenNow() or FROZEN_NOW_MS, or realNow() inside withRealClock when real time is the point.",
+        },
+        {
           selector: "CallExpression[callee.object.name='performance'][callee.property.name='now']",
           message: "Timing belongs in perf/. In a unit test use the frozen clock, or fake timers and advance them.",
+        },
+        {
+          selector: "CallExpression[callee.property.name=/^toBeLessThan(OrEqual)?$/][callee.object.callee.name='expect'][callee.object.arguments.0.property.name=/elapsed|duration|took|latency/i]",
+          message: "A wall clock timing assertion is flaky on a busy runner. Put it in perf/, or assert the behavior with fake timers.",
         },
         {
           selector: "CallExpression[callee.property.name=/^toBeLessThan(OrEqual)?$/][callee.object.callee.name='expect'][callee.object.arguments.0.name=/elapsed|duration|took|latency/i]",
