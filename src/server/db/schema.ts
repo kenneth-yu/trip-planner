@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { Difference, ProposedItem } from "@/domain/import/proposal";
 import type { FlightDetails, ItemPrivate, Location, StayDetails, TransferDetails } from "@/domain/types";
@@ -285,7 +286,7 @@ export const calendarFeeds = pgTable(
     lastReadAt: ts("last_read_at"),
     revokedAt: ts("revoked_at"),
   },
-  (t) => [index("calendar_feeds_trip_user_idx").on(t.tripId, t.userId)],
+  (t) => [index("calendar_feeds_trip_user_idx").on(t.tripId, t.userId), uniqueIndex("calendar_feeds_one_active_idx").on(t.tripId, t.userId).where(sql`${t.revokedAt} is null`)],
 );
 
 export const ideas = pgTable(
