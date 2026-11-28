@@ -122,19 +122,37 @@ test("going Forward into the details and Back again returns to the same place", 
   expect(Math.abs((await settledScroll(page)) - leftAt), "the second Back returns to the same place").toBeLessThanOrEqual(2);
 });
 
-test("the browser's own restoration is back while the page is hidden, so a reload keeps the place", async ({ pageSignedInAs }) => {
+test("a reload keeps the place, because the browser restores it again once the page is going away", async ({ pageSignedInAs }) => {
   const page = await pageSignedInAs("kenny", `/trips/${PACKED_TRIP}`);
+  await chipFor(page, "2027-03-09").click();
+  await expect(page).toHaveURL(/day=2027-03-09/);
+  await page.mouse.wheel(0, 500);
+  const before = await settledScroll(page);
+  expect(before).toBeGreaterThan(100);
+  await page.reload();
   await expect(stripOf(page)).toBeVisible();
-  expect(await page.evaluate(() => window.history.scrollRestoration)).toBe("manual");
-  const values = await page.evaluate(() => {
-    window.dispatchEvent(new PageTransitionEvent("pagehide"));
-    return window.history.scrollRestoration;
-  });
-  expect(values).toBe("auto");
-  await page.evaluate(() => {
-    window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
-  });
-  expect(await page.evaluate(() => window.history.scrollRestoration)).toBe("manual");
+  await expect.poll(async () => Math.abs((await settledScroll(page)) - before), { message: "the reload keeps the place" }).toBeLessThanOrEqual(2);
+});
+
+test("a Back that leaves the strip mounted does not make a later fresh mount restore an old place", async ({ pageSignedInAs }) => {
+  const page = await pageSignedInAs("kenny", `/trips/${PACKED_TRIP}`);
+  const router = () => page.evaluate(() => typeof Reflect.get(Reflect.get(window, "next") ?? {}, "router")?.push === "function");
+  await chipFor(page, "2027-03-09").click();
+  await expect(page).toHaveURL(/day=2027-03-09/);
+  await page.mouse.wheel(0, 500);
+  await chipFor(page, "2027-03-10").click();
+  await expect(page).toHaveURL(/day=2027-03-10/);
+  await page.goBack();
+  await expect(page).toHaveURL(/day=2027-03-09/);
+  await expect(stripOf(page)).toHaveAttribute("data-scroll-restored", /day=2027-03-09/);
+  expect(await router(), "the app router is reachable from the page").toBe(true);
+  const itemHref = await page.locator("#day-panel a[href*='/items/']").first().getAttribute("href");
+  await page.evaluate((href) => Reflect.get(Reflect.get(window, "next"), "router").push(href), itemHref);
+  await expect(page).toHaveURL(/\/items\//);
+  await page.evaluate((url) => Reflect.get(Reflect.get(window, "next"), "router").push(url), `/trips/${PACKED_TRIP}?day=2027-03-09`);
+  await expect(page).toHaveURL(/day=2027-03-09/);
+  await expect(stripOf(page)).toBeVisible();
+  await expect(stripOf(page)).not.toHaveAttribute("data-scroll-restored", /.+/);
 });
 
 test("while a long day scrolls, its date stays pinned just under the strip", async ({ pageSignedInAs }) => {

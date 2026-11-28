@@ -79,6 +79,7 @@ export function DayStrip({ days, selectedKey }: { days: StripDay[]; selectedKey:
     };
   }, []);
   useEffect(() => {
+    consumeTraversal();
     const url = here();
     const arrived = arrivedByTraversal.current;
     arrivedByTraversal.current = false;
