@@ -162,7 +162,7 @@ export function pushStart(commits, codeSha, runsFor) {
 export function pushEventTime(events, codeSha) {
   const times = events
     .filter((event) => (event.event === "committed" && event.sha === codeSha) || (event.event === "head_ref_force_pushed" && event.commit_id === codeSha))
-    .map((event) => Date.parse(event.at))
+    .map((event) => Date.parse(event.created_at ?? event.committer?.date))
     .filter((value) => Number.isFinite(value));
   return times.length > 0 ? Math.max(...times) : null;
 }

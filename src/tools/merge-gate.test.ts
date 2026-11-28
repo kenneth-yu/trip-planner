@@ -430,9 +430,9 @@ describe("merge gate", () => {
 
   describe("the push event of the last code", () => {
     const events = [
-      { event: "committed", sha: sha("a"), at: "2026-11-27T09:00:00Z" },
-      { event: "committed", sha: sha("b"), at: "2026-11-27T10:00:00Z" },
-      { event: "head_ref_force_pushed", commit_id: sha("b"), at: "2026-11-27T10:05:00Z" },
+      { event: "committed", sha: sha("a"), committer: { date: "2026-11-27T09:00:00Z" } },
+      { event: "committed", sha: sha("b"), committer: { date: "2026-11-27T10:00:00Z" } },
+      { event: "head_ref_force_pushed", commit_id: sha("b"), created_at: "2026-11-27T10:05:00Z" },
     ];
 
     it("takes the latest event that is about the commit", () => {
@@ -440,9 +440,15 @@ describe("merge gate", () => {
       expect(pushEventTime(events, sha("a"))).toBe(Date.parse("2026-11-27T09:00:00Z"));
     });
 
+    it("prefers the time GitHub recorded over the commit date", () => {
+      const recorded = [{ event: "committed", sha: sha("a"), created_at: "2026-11-27T11:00:00Z", committer: { date: "2026-11-27T09:00:00Z" } }];
+      expect(pushEventTime(recorded, sha("a"))).toBe(Date.parse("2026-11-27T11:00:00Z"));
+    });
+
     it("is null when no event is about the commit or the time is unreadable", () => {
       expect(pushEventTime(events, sha("z"))).toBeNull();
-      expect(pushEventTime([{ event: "committed", sha: sha("a"), at: "never" }], sha("a"))).toBeNull();
+      expect(pushEventTime([{ event: "committed", sha: sha("a"), committer: { date: "never" } }], sha("a"))).toBeNull();
+      expect(pushEventTime([{ event: "committed", sha: sha("a") }], sha("a"))).toBeNull();
     });
   });
 
@@ -642,6 +648,16 @@ describe("merge gate", () => {
           "The QA verdict is older than the head: code was pushed after the Applied/Declined reply.",
           "The Security verdict is older than the head: code was pushed after the Applied/Declined reply.",
         ]);
+      });
+
+      it("ignores a reply from anyone but the trusted reviewer, even when it names the commit", () => {
+        const comments = [withChanges[0], withChanges[1], product, say(23, `${both}\nFixed at ${sha("b")}`, "someone-else")];
+        expect(evaluate(pull({ comments, commits, lastCodePushedAt: null, codePushedAt: Date.parse(T(25)) })).reasons).toHaveLength(2);
+      });
+
+      it("does not count a hex string that matches no commit in the pull request", () => {
+        const input = { comments: reply(`${both}\nFixed at ${"9".repeat(12)}`), commits, lastCodePushedAt: null, codePushedAt: Date.parse(T(25)) };
+        expect(evaluate(pull(input)).reasons).toHaveLength(2);
       });
 
       it("uses the check run time only when the push event is unknown", () => {

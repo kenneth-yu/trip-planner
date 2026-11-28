@@ -133,10 +133,7 @@ function checkRunPages(sha) {
 }
 
 function timelineEvents(number) {
-  return apiList(
-    `repos/${REPO}/issues/${number}/timeline?per_page=100`,
-    '.[] | select(.event == "committed" or .event == "head_ref_force_pushed") | {event, sha, commit_id, at: (.committer.date // .created_at)}',
-  );
+  return apiList(`repos/${REPO}/issues/${number}/timeline?per_page=100`, '.[] | select(.event == "committed" or .event == "head_ref_force_pushed")');
 }
 
 let whoAmI = null;
