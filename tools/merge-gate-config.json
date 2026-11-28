@@ -1,9 +1,10 @@
 {
   "requiredChecks": ["static", "test", "postgres", "prod-build", "gitleaks"],
   "docsOnly": ["^docs/(?!STATECHARTS\\.md$|PIPELINE\\.md$|SECURITY\\.md$).+\\.md$", "^[^/]+\\.md$", "^\\.pipeline/"],
-  "holdLabels": ["hold", "do-not-merge"],
+  "holdLabels": ["hold", "do-not-merge", "needs-owner"],
   "ownerLabel": "needs-owner",
   "ownerOnly": ["^\\.claude/", "^CLAUDE\\.md$"],
+  "workflowFiles": ["^\\.github/workflows/"],
   "semver": {
     "paths": ["^src/", "^public/", "^drizzle/", "^package\\.json$", "^next\\.config\\."],
     "exclude": ["\\.test\\.tsx?$", "^src/testing/", "^src/lint/", "^src/tools/"]

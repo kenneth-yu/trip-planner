@@ -15,8 +15,9 @@ const SCRIPT = `#!/usr/bin/env node
 const fs = require("node:fs");
 const fixture = JSON.parse(fs.readFileSync(process.env.FAKE_GH_FIXTURE, "utf8"));
 const line = process.argv.slice(2).join(" ").replace(/\\n/g, " ");
+const asGate = fixture.gateToken && process.env.GH_TOKEN === fixture.gateToken;
 const before = fs.readFileSync(fixture.log, "utf8").split("\\n");
-fs.appendFileSync(fixture.log, line + "\\n");
+fs.appendFileSync(fixture.log, line + (asGate ? " [gate]" : "") + "\\n");
 const route = fixture.routes.find((r) => line.includes(r.match));
 if (!route) {
   process.stderr.write("no route for: " + line + "\\n");
@@ -30,6 +31,9 @@ if (route && route.fail && (route.failTimes === undefined || earlier < route.fai
 }
 process.stdout.write(route.out ?? "");
 `;
+
+export const GATE_TOKEN = "gate-token-for-tests-only";
+export const DEFAULT_TOKEN = "default-token-for-tests-only";
 
 export interface Harness {
   dir: string;
@@ -62,7 +66,7 @@ export function makeHarness(options: { pullRefs?: number[] } = {}): Harness {
   const log = path.join(dir, "calls.log");
   writeFileSync(log, "");
   const fixturePath = path.join(dir, "fixture.json");
-  const setRoutes = (routes: Route[]) => writeFileSync(fixturePath, JSON.stringify({ log, routes }));
+  const setRoutes = (routes: Route[]) => writeFileSync(fixturePath, JSON.stringify({ log, routes, gateToken: GATE_TOKEN }));
   setRoutes([]);
   return {
     dir,
