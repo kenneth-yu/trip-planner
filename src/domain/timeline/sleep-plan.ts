@@ -280,20 +280,20 @@ function nightNotes(flights: VisibleItem[], inStretch: Set<string>, homeZone: Zo
   };
 }
 
-export function sleepPlan(view: Pick<TripView, "items" | "homeZone">): SleepPlan {
+export function sleepPlan(view: Pick<TripView, "items" | "homeZone">, opts: { from?: string } = {}): SleepPlan {
   const items = [...view.items].sort(byStart);
   const flights = items.filter((i) => i.type === "flight");
   if (!flights.length) return { stretches: [], planeNights: [], entries: [], summary: null };
   const legs = items.filter((i) => i.type === "flight" || i.type === "transfer");
   const statuses = nightStatuses(view);
-  const landingDate = localDateKey(flights[0].end);
+  const landingDate = [localDateKey(flights[0].end), opts.from ?? ""].sort().at(-1) ?? "";
 
   const stretches: SleepStretch[] = [];
   for (const group of groupOpenNights(statuses, landingDate)) {
     stretches.push(buildStretch(group, legs, view.homeZone, statuses, stretches.at(-1)?.nights.at(-1) ?? ""));
   }
   const inStretch = new Set(stretches.flatMap((s) => s.nights));
-  const planeNights = planeNightsOf(flights, statuses, inStretch, view.homeZone);
+  const planeNights = planeNightsOf(flights, statuses, inStretch, view.homeZone).filter((p) => p.night >= (opts.from ?? ""));
 
   const entries: SleepEntry[] = [
     ...stretches.map((s) => ({ kind: "stretch" as const, ...s })),

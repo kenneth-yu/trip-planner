@@ -2,6 +2,7 @@ import { DateTime } from "../time/luxon";
 import type { TripView, VisibleItem } from "../visibility/project";
 import { buildDays, itemCity, whereAt } from "../time/days";
 import { flightCities } from "../time/flight-card";
+import { sleepPlan } from "./sleep-plan";
 import { formatClock, formatTimeUntil, instantMs, localDateKey, offsetAt, toLocal } from "../time/format";
 
 export interface GridDay {
@@ -52,6 +53,7 @@ export interface TripGrid {
   travel: TravelEntry[][];
   plans: PlanEntry[][];
   unsure: UnsureSpan[];
+  nights: ("bed" | "plane" | null)[];
   cities: string[];
   route: string[];
 }
@@ -184,6 +186,13 @@ export function routeOf(view: TripView): string[] {
   return stops;
 }
 
+function nightMarks(view: TripView, keys: string[]): ("bed" | "plane" | null)[] {
+  const plan = sleepPlan(view);
+  const bed = new Set(plan.stretches.flatMap((s) => s.nights));
+  const plane = new Set(plan.planeNights.map((p) => p.night));
+  return keys.map((k) => (bed.has(k) ? "bed" : plane.has(k) ? "plane" : null));
+}
+
 export function buildTripGrid(view: TripView, nowMs: number): TripGrid | null {
   const days = buildDays(view);
   if (!days.length) return null;
@@ -220,6 +229,7 @@ export function buildTripGrid(view: TripView, nowMs: number): TripGrid | null {
     travel: keys.map((k) => travelOn(k, items, gaps)),
     plans: keys.map((k) => plansOn(k, view)),
     unsure,
+    nights: nightMarks(view, keys),
     cities,
     route: routeOf(view),
   };
