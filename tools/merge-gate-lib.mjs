@@ -217,6 +217,8 @@ function need(condition, message) {
   if (!condition) throw new GateDataError(message);
 }
 
+export const HOLD_LABELS = CONFIG.holdLabels;
+
 export function buildInput(raw, reviewerLogin, repo) {
   const { pr, files, comments, commits, checkRuns, checkRunsTotal, compare } = raw;
   need(pr && typeof pr === "object", "The pull request could not be read.");
