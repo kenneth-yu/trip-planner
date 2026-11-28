@@ -26,6 +26,7 @@ export function securityHeaders(pathname: string, nonce: string, isProduction: b
     "cross-origin-opener-policy": "same-origin",
   });
   if (quiet) headers.set("x-robots-tag", "noindex, nofollow");
+  if (pathname.startsWith("/v/")) headers.set("cache-control", "private, no-store");
   if (isProduction) headers.set("strict-transport-security", "max-age=63072000; includeSubDomains");
   return headers;
 }

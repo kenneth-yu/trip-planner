@@ -70,7 +70,8 @@ function placeLine(item: VisibleItem): string | null {
   return [name, city].filter(Boolean).join(", ") || null;
 }
 
-function entriesFor(item: VisibleItem, homeZone: Zone): { day: string; entry: DayEntry }[] {
+function entriesFor(item: VisibleItem, tripHomeZone: Zone, homeLabel?: string, withoutHome = false): { day: string; entry: DayEntry }[] {
+  const homeZone = withoutHome ? null : tripHomeZone;
   const out: { day: string; entry: DayEntry }[] = [];
   const startDay = localDateKey(item.start);
   const endDay = localDateKey(item.end);
@@ -78,7 +79,7 @@ function entriesFor(item: VisibleItem, homeZone: Zone): { day: string; entry: Da
   const endTime = formatClock(toLocal(item.end));
 
   if (item.type === "flight") {
-    out.push({ day: startDay, entry: { kind: "flight", at: item.start.at, itemId: item.id, card: buildFlightCard(item, homeZone) } });
+    out.push({ day: startDay, entry: { kind: "flight", at: item.start.at, itemId: item.id, card: buildFlightCard(item, homeZone, homeLabel) } });
     if (endDay !== startDay) {
       let d = DateTime.fromISO(startDay).plus({ days: 1 });
       while (d.toISODate() < endDay) {
@@ -102,7 +103,7 @@ function entriesFor(item: VisibleItem, homeZone: Zone): { day: string; entry: Da
         kind: "check_in", at: item.start.at, itemId: item.id,
         time: startTime,
         text: `${item.startIsEstimated ? `Check in from ${startTime}` : "Check in"}: ${item.title}`,
-        place, home: homeReference(item.start, homeZone),
+        place, home: homeReference(item.start, homeZone, homeLabel),
       },
     });
     out.push({
@@ -111,7 +112,7 @@ function entriesFor(item: VisibleItem, homeZone: Zone): { day: string; entry: Da
         kind: "check_out", at: item.end.at, itemId: item.id,
         time: endTime,
         text: `${item.endIsEstimated ? `Check out by ${endTime}` : "Check out"}: ${item.title}`,
-        place, home: homeReference(item.end, homeZone),
+        place, home: homeReference(item.end, homeZone, homeLabel),
       },
     });
     return out;
@@ -121,7 +122,7 @@ function entriesFor(item: VisibleItem, homeZone: Zone): { day: string; entry: Da
     day: startDay,
     entry: {
       kind: "event", at: item.start.at, itemId: item.id, time: startTime, title: item.title,
-      place: placeLine(item), home: homeReference(item.start, homeZone), itemType: item.type,
+      place: placeLine(item), home: homeReference(item.start, homeZone, homeLabel), itemType: item.type,
     },
   });
   return out;
@@ -136,9 +137,9 @@ export function filterByTravelers(items: VisibleItem[], travelerIds?: string[]):
   return items.filter((i) => i.travelerIds.some((t) => travelerIds.includes(t)));
 }
 
-export function buildDays(view: TripView, opts: { travelerIds?: string[] } = {}): Day[] {
+export function buildDays(view: TripView, opts: { travelerIds?: string[]; homeLabel?: string; homeReferences?: boolean } = {}): Day[] {
   const items = filterByTravelers(view.items, opts.travelerIds);
-  const placed = [...items.flatMap((i) => entriesFor(i, view.homeZone)), ...view.busy.map(busyEntry)];
+  const placed = [...items.flatMap((i) => entriesFor(i, view.homeZone, opts.homeLabel, opts.homeReferences === false)), ...view.busy.map(busyEntry)];
   if (!placed.length) return [];
 
   const keys = placed.map((p) => p.day).sort();

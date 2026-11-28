@@ -4,6 +4,7 @@ import { itemCity, whereAt } from "../time/days";
 import { flightCities } from "../time/flight-card";
 import { formatClock, formatShortDate, instantMs, localDateKey, toLocal } from "../time/format";
 import { airportByCode, airportShortName } from "../time/places";
+import type { Zone } from "../types";
 
 export type CheckKind =
   | "overlapping_stays"
@@ -78,32 +79,49 @@ export function overlappingStays(view: TripView): Finding[] {
   return out;
 }
 
+export interface NightStatus {
+  night: string;
+  city: string | null;
+  zone: Zone;
+  state: "covered" | "air" | "open";
+}
+
+export function nightStatuses(view: Pick<TripView, "items" | "homeZone">): NightStatus[] {
+  const items = [...view.items].sort(byStart);
+  const flights = items.filter((i) => i.type === "flight");
+  if (!flights.length) return [];
+  const stays = items.filter((i) => i.type === "stay");
+  const firstLanding = flights[0];
+  const lastDeparture = flights[flights.length - 1];
+  const out: NightStatus[] = [];
+  const first = [localDateKey(firstLanding.start), localDateKey(firstLanding.end)].sort()[0];
+  let d = DateTime.fromISO(first);
+  const stop = localDateKey(lastDeparture.start);
+  while (d.toISODate() < stop) {
+    const night = d.toISODate();
+    const landed = flights.filter((f) => localDateKey(f.end) <= night).at(-1);
+    const zone = landed ? landed.end.zone : firstLanding.start.zone;
+    const where = whereAt(DateTime.fromISO(`${night}T23:30`, { zone }).toMillis(), items, view.homeZone);
+    const covered = stays.some((s) => nights(s).includes(night));
+    out.push({ night, city: where.city, zone: where.kind === "air" ? zone : where.zone, state: covered ? "covered" : where.kind === "air" ? "air" : "open" });
+    d = d.plus({ days: 1 });
+  }
+  return out;
+}
+
 export function nowhereToSleep(view: TripView): Finding[] {
   const flights = of(view, "flight");
   if (!flights.length) return [];
   const stays = of(view, "stay");
-  const firstLanding = flights[0];
-  const lastDeparture = flights[flights.length - 1];
-  const out: Finding[] = [];
-  let d = DateTime.fromISO(localDateKey(firstLanding.end));
-  const stop = localDateKey(lastDeparture.start);
-  while (d.toISODate() < stop) {
-    const night = d.toISODate();
-    const where = whereAt(DateTime.fromISO(`${night}T23:30`, { zone: firstLanding.end.zone }).toMillis(), view.items, view.homeZone);
-    const zoneNight = DateTime.fromISO(`${night}T23:30`, { zone: where.zone }).toMillis();
-    const covered = stays.some((s) => nights(s).includes(night));
-    const flying = whereAt(zoneNight, view.items, view.homeZone).kind === "air";
-    if (!covered && !flying) {
-      out.push({
-        key: findingKey("nowhere_to_sleep", stays, night),
-        kind: "nowhere_to_sleep",
-        sentence: `Nowhere booked for the night of ${formatShortDate(d)}${where.city ? ` in ${where.city}` : ""}.`,
-        itemIds: [],
-      });
-    }
-    d = d.plus({ days: 1 });
-  }
-  return out;
+  const landing = localDateKey(flights[0].end);
+  return nightStatuses(view)
+    .filter((n) => n.state === "open" && n.night >= landing)
+    .map((n) => ({
+      key: findingKey("nowhere_to_sleep", stays, n.night),
+      kind: "nowhere_to_sleep" as const,
+      sentence: `Nowhere booked for the night of ${formatShortDate(DateTime.fromISO(n.night))}${n.city ? ` in ${n.city}` : ""}.`,
+      itemIds: [],
+    }));
 }
 
 export function airportSwitch(view: TripView): Finding[] {
