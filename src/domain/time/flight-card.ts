@@ -63,7 +63,7 @@ export function arrivalTag(item: Pick<Item, "start" | "end">): string | null {
   return arr.toFormat("HH:mm") < dep.toFormat("HH:mm") ? "Same day" : null;
 }
 
-export function buildFlightCard(item: FlightLike, homeZone: Zone | null): FlightCard {
+export function buildFlightCard(item: FlightLike, homeZone: Zone | null, homeLabel?: string): FlightCard {
   if (item.type !== "flight" || !item.flight) throw new Error(`Item ${item.id} is not a flight`);
   const f = item.flight;
   const from = placeFor(f.fromAirport);
@@ -77,7 +77,7 @@ export function buildFlightCard(item: FlightLike, homeZone: Zone | null): Flight
       time: formatClock(toLocal(item.end)),
       ...to,
       tag: arrivalTag(item),
-      home: homeReference(item.end, homeZone),
+      home: homeReference(item.end, homeZone, homeLabel),
     },
     clockSentence: clockSentence(item),
   };
