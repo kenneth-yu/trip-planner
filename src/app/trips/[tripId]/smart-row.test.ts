@@ -36,6 +36,7 @@ describe("the first tip sentence", () => {
     const html = renderToStaticMarkup(createElement(TipsIntro));
     expect(html).toContain('href="/account#travel-smarts"');
     expect(html).toContain("Turn off tips");
+    expect(html).toContain("Tips like this are optional.");
     expect(html).not.toContain("<button");
   });
 });

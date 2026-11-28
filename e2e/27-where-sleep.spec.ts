@@ -60,4 +60,6 @@ test("a new trip starts with the flights, then says which nights need a bed", as
   await expect(page.locator("[name=place]")).toHaveValue("Hong Kong");
   await expect(page.locator("[name=checkInDate]")).toHaveValue("2027-01-16");
   await expect(page.locator("[name=checkOutDate]")).toHaveValue("2027-01-27");
+  await expect(page.locator("[name=name]")).toBeFocused();
+  await expect(page.getByText("Time (Hong Kong time)")).toHaveCount(2);
 });

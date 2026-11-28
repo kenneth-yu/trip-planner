@@ -44,7 +44,7 @@ export default async function GoogleImportPage({ params, searchParams }: PagePro
       <div className={styles.narrow}>
         <h2 className={styles.sectionTitle}>Import from Google Calendar</h2>
         <p className={styles.muted}>{IMPORT_CLOSED}</p>
-        <a href={`/trips/${tripId}/inbox`}>Back to the review inbox</a>
+        <a className={local.back} href={`/trips/${tripId}/import`}>Back to Import bookings</a>
       </div>
     );
   }
