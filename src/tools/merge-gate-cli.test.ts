@@ -1,11 +1,12 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { makeHarness, type Route } from "./fake-gh";
+import { DEFAULT_TOKEN, GATE_TOKEN, makeHarness, type Route } from "./fake-gh";
 
 const REPO = "kenneth-yu/trip-planner";
 const tool = path.join(process.cwd(), "tools", "merge-gate.mjs");
 const lines = (items: unknown[]) => items.map((item) => JSON.stringify(item)).join("\n") + (items.length > 0 ? "\n" : "");
 const headOf = (number: number) => String(number).repeat(40).slice(0, 40).replace(/./g, (_c, i) => "abcdef"[(i + number) % 6]);
+const actions = { GATE_OWNER: "kenneth-yu", GITHUB_ACTIONS: "true", GH_TOKEN: DEFAULT_TOKEN, GATE_TOKEN };
 const REQUIRED = ["static", "test", "postgres", "prod-build", "gitleaks"];
 
 interface Options {
@@ -59,7 +60,7 @@ function routesFor(options: Options): Route[] {
 function sweep(numbers: number[], perPull: Options[], listing = numbers) {
   const harness = makeHarness({ pullRefs: numbers });
   harness.setRoutes([{ match: "pulls?state=open", out: listing.map((n) => `${n}\n`).join("") }, ...perPull.flatMap(routesFor)]);
-  const result = harness.run(process.execPath, [tool, "--sweep"], { GATE_OWNER: "kenneth-yu", GITHUB_ACTIONS: "true" });
+  const result = harness.run(process.execPath, [tool, "--sweep"], actions);
   return { result, calls: harness.calls() };
 }
 
@@ -69,18 +70,16 @@ describe("merge-gate.mjs against a fake GitHub", () => {
   it("merges a passing pull request with its head sha pinned, then starts the release and main workflows", () => {
     const { result, calls } = sweep([7], [{ number: 7 }]);
     expect(result.status).toBe(0);
-    expect(calls.find((c) => c.includes("/pulls/7/merge"))).toBe(`api -X PUT repos/${REPO}/pulls/7/merge -f merge_method=merge -f sha=${headOf(7)}`);
-    expect(calls).toContain(`api -X DELETE repos/${REPO}/git/refs/heads/wp/7`);
-    expect(calls).toContain(`workflow run release.yml --repo ${REPO} --ref main -f sha=${"c".repeat(40)}`);
-    expect(calls).toContain(`workflow run ci.yml --repo ${REPO} --ref main`);
-    expect(calls).toContain(`workflow run perf.yml --repo ${REPO} --ref main`);
+    expect(calls.find((c) => c.includes("/pulls/7/merge"))).toBe(`api -X PUT repos/${REPO}/pulls/7/merge -f merge_method=merge -f sha=${headOf(7)} [gate]`);
+    expect(calls).toContain(`api -X DELETE repos/${REPO}/git/refs/heads/wp/7 [gate]`);
+    expect(calls.some((c) => c.startsWith("workflow run"))).toBe(false);
   });
 
   it("writes the validated Semver level into the merge commit for a pull request that changes the app", () => {
     const head = headOf(7);
     const comments = [verdict("approve", "QA", head), verdict("clear", "Security", head), verdict("approve", "Product", head)];
     const { calls } = sweep([7], [{ number: 7, files: ["src/server/services/a.ts"], body: "Notes\n\nSemver: minor\n", comments }]);
-    expect(calls.find((c) => c.includes("/pulls/7/merge"))).toBe(`api -X PUT repos/${REPO}/pulls/7/merge -f merge_method=merge -f sha=${head} -f commit_message=Semver: minor`);
+    expect(calls.find((c) => c.includes("/pulls/7/merge"))).toBe(`api -X PUT repos/${REPO}/pulls/7/merge -f merge_method=merge -f sha=${head} -f commit_message=Semver: minor [gate]`);
   });
 
   it("does not merge, and says why, when a pull request that changes the app has no Semver line", () => {
@@ -91,13 +90,41 @@ describe("merge-gate.mjs against a fake GitHub", () => {
     expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/comments`) && c.includes("Semver"))).toBe(true);
   });
 
-  it("updates a passing branch that is behind main, starts its checks, and merges nothing", () => {
+  it("updates a passing branch that is behind main with the gate token, and merges nothing", () => {
     const { result, calls } = sweep([7], [{ number: 7, behindBy: 2 }]);
     expect(result.status).toBe(0);
-    expect(calls).toContain(`api -X PUT repos/${REPO}/pulls/7/update-branch -f expected_head_sha=${headOf(7)}`);
-    expect(calls).toContain(`workflow run ci.yml --repo ${REPO} --ref wp/7`);
-    expect(calls).toContain(`workflow run security.yml --repo ${REPO} --ref wp/7`);
-    expect(calls.some((c) => c.includes("/merge -f merge_method"))).toBe(false);
+    expect(calls).toContain(`api -X PUT repos/${REPO}/pulls/7/update-branch -f expected_head_sha=${headOf(7)} [gate]`);
+    expect(calls.some((c) => c.startsWith("workflow run"))).toBe(false);
+    expect(calls.some((c) => c.includes("/pulls/7/merge"))).toBe(false);
+  });
+
+  it("uses the gate token only to update a branch and to merge, never for reading, comments or labels", () => {
+    const { calls } = sweep([7, 8], [{ number: 7, behindBy: 1 }, { number: 8, checkRunsTotal: 40 }]);
+    const asGate = calls.filter((c) => c.endsWith(" [gate]"));
+    expect(asGate).toHaveLength(1);
+    expect(asGate[0]).toContain("update-branch");
+  });
+
+  it.each([
+    ["update the branch", { behindBy: 1 }],
+    ["merge", {}],
+  ])("fails closed with a clear comment, and does not fall back to the workflow token, when GATE_TOKEN is missing and the gate must %s", (_name, options) => {
+    const harness = makeHarness({ pullRefs: [7] });
+    harness.setRoutes([{ match: "pulls?state=open", out: "7\n" }, ...routesFor({ number: 7, ...options })]);
+    const result = harness.run(process.execPath, [tool, "--sweep"], { ...actions, GATE_TOKEN: "" });
+    expect(result.status).toBe(0);
+    const calls = harness.calls();
+    expect(calls.some((c) => c.includes("update-branch") || c.includes("/pulls/7/merge") || c.startsWith("workflow run"))).toBe(false);
+    expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/comments`) && c.includes("GATE_TOKEN secret is not set") && c.includes("does not fall back"))).toBe(true);
+  });
+
+  it("never prints either token, in its output or in what it posts", () => {
+    const harness = makeHarness({ pullRefs: [7, 8] });
+    harness.setRoutes([{ match: "pulls?state=open", out: "7\n8\n" }, ...routesFor({ number: 7, mergeFails: true }), ...routesFor({ number: 8, behindBy: 1 })]);
+    const result = harness.run(process.execPath, [tool, "--sweep"], actions);
+    const everything = `${result.stdout}${result.stderr}${harness.calls().join("\n")}`;
+    expect(everything).not.toContain(GATE_TOKEN);
+    expect(everything).not.toContain(DEFAULT_TOKEN);
   });
 
   it("goes on to the next pull request when a merge is refused, and comments on the one that failed", () => {
@@ -111,7 +138,7 @@ describe("merge-gate.mjs against a fake GitHub", () => {
     const failing = routesFor({ number: 7, behindBy: 1 }).map((route) => (route.match.includes("update-branch") ? { match: route.match, fail: "422 Unprocessable" } : route));
     const harness = makeHarness({ pullRefs: [7, 8] });
     harness.setRoutes([{ match: "pulls?state=open", out: "7\n8\n" }, ...failing, ...routesFor({ number: 8 })]);
-    harness.run(process.execPath, [tool, "--sweep"], { GATE_OWNER: "kenneth-yu", GITHUB_ACTIONS: "true" });
+    harness.run(process.execPath, [tool, "--sweep"], actions);
     const calls = harness.calls();
     expect(calls.some((c) => c.includes("issues/7/comments") && c.includes("update the branch"))).toBe(true);
     expect(calls.some((c) => c.includes("/pulls/8/merge"))).toBe(true);
@@ -129,7 +156,7 @@ describe("merge-gate.mjs against a fake GitHub", () => {
   it("merges nothing when the open pull requests cannot be listed", () => {
     const harness = makeHarness();
     harness.setRoutes([{ match: "pulls?state=open", fail: "HTTP 502" }]);
-    const result = harness.run(process.execPath, [tool, "--sweep"], { GATE_OWNER: "kenneth-yu", GITHUB_ACTIONS: "true" });
+    const result = harness.run(process.execPath, [tool, "--sweep"], actions);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("could not be listed");
     expect(harness.calls().some((c) => c.includes("/merge -f merge_method"))).toBe(false);
@@ -149,7 +176,7 @@ describe("merge-gate.mjs against a fake GitHub", () => {
         : route,
     );
     harness.setRoutes([{ match: "pulls?state=open", out: "7\n" }, ...routes]);
-    harness.run(process.execPath, [tool, "--sweep"], { GATE_OWNER: "kenneth-yu", GITHUB_ACTIONS: "true" });
+    harness.run(process.execPath, [tool, "--sweep"], actions);
     const calls = harness.calls();
     expect(calls.some((c) => c.startsWith(`api -X PATCH repos/${REPO}/issues/comments/12`))).toBe(true);
     expect(calls.some((c) => c.includes("issues/comments/11"))).toBe(false);

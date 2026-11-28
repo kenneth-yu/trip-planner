@@ -12,9 +12,18 @@ if (!sweep && !single) {
   process.exit(2);
 }
 
-function gh(parameters) {
-  return execFileSync("gh", parameters, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 120000 });
+function gh(parameters, token) {
+  const env = token ? { ...process.env, GH_TOKEN: token } : process.env;
+  return execFileSync("gh", parameters, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 120000, env });
 }
+
+function gateToken() {
+  if (!process.env.GITHUB_ACTIONS) return { ok: true, token: undefined };
+  const token = process.env.GATE_TOKEN;
+  return token ? { ok: true, token } : { ok: false, token: undefined };
+}
+
+const MISSING_TOKEN = "The GATE_TOKEN secret is not set, so the gate cannot update this branch or merge it. The owner needs to add the GATE_TOKEN repository secret. The gate does not fall back to the workflow token.";
 
 function api(path, extra = []) {
   return JSON.parse(gh(["api", path, ...extra]));
@@ -111,39 +120,33 @@ function processPullRequest(number) {
     return "blocked";
   }
   const paths = input.files.flatMap((f) => [f.filename, f.previousFilename].filter((p) => typeof p === "string"));
+  const gate = gateToken();
   if (verdict.behind) {
     say(`#${number}: passes, but the branch is behind main`);
     if (dryRun) return "updated";
+    if (!gate.ok) return missingToken(number);
     try {
-      gh(["api", "-X", "PUT", `repos/${REPO}/pulls/${number}/update-branch`, "-f", `expected_head_sha=${raw.pr.head.sha}`]);
-      for (const workflow of ["ci.yml", "security.yml"]) gh(["workflow", "run", workflow, "--repo", REPO, "--ref", branch]);
+      gh(["api", "-X", "PUT", `repos/${REPO}/pulls/${number}/update-branch`, "-f", `expected_head_sha=${raw.pr.head.sha}`], gate.token);
     } catch (error) {
       return refused(number, "update the branch with main", error);
     }
-    upsertComment(number, ["Everything else passes. The branch was behind main, so the gate updated it and started the checks again. It merges once they pass."]);
+    upsertComment(number, ["Everything else passes. The branch was behind main, so the gate updated it. The checks run again, and it merges once they pass."]);
     return "updated";
   }
   say(`#${number}: passes at ${raw.pr.head.sha}`);
   if (dryRun) return "merged";
+  if (!gate.ok) return missingToken(number);
   const mergeArguments = ["api", "-X", "PUT", `repos/${REPO}/pulls/${number}/merge`, "-f", "merge_method=merge", "-f", `sha=${raw.pr.head.sha}`];
   if (changesApp(paths)) mergeArguments.push("-f", `commit_message=Semver: ${semverOf(input.body).level}`);
   try {
-    gh(mergeArguments);
+    gh(mergeArguments, gate.token);
   } catch (error) {
     return refused(number, "merge", error);
   }
   try {
-    gh(["api", "-X", "DELETE", `repos/${REPO}/git/refs/heads/${branch}`]);
+    gh(["api", "-X", "DELETE", `repos/${REPO}/git/refs/heads/${branch}`], gate.token);
   } catch (error) {
     say(`#${number}: merged, but the branch could not be deleted (${describe(error)}).`);
-  }
-  try {
-    const merged = api(`repos/${REPO}/pulls/${number}`).merge_commit_sha;
-    if (typeof merged !== "string" || !/^[0-9a-f]{40}$/.test(merged)) throw new GateDataError("The merge commit id could not be read.");
-    gh(["workflow", "run", "release.yml", "--repo", REPO, "--ref", "main", "-f", `sha=${merged}`]);
-    for (const workflow of ["ci.yml", "perf.yml"]) gh(["workflow", "run", workflow, "--repo", REPO, "--ref", "main"]);
-  } catch (error) {
-    say(`#${number}: merged, but a follow-up workflow could not be started (${describe(error)}).`);
   }
   say(`#${number}: merged`);
   return "merged";
@@ -164,6 +167,16 @@ function describe(error) {
   const said = ["stdout", "stderr"].map((key) => (key in error && typeof error[key] === "string" ? error[key].trim() : ""));
   const reason = reasonFrom(said[0]) ?? said[1].split("\n")[0];
   return (reason || error.message.split("\n")[0]).replace(/[^\x20-\x7e]/g, "").slice(0, 200);
+}
+
+function missingToken(number) {
+  say(`#${number}: ${MISSING_TOKEN}`);
+  try {
+    upsertComment(number, ["Everything the gate checks passes, but:", "", `- ${MISSING_TOKEN}`]);
+  } catch (commentError) {
+    say(`#${number}: the comment could not be written either (${describe(commentError)}).`);
+  }
+  return "failed";
 }
 
 function refused(number, action, error) {

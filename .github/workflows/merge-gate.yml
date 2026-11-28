@@ -13,9 +13,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: write
-  actions: write
 
 concurrency:
   group: merge-gate
@@ -39,5 +38,6 @@ jobs:
       - name: Evaluate every open pull request and merge at most one
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GATE_TOKEN: ${{ secrets.GATE_TOKEN }}
           GATE_OWNER: ${{ github.repository_owner }}
         run: node tools/merge-gate.mjs --sweep

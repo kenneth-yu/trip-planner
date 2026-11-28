@@ -16,7 +16,7 @@ function jobConditions(text: string): { job: string; condition: string }[] {
   return found;
 }
 
-describe("the checks the merge gate starts by hand on a branch", () => {
+describe("the checks that can be started by hand on a branch", () => {
   it.each(["ci.yml", "security.yml"])("%s can be dispatched", (name) => {
     expect(read(name)).toMatch(/^ {2}workflow_dispatch:/m);
   });
@@ -30,8 +30,10 @@ describe("the checks the merge gate starts by hand on a branch", () => {
     }
   });
 
-  it("the gate starts both workflows on the branch after it updates it", () => {
-    const gate = readFileSync(path.join(process.cwd(), "tools", "merge-gate.mjs"), "utf8");
-    expect(gate).toMatch(/update-branch[\s\S]*\["ci\.yml", "security\.yml"\][\s\S]*"--ref", branch/);
+  it("the merge gate workflow hands the gate token to the script and holds no more than it needs", () => {
+    const text = read("merge-gate.yml");
+    expect(text).toContain("GATE_TOKEN: ${{ secrets.GATE_TOKEN }}");
+    expect(text).toMatch(/permissions:\n {2}contents: read\n {2}pull-requests: write\n/);
+    expect(text).not.toMatch(/actions: write|contents: write/);
   });
 });
