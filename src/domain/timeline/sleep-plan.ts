@@ -65,6 +65,16 @@ function isDomestic(item: VisibleItem): boolean {
   return Boolean(from && to && from.country === to.country);
 }
 
+const DATE_LINE_MIN_OFFSET_HOURS = 14;
+
+function crossesDateLine(f: VisibleItem): boolean {
+  const from = airportByCode(f.flight?.fromAirport ?? "");
+  const to = airportByCode(f.flight?.toAirport ?? "");
+  if (!from || !to || from.longitude === null || to.longitude === null) return false;
+  const hours = Math.abs(DateTime.fromISO(f.end.at, { zone: f.end.zone }).offset - DateTime.fromISO(f.start.at, { zone: f.start.zone }).offset) / 60;
+  return Math.abs(from.longitude - to.longitude) > 180 && hours >= DATE_LINE_MIN_OFFSET_HOURS;
+}
+
 function destinationCity(leg: Leg): string | null {
   if (leg.type === "flight") return flightCities(leg).to;
   return leg.transfer?.toPlace?.city ?? null;
@@ -186,7 +196,7 @@ function planeNightsOf(flights: VisibleItem[], statuses: NightStatus[], inStretc
       if (inStretch.has(night) || covered.has(night) || out.has(night)) continue;
       out.set(night, {
         night,
-        reason: days >= 2 ? "date_line" : "overnight_flight",
+        reason: crossesDateLine(flight) ? "date_line" : "overnight_flight",
         flightId: flight.id,
         lands: flight.end,
         landsIsEstimated: flight.endIsEstimated,
@@ -212,16 +222,17 @@ interface FlightNote {
   coming: string | null;
 }
 
-function noteFor(f: VisibleItem, inStretch: Set<string>, homeCities: Set<string>, homeZone: Zone): FlightNote | null {
+function noteFor(f: VisibleItem, inStretch: Set<string>, homeCities: Set<string>, homeZone: Zone, from: string): FlightNote | null {
   const departs = localDateKey(f.start);
   const lands = localDateKey(f.end);
   const days = DateTime.fromISO(lands).diff(DateTime.fromISO(departs), "days").days;
-  const from = flightCities(f).from ?? zonePlace(f.start.zone);
+  const origin = flightCities(f).from ?? zonePlace(f.start.zone);
   const to = flightCities(f).to ?? zonePlace(f.end.zone);
-  const leaves = `You leave ${from} ${dayLabel(departs)} at ${formatClockExact(toLocal(f.start))}`;
+  const dateLine = crossesDateLine(f);
+  const leaves = `You leave ${origin} ${dayLabel(departs)} at ${formatClockExact(toLocal(f.start))}`;
   const arrives = `${dayLabel(lands)} at ${clockAt(f.end, f.endIsEstimated)}`;
   if (days >= 1) {
-    const lost = Array.from({ length: days }, (_, i) => DateTime.fromISO(departs).plus({ days: i }).toISODate()).filter((n) => !inStretch.has(n));
+    const lost = Array.from({ length: days }, (_, i) => DateTime.fromISO(departs).plus({ days: i }).toISODate()).filter((n) => !inStretch.has(n) && n >= from);
     if (!lost.length) return null;
     const names = lost.map(dayLabel);
     if (days === 1) {
@@ -229,6 +240,17 @@ function noteFor(f: VisibleItem, inStretch: Set<string>, homeCities: Set<string>
         hint: {
           text: `Not ${names[0]}: you're on the plane.`,
           why: `${leaves} and land in ${to} ${arrives} ${to} time${homeBracket(f.end, homeZone)}. The night of ${names[0]} is spent on the plane.`,
+        },
+        coming: null,
+      };
+    }
+    if (!dateLine) {
+      return {
+        hint: {
+          text: `Not ${listOf(names)}: you're on the plane.`,
+          why: `${leaves} and land in ${to} ${arrives} ${to} time${homeBracket(f.end, homeZone)}. ${
+            names.length === 1 ? `The night of ${names[0]} is spent on the plane.` : `The clocks jump ahead, so the nights of ${listOf(names).replace(" or ", " and ")} are spent on the plane.`
+          }`,
         },
         coming: null,
       };
@@ -242,14 +264,14 @@ function noteFor(f: VisibleItem, inStretch: Set<string>, homeCities: Set<string>
       coming: null,
     };
   }
-  if (instantMs(f.end) - instantMs(f.start) < LONG_FLIGHT_MS) return null;
+  if (instantMs(f.end) - instantMs(f.start) < LONG_FLIGHT_MS || lands < from) return null;
   const atHome = homeCities.has(to);
-  if (days === 0 && atHome) return { hint: null, coming: `Coming home, you land in ${to} on ${arrives}, the same day you leave ${from}. No night on the plane.` };
+  if (days === 0 && atHome) return { hint: null, coming: `Coming home, you land in ${to} on ${arrives}, the same day you leave ${origin}. No night on the plane.` };
   if (days === 0) {
     return {
       hint: {
         text: `Includes ${dayLabel(lands)}: you land the same day you leave.`,
-        why: `${leaves} and land in ${to} ${dayLabel(lands)} at ${clockAt(f.end, f.endIsEstimated)}. You cross the date line, so you need a bed in ${to} that night.`,
+        why: `${leaves} and land in ${to} ${dayLabel(lands)} at ${clockAt(f.end, f.endIsEstimated)}. ${dateLine ? "You cross the date line" : "The clocks go back"}, so you need a bed in ${to} that night.`,
       },
       coming: null,
     };
@@ -266,10 +288,10 @@ function noteFor(f: VisibleItem, inStretch: Set<string>, homeCities: Set<string>
 
 const MAX_HINTS = 2;
 
-function nightNotes(flights: VisibleItem[], inStretch: Set<string>, homeZone: Zone): { hints: NightHint[]; moreHints: number; nightNotes: string[] } {
+function nightNotes(flights: VisibleItem[], inStretch: Set<string>, homeZone: Zone, from: string): { hints: NightHint[]; moreHints: number; nightNotes: string[] } {
   const homeCities = new Set([zonePlace(homeZone), flightCities(flights[0]).from].filter((c): c is string => c !== null));
   const notes = flights.flatMap((f) => {
-    const note = noteFor(f, inStretch, homeCities, homeZone);
+    const note = noteFor(f, inStretch, homeCities, homeZone, from);
     return note ? [note] : [];
   });
   const hints = notes.flatMap((n) => (n.hint ? [n.hint] : []));
@@ -314,7 +336,7 @@ export function sleepPlan(view: Pick<TripView, "items" | "homeZone">, opts: { fr
           checkOut: st.checkOut,
           line: `${cities.length > 1 ? `${st.city}: ` : ""}Check in ${dayLabel(st.checkIn)} · Check out ${dayLabel(st.checkOut)}`,
         })),
-        ...nightNotes(flights, inStretch, view.homeZone),
+        ...nightNotes(flights, inStretch, view.homeZone, opts.from ?? ""),
       }
     : null;
   return { stretches, planeNights, entries, summary };

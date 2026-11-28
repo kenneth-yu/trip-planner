@@ -21,16 +21,16 @@ export default async function TripPage({ params, searchParams }: PageProps<"/tri
   const { view, ctx, requester } = await loadTripPage(tripId);
   const nowMs = ctx.now().getTime();
   const todayKey = DateTime.fromMillis(nowMs, { zone: view.homeZone }).toISODate();
-  const fullGrid = buildTripGrid(view, nowMs);
+  const attention = await loadAttention(ctx, view, requester);
+  const plan = sleepPlan(view, attention.beforeTrip ? {} : { from: todayKey });
+  const fullGrid = buildTripGrid(view, nowMs, plan);
   const days = buildDays(view);
   const everyDay = requested === "all";
-  const attention = await loadAttention(ctx, view, requester);
   const onGrid = gridChecks(view, fullGrid, attention.everyFinding, attention.findings);
   const grid = fullGrid && withoutHiddenBubbles(fullGrid, onGrid.hidden);
   const selected = grid ? pickDay(grid.days, requested) : null;
   const tripChecks = checksForTripPage(attention.findings, view, attention.tripStartMs, nowMs);
   const panelChecks = tripChecks.filter((f) => !onGrid.drawn.has(f.anchor));
-  const plan = sleepPlan(view, attention.beforeTrip ? {} : { from: todayKey });
   const canEdit = view.permissions.canEdit;
   const hasAttention = plan.summary !== null || attention.pending > 0 || attention.deadlines.some((d) => !d.passed && d.warning) || panelChecks.length > 0;
   return (

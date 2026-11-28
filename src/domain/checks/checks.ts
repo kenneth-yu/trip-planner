@@ -99,11 +99,11 @@ export function nightStatuses(view: Pick<TripView, "items" | "homeZone">): Night
   const stop = localDateKey(lastDeparture.start);
   while (d.toISODate() < stop) {
     const night = d.toISODate();
-    const where = whereAt(DateTime.fromISO(`${night}T23:30`, { zone: firstLanding.end.zone }).toMillis(), items, view.homeZone);
-    const zoneNight = DateTime.fromISO(`${night}T23:30`, { zone: where.zone }).toMillis();
+    const landed = flights.filter((f) => localDateKey(f.end) <= night).at(-1);
+    const zone = landed ? landed.end.zone : firstLanding.start.zone;
+    const where = whereAt(DateTime.fromISO(`${night}T23:30`, { zone }).toMillis(), items, view.homeZone);
     const covered = stays.some((s) => nights(s).includes(night));
-    const flying = whereAt(zoneNight, items, view.homeZone).kind === "air";
-    out.push({ night, city: where.city, zone: where.zone, state: covered ? "covered" : flying ? "air" : "open" });
+    out.push({ night, city: where.city, zone: where.kind === "air" ? zone : where.zone, state: covered ? "covered" : where.kind === "air" ? "air" : "open" });
     d = d.plus({ days: 1 });
   }
   return out;

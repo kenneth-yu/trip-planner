@@ -113,15 +113,18 @@ describe("the owner's worked example: Jan 15 to 27, 2027, in Hong Kong", () => {
     expect(exact.summary?.hints[0].why).not.toContain("about");
   });
 
-  it("names every weekday against the January 2027 calendar", () => {
-    const calendar: Record<string, string> = { "15": "Fri", "16": "Sat", "17": "Sun", "21": "Thu", "26": "Tue", "27": "Wed" };
+  it("names every weekday against the January 2027 calendar, checked with Luxon", () => {
     const texts = [
       ...everyText(plan),
       ...everyText(sleepPlan(viewOf(trip([outbound("2027-01-15T22:00", "2027-01-17T03:00"), inbound])))),
+      ...everyText(sleepPlan(viewOf(trip([flight("NRT", "HNL", "2027-01-15T01:00", "2027-01-14T13:00", "JL72"), flight("HNL", "NRT", "2027-01-20T12:00", "2027-01-21T16:00", "JL71")]), true))),
     ];
-    const seen = texts.flatMap((t) => Array.from(t.matchAll(/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun) Jan (\d+)\b/g)));
-    expect(seen.length).toBeGreaterThan(8);
-    for (const m of seen) expect(calendar[m[2]], `${m[0]} in 2027`).toBe(m[1]);
+    const seen = texts.flatMap((t) => Array.from(t.matchAll(/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun) (Jan|Feb) (\d+)\b/g)));
+    expect(seen.length).toBeGreaterThan(12);
+    for (const m of seen) {
+      const real = DateTime.fromObject({ year: 2027, month: m[2] === "Jan" ? 1 : 2, day: Number(m[3]) }).toFormat("ccc", { locale: "en-US" });
+      expect(m[1], `${m[0]} in 2027`).toBe(real);
+    }
   });
 });
 
@@ -181,37 +184,62 @@ describe("leaving very early", () => {
   });
 });
 
-describe("crossing the date line", () => {
-  const west = () => sleepPlan(viewOf(trip([flight("LAX", "SYD", "2027-01-15T22:00", "2027-01-17T08:30"), flight("SYD", "LAX", "2027-01-25T10:00", "2027-01-25T06:00", "QF12")]), true));
+describe("two calendar dates that are not a date line", () => {
+  it("New York to Hong Kong landing 3:00am two dates later does not claim a date line", () => {
+    const plan = sleepPlan(viewOf(trip([outbound("2027-01-15T22:00", "2027-01-17T03:00"), inbound]), true));
+    const hint = plan.summary?.hints[0];
+    expect(hint?.text).toBe("Not Fri Jan 15: you're on the plane.");
+    expect(hint?.why).toBe("You leave New York Fri Jan 15 at 10:00pm and land in Hong Kong Sun Jan 17 at about 3:00am Hong Kong time (2:00pm Sat New York). The night of Fri Jan 15 is spent on the plane.");
+    expect(hint?.why).not.toContain("date line");
+    expect(plan.planeNights[0].reason).toBe("overnight_flight");
+  });
 
-  it("westward over two calendar dates, one hint names both lost nights and Why? gives the sentence", () => {
-    const hint = west().summary?.hints[0];
+  it("names both lost nights, still without a date line, when nothing moves into a stay", () => {
+    const plan = sleepPlan(viewOf(trip([outbound("2027-01-15T22:00", "2027-01-17T15:00"), inbound]), true));
+    const hint = plan.summary?.hints[0];
     expect(hint?.text).toBe("Not Fri Jan 15 or Sat Jan 16: you're on the plane.");
-    expect(hint?.why).toBe(
-      "You leave Los Angeles Fri Jan 15 at 10:00pm and land in Sydney Sun Jan 17 at about 8:30am Sydney time. Crossing the date line skips Sat Jan 16, so you spend the nights of Fri Jan 15 and Sat Jan 16 on the plane.",
-    );
+    expect(hint?.why).toContain("The clocks jump ahead, so the nights of Fri Jan 15 and Sat Jan 16 are spent on the plane.");
+    expect(hint?.why).not.toContain("date line");
+  });
+});
+
+describe("crossing the date line, with the spec's own flights", () => {
+  it("Los Angeles to Sydney, Fri Jan 15 10:30pm, 15 hours, skips Sat Jan 16", () => {
+    const plan = sleepPlan(viewOf(trip([flight("LAX", "SYD", "2027-01-15T22:30", "2027-01-17T08:30"), flight("SYD", "LAX", "2027-01-25T10:00", "2027-01-25T06:00", "QF12")]), true));
+    expect(plan.summary?.hints[0]).toEqual({
+      text: "Not Fri Jan 15 or Sat Jan 16: you're on the plane.",
+      why: "You leave Los Angeles Fri Jan 15 at 10:30pm and land in Sydney Sun Jan 17 at about 8:30am Sydney time. Crossing the date line skips Sat Jan 16, so you spend the nights of Fri Jan 15 and Sat Jan 16 on the plane.",
+    });
+    expect(plan.planeNights.map((p) => p.reason)).toEqual(["date_line", "date_line"]);
+  });
+
+  it("Sydney to Los Angeles, Fri Jan 15 9:00pm, 13h 30m, lands the same day and needs a bed", () => {
+    const plan = sleepPlan(viewOf(trip([flight("SYD", "LAX", "2027-01-15T21:00", "2027-01-15T15:30", "QF11"), flight("LAX", "SYD", "2027-01-25T22:00", "2027-01-27T07:00", "QF12")]), true));
+    expect(plan.summary?.hints[0]).toEqual({
+      text: "Includes Fri Jan 15: you land the same day you leave.",
+      why: "You leave Sydney Fri Jan 15 at 9:00pm and land in Los Angeles Fri Jan 15 at about 3:30pm. You cross the date line, so you need a bed in Los Angeles that night.",
+    });
+  });
+
+  it("Tokyo to Honolulu, Fri Jan 15 1:00am, lands Thu Jan 14 at 1:00pm", () => {
+    const plan = sleepPlan(viewOf(trip([flight("NRT", "HNL", "2027-01-15T01:00", "2027-01-14T13:00", "JL72"), flight("HNL", "NRT", "2027-01-20T12:00", "2027-01-21T16:00", "JL71")]), true));
+    expect(plan.summary?.hints[0]).toEqual({
+      text: "Includes Thu Jan 14: you land the day before you left.",
+      why: "You leave Tokyo Fri Jan 15 at 1:00am and land in Honolulu Thu Jan 14 at about 1:00pm Honolulu time. Crossing the date line puts you a day back, so you need a bed there from the night of Thu Jan 14.",
+    });
   });
 
   it("a day gained on the way home has no hint, only the Night by night line", () => {
-    const summary = west().summary;
+    const summary = sleepPlan(viewOf(trip([flight("LAX", "SYD", "2027-01-15T22:30", "2027-01-17T08:30"), flight("SYD", "LAX", "2027-01-25T10:00", "2027-01-25T06:00", "QF12")]), true)).summary;
     expect(summary?.hints).toHaveLength(1);
     expect(summary?.nightNotes.at(-1)).toBe("Coming home, you land in Los Angeles on Mon Jan 25 at about 6:00am, the same day you leave Sydney. No night on the plane.");
   });
 
-  it("a day gained away from home counts that night, with an Includes hint", () => {
-    const plan = sleepPlan(viewOf(trip([flight("NRT", "HNL", "2027-01-15T20:00", "2027-01-15T09:00", "JL72"), flight("HNL", "NRT", "2027-01-20T12:00", "2027-01-21T16:00", "JL71")]), true));
-    expect(plan.summary?.hints[0]).toEqual({
-      text: "Includes Fri Jan 15: you land the same day you leave.",
-      why: "You leave Tokyo Fri Jan 15 at 8:00pm and land in Honolulu Fri Jan 15 at about 9:00am. You cross the date line, so you need a bed in Honolulu that night.",
-    });
-  });
-
-  it("landing on the calendar day before you left says so", () => {
-    const plan = sleepPlan(viewOf(trip([flight("NRT", "HNL", "2027-01-15T08:00", "2027-01-14T21:00", "JL72"), flight("HNL", "NRT", "2027-01-20T12:00", "2027-01-21T16:00", "JL71")]), true));
-    expect(plan.summary?.hints[0]).toEqual({
-      text: "Includes Thu Jan 14: you land the day before you left.",
-      why: "You leave Tokyo Fri Jan 15 at 8:00am and land in Honolulu Thu Jan 14 at about 9:00pm Honolulu time. Crossing the date line puts you a day back, so you need a bed there from the night of Thu Jan 14.",
-    });
+  it("an ordinary long flight within one date says the clocks go back, not the date line", () => {
+    const plan = sleepPlan(viewOf(trip([flight("HKG", "LHR", "2027-01-15T10:00", "2027-01-15T14:00", "CX252"), flight("LHR", "HKG", "2027-01-25T22:00", "2027-01-26T16:00", "CX251")]), true));
+    const hint = plan.summary?.hints[0];
+    expect(hint?.why).toContain("The clocks go back, so you need a bed in London that night.");
+    expect(hint?.why).not.toContain("date line");
   });
 
   it("a short flight inside one date says nothing", () => {
@@ -228,6 +256,35 @@ describe("crossing the date line", () => {
     const plan = sleepPlan(viewOf(trip(flights), true));
     expect((plan.summary?.hints.length ?? 0) + (plan.summary?.moreHints ?? 0)).toBeGreaterThan(2);
     expect(plan.summary?.hints.length).toBeLessThanOrEqual(2);
+  });
+});
+
+describe("once the trip has started", () => {
+  const started = sleepPlan(viewOf(trip([outbound("2027-01-15T09:00", "2027-01-16T14:00"), inbound]), true), { from: "2027-01-20" });
+
+  it("counts only the nights from today on", () => {
+    expect(started.summary?.heading).toBe("You need a place to stay: 7 nights");
+    expect(started.summary?.stretchLines[0].line).toBe("Check in Wed Jan 20 · Check out Wed Jan 27");
+  });
+
+  it("names no night that is already over, in the hints or the notes", () => {
+    expect(started.summary?.hints).toEqual([]);
+    expect(started.summary?.moreHints).toBe(0);
+    const text = [...(started.summary?.hints.flatMap((h) => [h.text, h.why]) ?? []), ...(started.summary?.nightNotes ?? []), started.summary?.heading ?? ""].join(" ");
+    expect(text).not.toContain("Fri Jan 15");
+    expect(text).not.toContain("Sat Jan 16");
+    expect(started.planeNights).toEqual([]);
+  });
+
+  it("keeps a later flight's hint, which no longer shares a slot with the one already flown", () => {
+    const flights = [
+      flight("JFK", "HKG", "2027-01-15T09:00", "2027-01-16T14:00", "CX845"),
+      flight("HKG", "LAX", "2027-01-27T22:30", "2027-01-27T20:00", "CX880"),
+      flight("LAX", "SYD", "2027-01-29T22:30", "2027-01-31T08:30", "QF11"),
+    ];
+    const plan = sleepPlan(viewOf(trip(flights), true), { from: "2027-01-20" });
+    expect(plan.summary?.hints.map((h) => h.text)).toEqual(expect.arrayContaining(["Not Fri Jan 29 or Sat Jan 30: you're on the plane."]));
+    for (const h of plan.summary?.hints ?? []) expect(h.text).not.toContain("Jan 15");
   });
 });
 
@@ -249,12 +306,12 @@ describe("the December fixture, all booked", () => {
 
 describe("every night is covered, on the plane, or in exactly one stretch", () => {
   const cities = [
-    { code: "JFK", city: "New York" },
-    { code: "HKG", city: "Hong Kong" },
-    { code: "HND", city: "Tokyo" },
-    { code: "LHR", city: "London" },
-    { code: "SYD", city: "Sydney" },
-    { code: "AKL", city: "Auckland" },
+    { code: "JFK", city: "New York", zone: "America/New_York" },
+    { code: "HKG", city: "Hong Kong", zone: "Asia/Hong_Kong" },
+    { code: "HND", city: "Tokyo", zone: "Asia/Tokyo" },
+    { code: "LHR", city: "London", zone: "Europe/London" },
+    { code: "SYD", city: "Sydney", zone: "Australia/Sydney" },
+    { code: "AKL", city: "Auckland", zone: "Pacific/Auckland" },
   ] as const;
 
   const hop = fc.record({
@@ -265,65 +322,90 @@ describe("every night is covered, on the plane, or in exactly one stretch", () =
   });
   const stay = fc.option(fc.record({ from: fc.integer({ min: 0, max: 6 }), length: fc.integer({ min: 1, max: 5 }) }), { nil: null });
 
-  it("holds for random flight sequences with and without stays", () => {
+  interface Leg {
+    from: (typeof cities)[number];
+    to: (typeof cities)[number];
+    start: DateTime;
+    end: DateTime;
+  }
+
+  function build(hops: { to: number; wait: number; hour: number; hours: number }[], stays: ({ from: number; length: number } | null)[]) {
+    let here = 0;
+    let departAt = DateTime.fromISO("2026-03-02T00:00", { zone: "utc" });
+    const legs: Leg[] = [];
+    const items: DemoTripSpec["items"] = [];
+    hops.forEach((h, i) => {
+      const to = h.to === here ? (h.to + 1) % cities.length : h.to;
+      const from = cities[here];
+      const dest = cities[to];
+      const start = departAt.plus({ days: h.wait }).set({ hour: h.hour, minute: 0 });
+      const end = start.plus({ hours: h.hours });
+      legs.push({ from, to: dest, start, end });
+      items.push({
+        input: {
+          type: "flight",
+          flightNumber: `XX${100 + i}`,
+          fromAirport: from.code,
+          toAirport: dest.code,
+          departLocal: start.setZone(from.zone).toFormat("yyyy-MM-dd'T'HH:mm"),
+          arriveLocal: end.setZone(dest.zone).toFormat("yyyy-MM-dd'T'HH:mm"),
+        },
+      });
+      here = to;
+      departAt = end;
+    });
+    const covered = new Set<string>();
+    const arrival = legs[0].end.setZone(legs[0].to.zone);
+    for (const s of stays) {
+      if (!s) continue;
+      const checkIn = arrival.startOf("day").plus({ days: s.from });
+      const checkOut = checkIn.plus({ days: s.length });
+      items.push({ input: { type: "stay", name: "Stay", city: legs[0].to.city, checkInDate: checkIn.toISODate(), checkOutDate: checkOut.toISODate() } });
+      for (let d = checkIn; d < checkOut; d = d.plus({ days: 1 })) covered.add(d.toISODate());
+    }
+    return { legs, items, covered };
+  }
+
+  function oracle(legs: Leg[], covered: Set<string>): { night: string; state: "covered" | "air" | "open" }[] {
+    const first = legs[0].end.setZone(legs[0].to.zone).toISODate();
+    const stop = legs[legs.length - 1].start.setZone(legs[legs.length - 1].from.zone).toISODate();
+    const out: { night: string; state: "covered" | "air" | "open" }[] = [];
+    for (let d = DateTime.fromISO(first); d.toISODate() < stop; d = d.plus({ days: 1 })) {
+      const night = d.toISODate();
+      const landed = legs.filter((l) => l.end.setZone(l.to.zone).toISODate() <= night).at(-1);
+      const zone = landed ? landed.to.zone : legs[0].to.zone;
+      const bed = DateTime.fromISO(`${night}T23:30`, { zone }).toMillis();
+      const airborne = legs.some((l) => l.start.toMillis() <= bed && bed < l.end.toMillis());
+      out.push({ night, state: covered.has(night) ? "covered" : airborne ? "air" : "open" });
+    }
+    return out;
+  }
+
+  it("holds for random flight sequences with and without stays, against an independent count of nights", () => {
+    let checked = 0;
     fc.assert(
       fc.property(fc.array(hop, { minLength: 1, maxLength: 3 }), fc.array(stay, { maxLength: 3 }), (hops, stays) => {
-        let here = 0;
-        let departAt = DateTime.fromISO("2026-03-02T00:00", { zone: "utc" });
-        const items: DemoTripSpec["items"] = [];
-        const zones = { JFK: "America/New_York", HKG: "Asia/Hong_Kong", HND: "Asia/Tokyo", LHR: "Europe/London", SYD: "Australia/Sydney", AKL: "Pacific/Auckland" };
-        hops.forEach((h, i) => {
-          const to = h.to === here ? (h.to + 1) % cities.length : h.to;
-          const from = cities[here];
-          const dest = cities[to];
-          const depart = departAt.plus({ days: h.wait }).set({ hour: h.hour, minute: 0 });
-          const localDepart = DateTime.fromMillis(depart.toMillis(), { zone: zones[from.code] });
-          const arrive = depart.plus({ hours: h.hours });
-          const localArrive = DateTime.fromMillis(arrive.toMillis(), { zone: zones[dest.code] });
-          items.push({
-            input: {
-              type: "flight",
-              flightNumber: `XX${100 + i}`,
-              fromAirport: from.code,
-              toAirport: dest.code,
-              departLocal: localDepart.toFormat("yyyy-MM-dd'T'HH:mm"),
-              arriveLocal: localArrive.toFormat("yyyy-MM-dd'T'HH:mm"),
-            },
-          });
-          here = to;
-          departAt = arrive;
-        });
-        const firstArrival = items[0].input;
-        if (firstArrival.type === "flight") {
-          const base = DateTime.fromISO(firstArrival.arriveLocal.slice(0, 10));
-          const destination = cities.find((c) => c.code === firstArrival.toAirport);
-          for (const s of stays) {
-            if (!s || !destination) continue;
-            const checkIn = base.plus({ days: s.from });
-            items.push({ input: { type: "stay", name: "Stay", city: destination.city, checkInDate: checkIn.toISODate(), checkOutDate: checkIn.plus({ days: s.length }).toISODate() } });
-          }
-        }
-        let view: TripView;
-        try {
-          view = viewOf(trip(items));
-        } catch {
-          return;
-        }
-        const landing = localDateKey(present(view.items.filter((i) => i.type === "flight").sort((a, b) => instantMs(a.start) - instantMs(b.start))[0]).end);
-        const statuses = nightStatuses(view).filter((n) => n.night >= landing);
-        const plan = sleepPlan(view);
+        const { legs, items, covered } = build(hops, stays);
+        const plan = sleepPlan(viewOf(trip(items)));
+        checked += 1;
         const inStretches = plan.stretches.flatMap((s) => s.nights);
+        const plane = plan.planeNights.map((p) => p.night);
+        const count = (night: string) => inStretches.filter((x) => x === night).length + plane.filter((x) => x === night).length;
         expect(new Set(inStretches).size, "no night is in two stretches").toBe(inStretches.length);
-        const plane = new Set(plan.planeNights.map((p) => p.night));
-        for (const n of plan.planeNights) expect(inStretches).not.toContain(n.night);
-        for (const s of statuses) {
-          const placed = inStretches.filter((x) => x === s.night).length + (plane.has(s.night) ? 1 : 0);
-          if (s.state === "covered") expect(placed, `${s.night} has a stay`).toBe(0);
-          if (s.state === "air") expect(placed, `${s.night} is in the air`).toBeLessThanOrEqual(1);
-          if (s.state === "open" && s.city !== null) expect(placed, `${s.night} needs a bed`).toBe(1);
+        for (const n of plane) expect(inStretches, `${n} is both on the plane and in a stretch`).not.toContain(n);
+        for (const stretch of plan.stretches) {
+          stretch.nights.forEach((night, i) => {
+            if (i > 0) expect(DateTime.fromISO(stretch.nights[i - 1]).plus({ days: 1 }).toISODate(), "a stretch has no gaps").toBe(night);
+          });
+        }
+        for (const o of oracle(legs, covered)) {
+          if (o.state === "covered") expect(count(o.night), `${o.night} has a stay`).toBe(0);
+          if (o.state === "open") expect(count(o.night), `${o.night} needs a bed`).toBe(1);
+          if (o.state === "air") expect(count(o.night), `${o.night} is in the air`).toBe(1);
         }
       }),
-      { numRuns: 80 },
+      { numRuns: 120 },
     );
+    expect(checked).toBeGreaterThanOrEqual(120);
   });
 });
