@@ -45,7 +45,7 @@ describe("smart lines on the item page and the day list", () => {
     const days = buildDays(view);
     const html = renderToStaticMarkup(createElement(DayView, { view, days, todayKey: "2027-03-01", anchors: false, smart: { ...smart, showIntro: true } }));
     expect(html).toContain("Dinner at 6:30am? Did you mean 6:30pm?");
-    expect(html.match(/Travel tips are small suggestions/g)).toHaveLength(1);
+    expect(html.match(/Tips like this are optional./g)).toHaveLength(1);
   });
 
   it("show nothing extra without smart lines", () => {

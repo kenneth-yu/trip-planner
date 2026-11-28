@@ -70,7 +70,7 @@ export function addAllText(r: AddAllResult): string {
   return parts.join(" ");
 }
 
-const Count = z.coerce.number().int().min(0).max(100_000);
+const Count = z.string().regex(/^\d{1,6}$/).transform(Number);
 
 export function importedOutcome(imported: unknown, matched: unknown, left: unknown = undefined): Outcome | null {
   const waiting = Count.safeParse(imported);

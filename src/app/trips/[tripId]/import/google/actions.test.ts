@@ -2,7 +2,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { fixture, TRIP_ID, USERS } from "@/fixtures/december-trip";
 import type { CalendarEvent } from "@/domain/import/calendar-event";
 import { FakeGoogleCalendar, GoogleApiError, GoogleAuthorizationError } from "@/server/google/calendar-api";
-import { IMPORT_COOKIE, sealImportToken } from "@/server/google/import-oauth";
+import { IMPORT_COOKIE, IMPORT_SEEN_COOKIE, sealImportToken } from "@/server/google/import-oauth";
+import { importedOutcome } from "../../inbox/messages";
 import { kenny, testContext } from "@/server/testing";
 import { listInbox } from "@/server/services/inbox-service";
 import type { ServiceContext } from "@/server/services/context";
@@ -120,8 +121,20 @@ describe("running the Google import", () => {
     const outcome = await result(runGoogleImport(idle, form({ calendars: [calendar] })));
     const inbox = await listInbox(ctx, TRIP_ID, kenny);
     expect(outcome.redirectedTo).toBe(`/trips/${TRIP_ID}/inbox?imported=${inbox.length}&matched=0`);
-    expect(world.deleted).toEqual([{ name: IMPORT_COOKIE, path: PAGE }]);
+    expect(world.deleted).toEqual([{ name: IMPORT_COOKIE, path: PAGE }, { name: IMPORT_SEEN_COOKIE, path: PAGE }]);
     expect(inbox.length).toBeGreaterThan(0);
+  });
+
+  it("goes through to the inbox's status line with the count of what is waiting", async () => {
+    const { ctx, calendar } = await startWith();
+    const outcome = await result(runGoogleImport(idle, form({ calendars: [calendar] })));
+    expect(await listInbox(ctx, TRIP_ID, kenny)).toHaveLength(1);
+    const url = new URL(`https://trips.test${outcome.redirectedTo}`);
+    expect(url.pathname).toBe(`/trips/${TRIP_ID}/inbox`);
+    expect(importedOutcome(url.searchParams.get("imported"), url.searchParams.get("matched"))).toEqual({
+      text: "1 event is waiting in your inbox.",
+      role: "status",
+    });
   });
 
   it("keeps the token when the form was wrong, so the person can fix it", async () => {
@@ -159,7 +172,7 @@ describe("running the Google import", () => {
     const { calendar } = await startWith();
     const outcome = await result(runGoogleImport(idle, form({ calendars: [calendar], from: "2027-03-01", to: "2027-03-05" })));
     expect(outcome.returned).toEqual({ message: "Nothing in those calendars falls between Mar 1 and Mar 5. Change the dates or choose other calendars.", error: false });
-    expect(world.deleted).toEqual([{ name: IMPORT_COOKIE, path: PAGE }]);
+    expect(world.deleted).toEqual([{ name: IMPORT_COOKIE, path: PAGE }, { name: IMPORT_SEEN_COOKIE, path: PAGE }]);
   });
 
   it("rejects a trip id that is not an id", async () => {

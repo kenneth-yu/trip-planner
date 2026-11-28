@@ -7,7 +7,7 @@ import { CheckAnchor, CheckGone, dismissCheck } from "@/server/services/check-se
 import { hideTipKind, TipKindSchema } from "@/server/services/preference-service";
 import { applySmartFix } from "@/server/services/smarts-service";
 import { setFlash } from "@/app/ui/item-form/set-flash";
-import type { FlashKind } from "@/app/ui/item-form/flash";
+import { TIP_HIDDEN_FLASH, type FlashKind } from "@/app/ui/item-form/flash";
 import { InputProblem } from "@/domain/import/quick-add";
 import { AccessDenied } from "@/domain/visibility/project";
 
@@ -53,5 +53,5 @@ export async function hideTipKindAction(raw: unknown): Promise<SmartResult> {
   const { ctx, requester, view } = await loadTripPage(input.tripId);
   if (requester.kind !== "member" || !view.permissions.canEdit) return { ok: false };
   await hideTipKind(ctx, requester.userId, input.kind);
-  return finish(input.tripId, "tip_hidden");
+  return finish(input.tripId, TIP_HIDDEN_FLASH[input.kind]);
 }

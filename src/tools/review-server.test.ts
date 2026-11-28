@@ -4,6 +4,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { realNow, withRealClock } from "@/testing/clock";
 import { childEnv, claimSlot, freePort, liveEntries, pidIsAlive, releaseSlot, runLimited, serverArgs, stateDir, TooManyServers } from "../../tools/review-server-lib.mjs";
 
 const scratch = () => mkdtempSync(path.join(os.tmpdir(), "review-state-"));
@@ -152,10 +153,13 @@ describe("refusing to start", () => {
 describe("the time limit", () => {
   it("stops the server and its children when the limit passes", async () => {
     const run = runLimited("bash", ["-c", "sleep 60 & wait"], { cwd: os.tmpdir(), env: process.env, limitMs: 300, killAfterMs: 1000, quiet: true });
-    const started = Date.now();
-    const result = await run.done;
+    const result = await withRealClock(async () => {
+      const started = realNow();
+      const done = await run.done;
+      expect(realNow() - started).toBeLessThan(10000);
+      return done;
+    });
     expect(result.reason).toBe("limit");
-    expect(Date.now() - started).toBeLessThan(10000);
   });
 
   it("reports a normal exit before the limit", async () => {
@@ -192,8 +196,8 @@ await run.done;
 });
 
 async function waitUntil(condition: () => boolean, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!condition() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 100));
+  const deadline = realNow() + timeoutMs;
+  while (!condition() && realNow() < deadline) await new Promise((resolve) => setTimeout(resolve, 100));
 }
 
 async function waitForPid(file: string): Promise<number> {
