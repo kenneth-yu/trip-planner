@@ -11,6 +11,7 @@ import { jacob, kenny, testContext } from "../testing";
 import { createAssistantToken, resolveAssistantToken } from "./assistant-service";
 import { listActivityLines } from "./activity-service";
 import { enableMirror, syncTripMirrors } from "./mirror-service";
+import { InputProblem } from "@/domain/import/quick-add";
 import { getTripView, quickAddItem, updateItem } from "./trip-service";
 
 const DRAFT = { type: "plan" as const, title: "Draft sushi dinner", city: "Tokyo", startLocal: "2026-12-04T19:00", endLocal: "2026-12-04T21:00" };
@@ -42,12 +43,15 @@ describe("a draft added by an editor", () => {
     expect(JSON.stringify(await listActivityLines(ctx, TRIP_ID, jacob))).not.toContain(DRAFT.title);
   });
 
-  it("is not in the activity of a viewer even after it is marked booked, for the time it was a draft", async () => {
+  it("is not in a viewer's activity for the time it was a draft, only from when it was marked booked", async () => {
     const { ctx, db, draft } = await setup();
     await db.update(t.memberships).set({ role: "viewer" }).where(and(eq(t.memberships.userId, USERS.jacob.id), eq(t.memberships.tripId, TRIP_ID)));
+    const named = async (who: typeof kenny) => (await listActivityLines(ctx, TRIP_ID, who)).lines.filter((l) => JSON.stringify(l).includes(DRAFT.title));
+    expect(await named(jacob)).toEqual([]);
+    expect(await named(kenny)).toHaveLength(1);
     await updateItem(ctx, TRIP_ID, draft.id, kenny, { booked: true });
-    const lines = (await listActivityLines(ctx, TRIP_ID, jacob)).lines;
-    expect(lines.filter((l) => JSON.stringify(l).includes(DRAFT.title)).length).toBeLessThan((await listActivityLines(ctx, TRIP_ID, kenny)).lines.filter((l) => JSON.stringify(l).includes(DRAFT.title)).length);
+    expect(await named(kenny)).toHaveLength(2);
+    expect(await named(jacob)).toHaveLength(1);
   });
 
   it("stays out of the Google Calendar, and goes in on the next sync after it is marked booked", async () => {
@@ -86,5 +90,68 @@ describe("what an assistant is told", () => {
     const env = await setup();
     await env.db.update(t.memberships).set({ role: "viewer" }).where(and(eq(t.memberships.userId, USERS.jacob.id), eq(t.memberships.tripId, TRIP_ID)));
     expect(await tripText(env, USERS.jacob.id)).not.toContain(DRAFT.title);
+  });
+});
+
+describe("what a draft keeps, whoever sends it", () => {
+  const BOOKED_ONLY = {
+    confirmationCode: "ABC123",
+    bookingReference: "REF9",
+    price: { amount: "120.00", currency: "USD" },
+    phone: "+1 555 010 0000",
+    notes: "Window table",
+    deadlines: [{ kind: "free_cancellation" as const, local: "2026-12-03T23:59" }],
+  };
+
+  it("adding a draft through the service drops codes, price and deadlines, and keeps notes and phone", async () => {
+    const { ctx } = await setup();
+    const item = await quickAddItem(ctx, TRIP_ID, kenny, { ...DRAFT, title: "Draft with extras", ...BOOKED_ONLY }, { booked: false });
+    const row = item.private.find((r) => r.phone);
+    expect(item.deadlines).toEqual([]);
+    expect(item.private.some((r) => r.confirmationCode || r.bookingReference || r.price || r.seat)).toBe(false);
+    expect(row).toMatchObject({ phone: "+1 555 010 0000" });
+    expect(item.notes).toBe("Window table");
+  });
+
+  it("the stored copy has none of them either", async () => {
+    const { ctx } = await setup();
+    const item = await quickAddItem(ctx, TRIP_ID, kenny, { ...DRAFT, title: "Draft with extras", ...BOOKED_ONLY }, { booked: false });
+    const stored = (await getTripView(ctx, TRIP_ID, kenny)).items.find((i) => i.id === item.id);
+    expect(stored?.deadlines).toEqual([]);
+    expect(JSON.stringify(stored)).not.toContain("ABC123");
+  });
+
+  it("switching a booked item to Not yet removes its stored code, price and deadlines", async () => {
+    const { ctx } = await setup();
+    const item = await quickAddItem(ctx, TRIP_ID, kenny, { ...DRAFT, title: "Booked first", ...BOOKED_ONLY });
+    expect(item.deadlines.length).toBe(1);
+    const after = await updateItem(ctx, TRIP_ID, item.id, kenny, { booked: false });
+    expect(after.deadlines).toEqual([]);
+    expect(JSON.stringify(after.private)).not.toContain("ABC123");
+    expect(JSON.stringify(after.private)).toContain("+1 555 010 0000");
+  });
+
+  it("marking it booked again does not bring them back", async () => {
+    const { ctx } = await setup();
+    const item = await quickAddItem(ctx, TRIP_ID, kenny, { ...DRAFT, title: "Booked first", ...BOOKED_ONLY });
+    await updateItem(ctx, TRIP_ID, item.id, kenny, { booked: false });
+    const back = await updateItem(ctx, TRIP_ID, item.id, kenny, { booked: true });
+    expect(back.deadlines).toEqual([]);
+    expect(JSON.stringify(back.private)).not.toContain("ABC123");
+  });
+});
+
+describe("who may turn a booked item into a draft", () => {
+  it("only the person who added it, because it hides the item from viewers", async () => {
+    const { ctx } = await setup();
+    const item = await quickAddItem(ctx, TRIP_ID, kenny, { ...DRAFT, title: "Kenny's booking" });
+    await expect(updateItem(ctx, TRIP_ID, item.id, jacob, { booked: false })).rejects.toThrow(InputProblem);
+    expect((await getTripView(ctx, TRIP_ID, kenny)).items.find((i) => i.id === item.id)?.booked).toBe(true);
+    await expect(updateItem(ctx, TRIP_ID, item.id, kenny, { booked: false })).resolves.toMatchObject({ booked: false });
+  });
+
+  it("anyone who can edit may mark a draft as booked", async () => {
+    const { ctx, draft } = await setup();
+    await expect(updateItem(ctx, TRIP_ID, draft.id, jacob, { booked: true })).resolves.toMatchObject({ booked: true });
   });
 });

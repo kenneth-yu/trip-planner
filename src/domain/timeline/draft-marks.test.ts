@@ -58,6 +58,19 @@ describe("drafts on the grid and in Up next", () => {
     expect(spans.some((s) => !s.draft)).toBe(true);
   });
 
+  it("names a draft flight with no number by what it is, not by its title, in the grid and in Up next", () => {
+    const numberless = viewWith(
+      (i) => ({ ...i, booked: false, title: "JFK to HKG", flight: i.flight && { ...i.flight, flightNumber: "", airline: undefined } }),
+      (i) => i.type === "flight",
+    );
+    const travel = present(buildTripGrid(numberless.view, now)).travel.flat().filter((t) => t.itemId === numberless.id && t.kind === "departs");
+    expect(travel.map((t) => t.title)).toEqual([expect.stringMatching(/^Flight to \w/)]);
+    for (const t of travel) expect(t.title).not.toContain("JFK to HKG");
+    const next = upNext(numberless.view, 0, 20).filter((e) => e.itemId === numberless.id);
+    expect(next[0].title).toMatch(/^Flight to \w/);
+    expect(next[0].title).not.toContain("JFK to HKG");
+  });
+
   it("says in Up next that a draft is not booked", () => {
     const flight = viewWith((i) => ({ ...i, booked: false }), (i) => i.type === "flight");
     const entries = upNext(flight.view, 0, 20).filter((e) => e.itemId === flight.id);

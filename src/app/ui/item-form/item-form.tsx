@@ -288,6 +288,20 @@ function ItemFormBody(props: ItemFormProps & { id: string }): React.JSX.Element 
         </label>
       </fieldset>
 
+      {editing && !booked && initial?.fields.booked !== "no" && Object.keys(initial?.fields ?? {}).some((k) => ["confirmationCode", "bookingReference", "price"].includes(k) || k.startsWith("code:")) && (
+        <div className={styles.field} data-invalid={errors.confirmDrop ? "true" : undefined}>
+          <label className={styles.choice}>
+            <input type="checkbox" name="confirmDrop" value="yes" aria-describedby={errors.confirmDrop ? `${id}-confirmDrop-error` : undefined} />
+            <span>Not yet leaves out the confirmation code, seats and price you saved. Remove them.</span>
+          </label>
+          {errors.confirmDrop && (
+            <p className={styles.error} id={`${id}-confirmDrop-error`} role="alert">
+              {errors.confirmDrop}
+            </p>
+          )}
+        </div>
+      )}
+
       {type === "flight" && (
         <>
           <Field label="Flight number" name="flightNumber" error={errors.flightNumber} note={booked ? undefined : "Optional."}>

@@ -8,6 +8,7 @@ import { itemToFormValues } from "@/domain/import/item-form";
 import { itemOf } from "../item-of";
 import { itemHeading } from "../item-title";
 import { editItem } from "./actions";
+import { firstEmptyRequired } from "./first-required";
 
 const FOCUS_TARGETS = ["code", "seat"] as const;
 
@@ -44,7 +45,7 @@ export default async function EditItemPage({ params, searchParams }: PageProps<"
         submitLabel="Save changes"
         backLabel="Cancel"
         backHref={`/trips/${tripId}/items/${itemId}`}
-        editing={{ itemId, title: heading, focusField: focusFieldFor(typeof focus === "string" ? focus : undefined, item.travelerIds, traveler) }}
+        editing={{ itemId, title: heading, focusField: (booked === "yes" && !item.booked ? firstEmptyRequired(item) : null) ?? focusFieldFor(typeof focus === "string" ? focus : undefined, item.travelerIds, traveler) }}
       />
     </div>
   );

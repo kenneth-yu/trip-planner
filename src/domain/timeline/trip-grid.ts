@@ -147,7 +147,7 @@ function travelOn(key: string, items: VisibleItem[], gaps: { dayKey: string; to:
     if (i.type === "flight") {
       const to = flightCities(i).to ?? i.flight?.toAirport ?? "";
       if (localDateKey(i.start) === key) {
-        out.push({ key: `dep:${i.id}`, itemId: i.id, kind: "departs", title: `${i.flight?.flightNumber || i.title} to ${to}`, time: `leaves ${formatClock(toLocal(i.start))}`, draft: !i.booked });
+        out.push({ key: `dep:${i.id}`, itemId: i.id, kind: "departs", title: `${i.flight?.flightNumber || "Flight"} to ${to}`, time: `leaves ${formatClock(toLocal(i.start))}`, draft: !i.booked });
       }
       if (localDateKey(i.end) === key) {
         const clocks = clockChange(i);
@@ -310,7 +310,7 @@ export function upNext(view: TripView, nowMs: number, count = 3): UpNextEntry[] 
     .flatMap((i) => {
       const at = (t: VisibleItem["start"]) => ({ dayKey: localDateKey(t), date: toLocal(t).toFormat("ccc LLL d", { locale: "en-US" }), time: formatClock(toLocal(t)), ms: instantMs(t) });
       if (i.type === "flight") {
-        return [{ ...at(i.start), key: `up:${i.id}`, itemId: i.id, title: `${i.flight?.flightNumber || i.title} to ${flightCities(i).to ?? i.flight?.toAirport ?? ""}`, place: flightCities(i).from, draft: !i.booked }];
+        return [{ ...at(i.start), key: `up:${i.id}`, itemId: i.id, title: `${i.flight?.flightNumber || "Flight"} to ${flightCities(i).to ?? i.flight?.toAirport ?? ""}`, place: flightCities(i).from, draft: !i.booked }];
       }
       if (i.type === "stay") {
         const name = i.stay?.propertyName ?? i.title;

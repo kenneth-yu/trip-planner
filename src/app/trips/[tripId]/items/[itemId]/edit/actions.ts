@@ -47,7 +47,7 @@ export async function editItem(_prev: FormState, form: FormData): Promise<FormSt
     const resolved = resolvePlace(query, { contextZone: places.zoneOnDate?.(isoDate) ?? null, geocoded: places.geocode?.(query) ?? null });
     return resolved.status === "unknown" ? null : resolved.zone;
   };
-  const parsed = parseEditForm(entries, { travelerIds: item.travelerIds, previous: item.private, zoneOf });
+  const parsed = parseEditForm(entries, { travelerIds: item.travelerIds, previous: item.private, wasBooked: item.booked, zoneOf });
   if (!parsed.ok) return { errors: parsed.errors, message: parsed.errors.form ?? null, values: entries };
   try {
     const proposal = inputToProposal({ ...parsed.input, travelers: item.travelerIds }, view.travelers, places, { draft: !parsed.booked, endEstimated: parsed.endEstimated });
