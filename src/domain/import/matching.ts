@@ -16,13 +16,41 @@ export interface Match {
 const TWO_HOURS = 2 * 3600_000;
 const COMMON_WORDS = new Set(["hotel", "the", "stay", "at", "a", "an", "and", "of", "in", "inn", "airbnb", "by", "room", "rooms"]);
 
-export function normalizeName(s: string): string[] {
-  return s
-    .toLowerCase()
-    .replace(/\([^)]*\)/g, " ")
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .split(/\s+/)
-    .filter((w) => w && !COMMON_WORDS.has(w));
+const CACHE_LIMIT = 5000;
+const normalized = new Map<string, readonly string[]>();
+const dayKeys = new Map<string, string>();
+
+function remembered<T>(cache: Map<string, T>, key: string, compute: () => T): T {
+  const known = cache.get(key);
+  if (known !== undefined) return known;
+  if (cache.size >= CACHE_LIMIT) cache.clear();
+  const value = compute();
+  cache.set(key, value);
+  return value;
+}
+
+export function normalizeName(s: string): readonly string[] {
+  return remembered(normalized, s, () =>
+    s
+      .toLowerCase()
+      .replace(/\([^)]*\)/g, " ")
+      .replace(/[^\p{L}\p{N}\s]/gu, " ")
+      .split(/\s+/)
+      .filter((w) => w && !COMMON_WORDS.has(w)),
+  );
+}
+
+const instants = new Map<string, number>();
+
+function instantOf(t: Mergeable["start"]): number {
+  return remembered(instants, t.at, () => {
+    const parsed = Date.parse(t.at);
+    return Number.isNaN(parsed) ? instantMs(t) : parsed;
+  });
+}
+
+function dayKey(t: Mergeable["start"]): string {
+  return remembered(dayKeys, `${t.at}|${t.zone}`, () => localDateKey(t));
 }
 
 export function similarNames(a: string, b: string): boolean {
@@ -33,12 +61,12 @@ export function similarNames(a: string, b: string): boolean {
 }
 
 function nightsOverlap(a: Mergeable, b: Mergeable): boolean {
-  const [as, ae, bs, be] = [localDateKey(a.start), localDateKey(a.end), localDateKey(b.start), localDateKey(b.end)];
+  const [as, ae, bs, be] = [dayKey(a.start), dayKey(a.end), dayKey(b.start), dayKey(b.end)];
   return as < be && bs < ae;
 }
 
 function timesOverlap(a: Mergeable, b: Mergeable): boolean {
-  return instantMs(a.start) < instantMs(b.end) && instantMs(b.start) < instantMs(a.end);
+  return instantOf(a.start) < instantOf(b.end) && instantOf(b.start) < instantOf(a.end);
 }
 
 const showTime = (t: Mergeable["start"]) => formatClock(toLocal(t));
@@ -69,8 +97,8 @@ export function matchRecords(existing: Mergeable, incoming: Mergeable): Match | 
     case "flight": {
       const [a, b] = [existing.flight, incoming.flight];
       if (!a || !b || a.flightNumber !== b.flightNumber) return null;
-      if (localDateKey(existing.start) !== localDateKey(incoming.start)) return null;
-      if (Math.abs(instantMs(existing.start) - instantMs(incoming.start)) > TWO_HOURS) return null;
+      if (Math.abs(instantOf(existing.start) - instantOf(incoming.start)) > TWO_HOURS) return null;
+      if (dayKey(existing.start) !== dayKey(incoming.start)) return null;
       return { strength: "strong", differences: sharedDifferences(existing, incoming) };
     }
     case "stay": {
@@ -86,8 +114,9 @@ export function matchRecords(existing: Mergeable, incoming: Mergeable): Match | 
     }
     case "plan":
     case "transfer": {
-      if (localDateKey(existing.start) !== localDateKey(incoming.start)) return null;
-      if (!timesOverlap(existing, incoming) || !similarNames(existing.title, incoming.title)) return null;
+      if (!timesOverlap(existing, incoming)) return null;
+      if (dayKey(existing.start) !== dayKey(incoming.start)) return null;
+      if (!similarNames(existing.title, incoming.title)) return null;
       return { strength: "strong", differences: sharedDifferences(existing, incoming) };
     }
   }
@@ -141,7 +170,7 @@ function addOptions<T>(known: { values: string[]; options: T[] }, more: { values
   });
 }
 
-function mergeDifference(known: Difference, more: Difference): void {
+export function mergeDifference(known: Difference, more: Difference): void {
   if ((known.field === "start" || known.field === "end") && (more.field === "start" || more.field === "end")) addOptions(known, more);
   else if ((known.field === "fromAirport" || known.field === "toAirport") && (more.field === "fromAirport" || more.field === "toAirport")) addOptions(known, more);
 }
@@ -178,12 +207,24 @@ export interface Cluster {
   differences: Difference[];
 }
 
+function bucketKey(p: ProposedItem): string {
+  if (p.type === "stay") return "stay";
+  const day = dayKey(p.start);
+  return p.type === "flight" ? `flight|${p.flight?.flightNumber ?? ""}|${day}` : `${p.type}|${day}`;
+}
+
 export function consolidate(records: ProposedItem[]): Cluster[] {
   const clusters: Cluster[] = [];
+  const buckets = new Map<string, Cluster[]>();
   records.forEach((rec, i) => {
-    const target = clusters.find((c) => matchRecords(c.proposed, rec)?.strength === "strong");
+    const key = bucketKey(rec);
+    const bucket = buckets.get(key) ?? [];
+    const target = bucket.find((c) => matchRecords(c.proposed, rec)?.strength === "strong");
     if (!target) {
-      clusters.push({ proposed: structuredClone(rec), sources: [i], differences: [] });
+      const created: Cluster = { proposed: structuredClone(rec), sources: [i], differences: [] };
+      clusters.push(created);
+      bucket.push(created);
+      buckets.set(key, bucket);
       return;
     }
     const diffs = sharedDifferences(target.proposed, rec);
