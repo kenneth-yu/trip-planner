@@ -4,7 +4,7 @@ import { present } from "@/testing/present";
 import { fromLocal, toLocal } from "../time/format";
 import type { Item, Requester, TripAggregate } from "../types";
 import { projectTrip, type TripView } from "../visibility/project";
-import { bagTips, leaveByTips, smartTips } from "./tips";
+import { bagTips, leaveByTips, sleepTips, smartTips } from "./tips";
 
 const owner: Requester = { kind: "member", userId: USERS.kenny.id, homeZone: "America/New_York" };
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -95,7 +95,7 @@ describe("the days in the owner's January 2027 cases", () => {
       const item = present(view([flight(out), flight(back), stay(hotel())]).items.find((i) => i.id === t.itemId));
       return `${t.row} ${toLocal(t.row === "check_in" ? item.start : t.row === "check_out" ? item.end : item.start).toFormat("ccc LLL d")}`;
     });
-    expect(days).toEqual(["flight Wed Jan 27"]);
+    expect(days).toEqual(["flight Wed Jan 27", "flight Fri Jan 15"]);
   });
 });
 
@@ -205,6 +205,37 @@ describe("gaps around check-in and check-out", () => {
   it("an early flight that leaves before check-out has no gap", () => {
     const early: FlightSpec = { ...back, leaves: "2027-01-27T09:00" };
     expect(bagTips(view([flight(early), stay(hotel())])).filter((t) => t.row === "check_out")).toEqual([]);
+  });
+});
+
+describe("the sleep tip under a long flight", () => {
+  const tokyoOut: FlightSpec = { id: id(7), number: "NH109", from: "JFK", to: "HND", leaves: "2027-03-01T01:00", fromZone: "America/New_York", lands: "2027-03-02T05:00", toZone: "Asia/Tokyo" };
+
+  it("sits under the flight with the spec's line and a Why? in four paragraphs", () => {
+    const found = sleepTips(view([flight(tokyoOut)]));
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ kind: "sleep", itemId: id(7), row: "flight", line: "Sleep tip: from 8:00pm Tokyo time (6:00am New York), about 7½ hours." });
+    const paragraphs = found[0]?.why.split("\n") ?? [];
+    expect(paragraphs).toHaveLength(4);
+    expect(paragraphs[2]).toBe("On landing at 5:00am, get daylight and stay up until about 9:00pm.");
+    expect(paragraphs[3]).toBe("General guidance, not medical advice.");
+  });
+
+  it("is part of the tips a person gets, after leave the hotel by and before bag storage", () => {
+    const kinds = smartTips(view([flight(out), flight(back), flight(tokyoOut), stay(hotel({ minutes: 60 }))])).map((t) => t.kind);
+    expect(kinds.indexOf("airport")).toBeLessThan(kinds.indexOf("sleep"));
+    expect(kinds).toContain("sleep");
+  });
+
+  it("is on the owner's January flight to Hong Kong as the spec's line", () => {
+    const hk: FlightSpec = { ...out, leaves: "2027-01-15T09:00", lands: "2027-01-16T14:00" };
+    expect(sleepTips(view([flight(hk)]))[0]?.line).toBe("Sleep tip: from 12:00am Hong Kong time (11:00am New York), about 6 hours.");
+  });
+
+  it("is quiet for a short flight, and never for viewers' projection of someone else's hidden flight", () => {
+    const short: FlightSpec = { ...tokyoOut, id: id(8), lands: "2027-03-01T05:00", toZone: "America/New_York" };
+    expect(sleepTips(view([flight(short)]))).toEqual([]);
+    expect(sleepTips(view([{ ...flight(tokyoOut), visibility: "only_me", createdBy: USERS.jacob.id }]))).toEqual([]);
   });
 });
 

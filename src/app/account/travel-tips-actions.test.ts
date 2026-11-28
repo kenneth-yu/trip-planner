@@ -41,22 +41,22 @@ describe("saving the Travel smarts section", () => {
   });
 
   it("turns off the listed kinds that are unchecked and the switch when it is unchecked", async () => {
-    const state = await saveTravelTipsAction(idle, form([["kind", "airport"]]));
+    const state = await saveTravelTipsAction(idle, form([["kind", "airport"], ["kind", "sleep"]]));
     expect(state).toEqual({ status: "saved" });
     expect(await loadTipPreferences(present(world.ctx), USERS.kenny.id)).toMatchObject({ tipsOn: false, kindsOff: ["bags"] });
   });
 
   it("reads the saved preferences first, so a kind the section does not list keeps its state", async () => {
     const ctx = present(world.ctx);
-    await saveTipPreferences(ctx, USERS.kenny.id, { tipsOn: true, kindsOff: ["sleep", "border"] });
-    await saveTravelTipsAction(idle, form([["tipsOn", "on"], ["kind", "airport"], ["kind", "bags"]]));
-    expect(await loadTipPreferences(ctx, USERS.kenny.id)).toMatchObject({ tipsOn: true, kindsOff: ["sleep", "border"] });
+    await saveTipPreferences(ctx, USERS.kenny.id, { tipsOn: true, kindsOff: ["arrival", "border"] });
+    await saveTravelTipsAction(idle, form([["tipsOn", "on"], ["kind", "airport"], ["kind", "bags"], ["kind", "sleep"]]));
+    expect(await loadTipPreferences(ctx, USERS.kenny.id)).toMatchObject({ tipsOn: true, kindsOff: ["arrival", "border"] });
     await saveTravelTipsAction(idle, form([["tipsOn", "on"], ["kind", "bags"]]));
-    expect((await loadTipPreferences(ctx, USERS.kenny.id)).kindsOff).toEqual(["airport", "sleep", "border"]);
+    expect((await loadTipPreferences(ctx, USERS.kenny.id)).kindsOff).toEqual(["airport", "sleep", "arrival", "border"]);
   });
 
   it("ignores kinds that do not exist in the form", async () => {
-    await saveTravelTipsAction(idle, form([["tipsOn", "on"], ["kind", "airport"], ["kind", "bags"], ["kind", "nonsense"]]));
+    await saveTravelTipsAction(idle, form([["tipsOn", "on"], ["kind", "airport"], ["kind", "bags"], ["kind", "sleep"], ["kind", "nonsense"]]));
     expect((await loadTipPreferences(present(world.ctx), USERS.kenny.id)).kindsOff).toEqual([]);
   });
 

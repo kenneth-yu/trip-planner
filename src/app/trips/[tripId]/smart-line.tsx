@@ -26,7 +26,9 @@ export function SmartLine({ kind, line, why, also = [], children, defaultOpen = 
         </button>
       </p>
       <div id={panel} hidden={!open} className={styles.panel}>
-        <p>{why}</p>
+        {why.split("\n").map((paragraph) => (
+          <p key={paragraph}>{paragraph}</p>
+        ))}
         {also.length > 0 && (
           <p className={styles.also}>
             Also: {also.join(" ")}
