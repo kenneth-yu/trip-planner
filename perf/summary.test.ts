@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { isReportFile, lighthouseRows, parseReport, redirected } from "./summary";
+import { isReportFile, lighthouseRows, parseReport, redirected, timingRow } from "./summary";
 
 const recordedNames = [
   "localhost-trips_00000000_0000_4000_8300_000000000001-2026_11_27_08_04_42.report.html",
@@ -26,5 +26,11 @@ describe("Lighthouse summary", () => {
   it("notices a run that was bounced to another page", () => {
     expect(redirected(report)).toBe(false);
     expect(redirected({ ...report, finalDisplayedUrl: "http://localhost:3199/sign-in" })).toBe(true);
+  });
+
+  it("renders a measurement that was slower than the cap as failed, with its budget", () => {
+    expect(timingRow({ name: "planCalendarImport/december", medianMs: null, budgetMs: 145, samples: 3, status: "slower than the cap" })).toBe("| planCalendarImport/december | slower than the cap (3 samples) | 145 ms | failed |");
+    expect(timingRow({ name: "a", medianMs: 12.3456, budgetMs: 20, samples: 21 })).toBe("| a | 12.346 ms | 20 ms | ok |");
+    expect(timingRow({ name: "a", medianMs: 30, budgetMs: 20, samples: 21 })).toBe("| a | 30.000 ms | 20 ms | over |");
   });
 });
