@@ -5,16 +5,10 @@ import { nightStatuses, type NightStatus } from "../checks/checks";
 import { flightCities } from "../time/flight-card";
 import { formatClockExact, instantMs, localDateKey, toLocal } from "../time/format";
 import { airportByCode } from "../time/places";
+import { exitMs, leadMs, USUAL_CHECK_IN, USUAL_CHECK_OUT } from "./travel-times";
 
 const HOUR = 3600_000;
-const MINUTE = 60_000;
 const BED_TIME = "23:30";
-const INTERNATIONAL_EXIT_MS = 90 * MINUTE;
-const DOMESTIC_EXIT_MS = 45 * MINUTE;
-const INTERNATIONAL_LEAD_MS = 3 * HOUR;
-const DOMESTIC_LEAD_MS = 2 * HOUR;
-const USUAL_CHECK_IN = "3:00pm";
-const USUAL_CHECK_OUT = { hour: 11, label: "11:00am" };
 const LONG_GAP_MS = 2 * HOUR;
 const CROSSES_MIDNIGHT_BEFORE_HOUR = 6;
 const EARLY_ARRIVAL_BEFORE_HOUR = 11;
@@ -58,12 +52,6 @@ type Leg = VisibleItem;
 const byStart = (a: VisibleItem, b: VisibleItem) => instantMs(a.start) - instantMs(b.start);
 const dayLabel = (date: string) => DateTime.fromISO(date).toFormat("ccc LLL d", { locale: "en-US" });
 const zonePlace = (zone: Zone) => (zone.split("/").pop() ?? zone).replace(/_/g, " ");
-
-function isDomestic(item: VisibleItem): boolean {
-  const from = airportByCode(item.flight?.fromAirport ?? "");
-  const to = airportByCode(item.flight?.toAirport ?? "");
-  return Boolean(from && to && from.country === to.country);
-}
 
 const DATE_LINE_MIN_OFFSET_HOURS = 14;
 
@@ -143,7 +131,7 @@ function buildStretch(group: NightStatus[], legs: Leg[], homeZone: Zone, statuse
   let nights = group.map((n) => n.night);
 
   if (arrivesHere && arrival.type === "flight") {
-    const ready = instantMs(arrival.end) + (isDomestic(arrival) ? DOMESTIC_EXIT_MS : INTERNATIONAL_EXIT_MS);
+    const ready = instantMs(arrival.end) + exitMs(arrival);
     const readyLocal = DateTime.fromMillis(ready, { zone });
     const readyDate = readyLocal.toISODate();
     if (readyLocal.hour < CROSSES_MIDNIGHT_BEFORE_HOUR) {
@@ -151,7 +139,7 @@ function buildStretch(group: NightStatus[], legs: Leg[], homeZone: Zone, statuse
       if (before < first && before > floor && statuses.some((n) => n.night === before && n.state !== "covered")) nights = [before, ...nights];
       warnings.push(`You get there around ${formatClockExact(readyLocal)} on ${dayLabel(readyDate)}. Book from the night of ${dayLabel(before)}, so the room is yours when you arrive.`);
     } else if (readyLocal.hour < EARLY_ARRIVAL_BEFORE_HOUR && readyDate === first) {
-      warnings.push(`You get there around ${formatClockExact(readyLocal)}, well before the usual ${USUAL_CHECK_IN} check-in. Ask for an early check-in, or book the night before so the room is ready.`);
+      warnings.push(`You get there around ${formatClockExact(readyLocal)}, well before the usual ${USUAL_CHECK_IN.label} check-in. Ask for an early check-in, or book the night before so the room is ready.`);
     }
   }
 
@@ -159,8 +147,7 @@ function buildStretch(group: NightStatus[], legs: Leg[], homeZone: Zone, statuse
   const checkOut = DateTime.fromISO(last).plus({ days: 1 }).toISODate();
 
   if (departure?.type === "flight") {
-    const lead = isDomestic(departure) ? DOMESTIC_LEAD_MS : INTERNATIONAL_LEAD_MS;
-    const leave = instantMs(departure.start) - lead;
+    const leave = instantMs(departure.start) - leadMs(departure);
     const leaveLocal = DateTime.fromMillis(leave, { zone: departure.start.zone });
     const checkOutAt = DateTime.fromISO(`${checkOut}T${String(USUAL_CHECK_OUT.hour).padStart(2, "0")}:00`, { zone: departure.start.zone }).toMillis();
     if (leaveLocal.hour < VERY_EARLY_LEAVE_BEFORE_HOUR) {
