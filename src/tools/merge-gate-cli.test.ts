@@ -449,7 +449,26 @@ describe("updating every approved pull request that is behind main, at once", ()
     harness.setRoutes([budget(900), { match: "pulls?state=open", out: listed(8, 9) }, ...routesFor(approved(8)), ...routesFor(approved(9))]);
     const result = harness.run(process.execPath, [tool, "--sweep"], { ...actions, GATE_TOKEN: "" });
     expect(result.status).toBe(1);
-    expect(harness.calls().some((c) => c.includes("update-branch"))).toBe(false);
+    const calls = harness.calls();
+    expect(calls.some((c) => c.includes("update-branch"))).toBe(false);
+    expect(calls.filter((c) => c.includes("-X POST") && c.includes("/comments") && c.includes("GATE_TOKEN secret is not set"))).toHaveLength(1);
+    expect(result.stdout.match(/GATE_TOKEN secret is not set/g)).toHaveLength(1);
+  });
+
+  it("says on a dry run that it would update an approved pull request whose checks failed, and writes nothing", () => {
+    const harness = makeHarness({ pullRefs: [9] });
+    harness.setRoutes([budget(900), { match: "pulls?state=open", out: listed(9) }, ...routesFor(approved(9, { failingCheck: true }))]);
+    const result = harness.run(process.execPath, [tool, "--sweep", "--dry-run"], actions);
+    expect(result.stdout).toContain("#9: approved, but the branch is behind main and its checks have not passed, so it is updated to run them again");
+    expect(harness.calls().some((c) => c.includes("-X"))).toBe(false);
+  });
+
+  it("blocks, and says why, a pull request that is not behind main and whose checks failed", () => {
+    const harness = makeHarness({ pullRefs: [9] });
+    harness.setRoutes([budget(900), { match: "pulls?state=open", out: listed(9) }, ...routesFor({ number: 9, failingCheck: true })]);
+    const result = harness.run(process.execPath, [tool, "--sweep", "--dry-run"], actions);
+    expect(result.stdout).toContain("#9: blocked");
+    expect(result.stdout).toContain('Required check "static" is not green (failure).');
   });
 
   it("only reads, and prints what it would do, on a dry run", () => {
@@ -465,12 +484,15 @@ describe("updating every approved pull request that is behind main, at once", ()
 describe("verdicts that carry over a merge of main, with a real git history", () => {
   const git = (cwd: string, ...args: string[]) => execFileSync("git", ["-c", "user.email=t@example.invalid", "-c", "user.name=T", "-c", "commit.gpgsign=false", ...args], { cwd, encoding: "utf8", stdio: "pipe" }).trim();
 
-  function build(kind: "plain" | "conflict" | "foreign") {
+  type Kind = "plain" | "conflict" | "foreign" | "conflict-plus-code" | "plain-plus-code" | "identical";
+
+  function build(kind: Kind) {
     const harness = makeHarness({ pullRefs: [7] });
     const cwd = harness.cwd;
     const base = git(cwd, "rev-parse", "HEAD");
     git(cwd, "checkout", "-q", "-b", "pr");
-    writeFileSync(path.join(cwd, kind === "conflict" ? "README.md" : "feature.txt"), "from the pull request\n");
+    const conflicting = kind === "conflict" || kind === "conflict-plus-code";
+    writeFileSync(path.join(cwd, conflicting ? "README.md" : "feature.txt"), kind === "identical" ? "same on both sides\n" : "from the pull request\n");
     git(cwd, "add", "-A");
     git(cwd, "commit", "-qm", "code");
     const code = git(cwd, "rev-parse", "HEAD");
@@ -483,21 +505,27 @@ describe("verdicts that carry over a merge of main, with a real git history", ()
       git(cwd, "merge", "-q", "--no-ff", "-m", "merge elsewhere", "elsewhere");
     }
     git(cwd, "checkout", "-q", "main");
-    writeFileSync(path.join(cwd, kind === "conflict" ? "README.md" : "other.txt"), "from main\n");
+    writeFileSync(path.join(cwd, conflicting ? "README.md" : kind === "identical" ? "feature.txt" : "other.txt"), kind === "identical" ? "same on both sides\n" : "from main\n");
     git(cwd, "add", "-A");
     git(cwd, "commit", "-qm", "main moves");
     git(cwd, "push", "-q", "origin", "main");
     git(cwd, "checkout", "-q", "pr");
-    if (kind === "conflict") {
+    if (conflicting) {
       try {
         git(cwd, "merge", "--no-ff", "-m", "merge main", "main");
       } catch (error) {
         if (!(error instanceof Error)) throw error;
       }
       writeFileSync(path.join(cwd, "README.md"), "resolved by hand\n");
+      if (kind === "conflict-plus-code") writeFileSync(path.join(cwd, "smuggled.ts"), "export const unrelated = true;\n");
       git(cwd, "add", "-A");
       git(cwd, "commit", "-qm", "merge main");
-    } else if (kind === "plain") {
+    } else if (kind === "plain-plus-code") {
+      git(cwd, "merge", "-q", "--no-commit", "--no-ff", "main");
+      writeFileSync(path.join(cwd, "smuggled.ts"), "export const unrelated = true;\n");
+      git(cwd, "add", "-A");
+      git(cwd, "commit", "-qm", "merge main");
+    } else if (kind === "plain" || kind === "identical") {
       git(cwd, "merge", "-q", "--no-ff", "-m", "merge main", "main");
     }
     const head = git(cwd, "rev-parse", "HEAD");
@@ -507,7 +535,7 @@ describe("verdicts that carry over a merge of main, with a real git history", ()
     return { harness, code, head, commitList };
   }
 
-  const run = (kind: "plain" | "conflict" | "foreign", comments: (code: string, head: string) => unknown[]) => {
+  const run = (kind: Kind, comments: (code: string, head: string) => unknown[]) => {
     const { harness, code, head, commitList } = build(kind);
     harness.setRoutes([budget(900), { match: "pulls?state=open", out: listed(7) }, ...routesFor({ number: 7, head, commitList, files: ["src/server/services/a.ts"], body: "Semver: patch", comments: comments(code, head) }), noRuns]);
     return harness.run(process.execPath, [tool, "7", "--dry-run"], actions);
@@ -527,6 +555,28 @@ describe("verdicts that carry over a merge of main, with a real git history", ()
     expect(result.stdout).not.toContain("No QA");
     const again = run("conflict", (code, head) => [...threeReviews(code), verdictComment(4, "Architect", "approve", head)]);
     expect(again.stdout).toContain("#7: passes at");
+  });
+
+  it("carries verdicts over a clean merge even when main already landed the same change, which the own diff alone would not excuse", () => {
+    expect(run("identical", threeReviews).stdout).toContain("#7: passes at");
+  });
+
+  it("does not carry any verdict over a merge that resolves a conflict and also adds an unrelated file, even with a fresh Architect verdict", () => {
+    const withArchitect = (code: string, head: string) => [...threeReviews(code), verdictComment(4, "Architect", "approve", head)];
+    for (const comments of [threeReviews, withArchitect]) {
+      const result = run("conflict-plus-code", comments);
+      expect(result.stdout).toContain("#7: blocked");
+      expect(result.stdout).toContain("The QA verdict is older than the head");
+      expect(result.stdout).toContain("The Security verdict is older than the head");
+      expect(result.stdout).toContain("The Product verdict is older than the head");
+      expect(result.stdout).not.toContain("the others carry over");
+    }
+  });
+
+  it("does not carry any verdict over a merge of main that also adds an unrelated file", () => {
+    const result = run("plain-plus-code", threeReviews);
+    expect(result.stdout).toContain("#7: blocked");
+    expect(result.stdout).toContain("The QA verdict is older than the head");
   });
 
   it("does not carry verdicts over a merge of something other than main", () => {

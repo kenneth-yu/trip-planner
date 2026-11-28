@@ -93,7 +93,7 @@ function ownDiff(sha) {
   let digest = null;
   try {
     const base = git(["merge-base", "origin/main", sha]);
-    const patch = git(["diff", "-U0", "--no-color", "--no-ext-diff", "--no-renames", base, sha]);
+    const patch = git(["diff", "-U0", "--text", "--no-color", "--no-ext-diff", "--no-renames", base, sha]);
     const kept = patch.split("\n").filter((line) => line.startsWith("diff --git") || line.startsWith("+") || line.startsWith("-"));
     digest = createHash("sha256").update(kept.join("\n")).digest("hex");
   } catch (error) {
@@ -103,12 +103,26 @@ function ownDiff(sha) {
   return digest;
 }
 
-function mergeAddsNothing(commit) {
+function mergeOutput(commit) {
   try {
-    const fresh = git(["merge-tree", "--write-tree", "--no-messages", commit.parents[0], commit.parents[1]]).split("\n")[0];
-    return fresh === git(["rev-parse", `${commit.sha}^{tree}`]);
+    return git(["merge-tree", "--write-tree", "--name-only", "--no-messages", commit.parents[0], commit.parents[1]]);
   } catch (error) {
-    if (error instanceof Error && "status" in error) return false;
+    if (error instanceof Error && "status" in error && error.status === 1 && typeof error.stdout === "string") return error.stdout.trim();
+    if (error instanceof Error && "status" in error) return null;
+    throw error;
+  }
+}
+
+function resolvesOnly(commit) {
+  const output = mergeOutput(commit);
+  if (output === null) return null;
+  const [tree, ...names] = output.split("\n");
+  const conflicted = new Set(names.filter((name) => name.length > 0));
+  try {
+    const differing = git(["diff-tree", "-r", "--name-only", "--no-renames", tree, `${commit.sha}^{tree}`]).split("\n").filter((name) => name.length > 0);
+    return differing.every((name) => conflicted.has(name)) ? { conflicted: conflicted.size > 0 } : null;
+  } catch (error) {
+    if (error instanceof Error && "status" in error) return null;
     throw error;
   }
 }
@@ -144,8 +158,10 @@ function gather(number) {
   for (const commit of commits.filter((c) => c.parents.length === 2)) {
     if (!isAncestorOfMain(commit.parents[1].sha)) continue;
     const parents = commit.parents.map((p) => p.sha);
+    const resolution = resolvesOnly({ sha: commit.sha, parents });
+    if (resolution === null) continue;
     const unchanged = ownDiff(commit.sha) !== null && ownDiff(commit.sha) === ownDiff(parents[0]);
-    if (unchanged || mergeAddsNothing({ sha: commit.sha, parents })) verifiedMerges.add(commit.sha);
+    if (!resolution.conflicted || unchanged) verifiedMerges.add(commit.sha);
     else conflictMerges.add(commit.sha);
   }
   const normalized = commits.map((c) => ({ sha: c.sha, parents: c.parents.map((p) => p.sha) }));
