@@ -9,6 +9,8 @@ import type { Requester } from "@/domain/types";
 
 export const TRIP_DATA_TABLES: readonly (PgTable & { tripId: AnyPgColumn })[] = [
   t.calendarMirrors,
+  t.calendarFeeds,
+  t.ideas,
   t.importedItems,
   t.importBatches,
   t.activity,

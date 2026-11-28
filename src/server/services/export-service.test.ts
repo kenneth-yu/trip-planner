@@ -63,7 +63,7 @@ describe("exporting your data", () => {
     const world = await setup();
     const data = await exportUserData(world.ctx, USERS.kenny.id);
     expect(Object.keys(data)).toEqual(["exportedAt", "you", "trips"]);
-    expect(Object.keys(data.you)).toEqual(["name", "email"]);
+    expect(Object.keys(data.you)).toEqual(["name", "email", "travelTips"]);
     expect(data.exportedAt).toBe(world.ctx.now().toISOString());
     const trip = present(data.trips[0]);
     expect(Object.keys(trip)).toEqual(["name", "role", "travelers", "items"]);

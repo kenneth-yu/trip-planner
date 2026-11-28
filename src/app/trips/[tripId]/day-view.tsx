@@ -10,6 +10,8 @@ import type { FlightCard } from "@/domain/time/flight-card";
 import type { TripView, VisibleItem } from "@/domain/visibility/project";
 import { stayCities } from "@/domain/timeline/trip-grid";
 import { groupFreeDays } from "@/domain/time/days";
+import { rowKey } from "@/domain/smarts/rows";
+import { SmartRow, TipsIntro, type SmartRows } from "./smart-row";
 
 const CITY_CLASSES = [styles.city1, styles.city2, styles.city3, styles.city4, styles.city5];
 
@@ -61,7 +63,7 @@ function Row({ href, linked, className, children }: { href: string; linked: bool
   );
 }
 
-function Entry({ entry, view, colors }: { entry: DayEntry; view: TripView; colors: Map<string, string> }) {
+function Entry({ entry, view, colors, smart }: { entry: DayEntry; view: TripView; colors: Map<string, string>; smart: SmartRows | undefined }) {
   if (entry.kind === "arrival") {
     return <li className={styles.arrival}>{entry.time}  {entry.text}</li>;
   }
@@ -87,6 +89,7 @@ function Entry({ entry, view, colors }: { entry: DayEntry; view: TripView; color
         <Row className={styles.flightRow} href={href} linked={linked}>
           <Flight card={entry.card} itemId={entry.itemId} item={item} />
         </Row>
+        <SmartRow tripId={view.trip.id} canEdit={view.permissions.canEdit} row={smart?.rows.get(rowKey(entry.itemId, "flight"))} />
       </li>
     );
   }
@@ -109,11 +112,12 @@ function Entry({ entry, view, colors }: { entry: DayEntry; view: TripView; color
             {item && item.flags.length > 0 && <span className={styles.flagged}>Check where this is</span>}
           </span>
       </Row>
+      <SmartRow tripId={view.trip.id} canEdit={view.permissions.canEdit} row={smart?.rows.get(rowKey(entry.itemId, entry.kind))} />
     </li>
   );
 }
 
-export function DayView({ view, days, todayKey, only, anchors = true }: { view: TripView; days: Day[]; todayKey: string; only?: string; anchors?: boolean }) {
+export function DayView({ view, days, todayKey, only, anchors = true, smart }: { view: TripView; days: Day[]; todayKey: string; only?: string; anchors?: boolean; smart?: SmartRows }) {
   const colors = cityColors(view);
   if (!days.length) {
     return (
@@ -138,6 +142,10 @@ export function DayView({ view, days, todayKey, only, anchors = true }: { view: 
   return (
     <>
       <FlashStatus kind="deleted" tripId={view.trip.id} />
+      <FlashStatus kind="fixed" tripId={view.trip.id} />
+      <FlashStatus kind="fine" tripId={view.trip.id} />
+      <FlashStatus kind="tip_hidden" tripId={view.trip.id} />
+      {smart?.showIntro && <TipsIntro />}
       {groupFreeDays(days).filter((day) => !only || day.keys.includes(only)).map((day) => (
         <details key={day.key} id={anchors ? `day-${day.key}` : undefined} className={styles.day} open={Boolean(only) || day.keys[day.keys.length - 1] >= todayKey}>
           <summary>
@@ -150,7 +158,7 @@ export function DayView({ view, days, todayKey, only, anchors = true }: { view: 
           ) : (
             <ul className={styles.entries}>
               {day.entries.map((e, i) => (
-                <Entry key={`${e.kind}-${"itemId" in e ? e.itemId : e.key}-${i}`} entry={e} view={view} colors={colors} />
+                <Entry key={`${e.kind}-${"itemId" in e ? e.itemId : e.key}-${i}`} entry={e} view={view} colors={colors} smart={smart} />
               ))}
             </ul>
           )}
