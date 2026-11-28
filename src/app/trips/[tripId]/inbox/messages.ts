@@ -72,12 +72,15 @@ export function addAllText(r: AddAllResult): string {
 
 const Count = z.coerce.number().int().min(0).max(100_000);
 
-export function importedOutcome(imported: unknown, matched: unknown): Outcome | null {
+export function importedOutcome(imported: unknown, matched: unknown, left: unknown = undefined): Outcome | null {
   const waiting = Count.safeParse(imported);
   if (!waiting.success) return null;
   const same = Count.safeParse(matched);
-  const first = `${waiting.data} ${waiting.data === 1 ? "event is" : "events are"} waiting in your inbox.`;
+  const out = Count.safeParse(left);
+  const parts = [`${waiting.data} ${waiting.data === 1 ? "event is" : "events are"} waiting in your inbox.`];
   const count = same.success ? same.data : 0;
-  if (count === 0) return { text: first, role: "status" };
-  return { text: `${first} ${count} ${count === 1 ? "looks like a thing" : "look like things"} already on the trip.`, role: "status" };
+  if (count > 0) parts.push(`${count} ${count === 1 ? "looks like a thing" : "look like things"} already on the trip.`);
+  const gone = out.success ? out.data : 0;
+  if (gone > 0) parts.push(`${gone} ${gone === 1 ? "was" : "were"} left out: cancelled, outside your dates, or with no readable time.`);
+  return { text: parts.join(" "), role: "status" };
 }

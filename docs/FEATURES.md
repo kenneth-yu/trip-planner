@@ -25,7 +25,8 @@ Every path a person or an assistant can take through the app, where it lives, an
 | Signed in person | Create a trip | `/trips/new` | `createTrip` | `create-trip.test.ts` |
 | Editor | An empty trip offers Add flight or stay; viewers see a plain sentence | `/trips/[id]` | `DayView` | `empty-trip.test.ts` |
 | Editor | Review imported items: add, merge, discard, add all clean | `/trips/[id]/inbox` | `approveEntry`, `mergeEntry`, `discardEntry`, `approveAllClean` | `services.test.ts`, `pipeline.test.ts` |
-| Editor | Import calendar events | service (Google and .ics UI pending) | `importCalendarEvents` | `pipeline.test.ts`, `services.test.ts` |
+| Editor | Import a calendar file (.ics, up to 2 MB) or an https link into the review inbox; cancelled and changed copies of repeating events are left out and counted, unknown time zones are never guessed, the link is never stored | `/trips/[id]/import`, `POST /trips/[id]/import/ics` | `parseIcs`, `importIcsText`, `importIcsUrl`, `fetchCalendar` | `ics.test.ts`, `ics.fuzz.test.ts`, `fetch-guard.test.ts`, `ics-import.test.ts`, `route.test.ts`, e2e `import-ics.spec.ts` |
+| Editor | Import calendar events | service (Google UI pending) | `importCalendarEvents` | `pipeline.test.ts`, `services.test.ts` |
 | Member | Connect Claude or ChatGPT; Disconnect again on a stale page shows it as disconnected | `/trips/[id]/connect` | `createAssistantToken`, `revokeAssistantToken` | `server.test.ts`, `actions.test.ts` |
 | Assistant | Read trips and the itinerary | `/api/mcp` `list_trips`, `get_trip` | `getTripView` | `server.test.ts` |
 | Assistant | Propose items (structured) | `/api/mcp` `add_items` | `importProposals` | `server.test.ts` |
