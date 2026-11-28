@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "calendar_feeds_one_active_idx" ON "calendar_feeds" USING btree ("trip_id","user_id") WHERE "calendar_feeds"."revoked_at" is null;
