@@ -75,20 +75,20 @@ describe("the activity page", () => {
   it("gives a viewer the entries without Undo, and leaves out a seat-only edit", async () => {
     const flight = await flightOf();
     await updateItem(present(world.ctx), TRIP_ID, flight.id, kenny, { title: "CX509 to Hong Kong" });
-    await insertActivity(present(world.ctx).db, { tripId: TRIP_ID, actorId: USERS.jacob.id, action: "updated", itemId: flight.id, before: flight, after: { ...flight, private: [{ travelerId: null, seat: "31Z" }] } });
+    await insertActivity(present(world.ctx).db, { tripId: TRIP_ID, actorId: USERS.jacob.id, action: "updated", itemId: flight.id, before: flight, after: { ...flight, private: [{ travelerId: null, seat: "ZQ98" }] } });
     world.requester = viewer;
     const page = await html();
     expect(page).toContain("Kenneth changed ");
     expect(page).not.toContain("Undo");
-    expect(page).not.toMatch(/booking details|31Z|seat/i);
+    expect(page).not.toMatch(/booking details|ZQ98|seat/i);
   });
 
   it("names a seat change as booking details to an editor and never shows the seat", async () => {
     const flight = await flightOf();
-    await insertActivity(present(world.ctx).db, { tripId: TRIP_ID, actorId: USERS.jacob.id, action: "updated", itemId: flight.id, before: flight, after: { ...flight, private: [{ travelerId: null, seat: "31Z" }] } });
+    await insertActivity(present(world.ctx).db, { tripId: TRIP_ID, actorId: USERS.jacob.id, action: "updated", itemId: flight.id, before: flight, after: { ...flight, private: [{ travelerId: null, seat: "ZQ98" }] } });
     const page = await html();
     expect(page).toContain("booking details");
-    expect(page).not.toMatch(/31Z|seat/i);
+    expect(page).not.toMatch(/ZQ98|seat/i);
   });
 
   it("carries nothing about a hidden item for another person", async () => {
