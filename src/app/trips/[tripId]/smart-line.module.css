@@ -1,0 +1,39 @@
+.smart {
+  margin: 4px 0 0;
+  font-size: var(--size-small);
+}
+
+.line {
+  margin: 0;
+}
+
+.check .line {
+  color: var(--warning);
+}
+
+.tip .line {
+  color: var(--muted);
+}
+
+.why {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 8px;
+  color: var(--muted);
+  font-size: var(--size-small);
+}
+
+.panel {
+  padding: 0 0 8px;
+  color: var(--text);
+}
+
+.panel p {
+  margin: 0 0 8px;
+}
+
+.also {
+  color: var(--muted);
+}
