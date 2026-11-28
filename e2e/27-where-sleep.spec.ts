@@ -53,4 +53,11 @@ test("a new trip starts with the flights, then says which nights need a bed", as
   const action = page.getByRole("link", { name: "Add a stay for these nights" }).filter({ visible: true });
   const href = new URL((await action.getAttribute("href")) ?? "", page.url());
   expect(Object.fromEntries(href.searchParams)).toEqual({ type: "stay", city: "Hong Kong", checkIn: "2027-01-16", checkOut: "2027-01-27", booked: "no" });
+
+  await action.click();
+  await expect(page).toHaveURL(/\/add\?/);
+  await expect(page.getByLabel("Stay", { exact: true })).toBeChecked();
+  await expect(page.locator("[name=place]")).toHaveValue("Hong Kong");
+  await expect(page.locator("[name=checkInDate]")).toHaveValue("2027-01-16");
+  await expect(page.locator("[name=checkOutDate]")).toHaveValue("2027-01-27");
 });
