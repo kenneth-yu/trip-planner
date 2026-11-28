@@ -117,7 +117,7 @@ export function AttentionPage({ data, tripId }: { data: AttentionData; tripId: s
       )}
       {passed.length > 0 && (
         <details className={styles.section}>
-          <summary className={styles.muted}>Already passed</summary>
+          <summary className={`${styles.muted} ${styles.summaryRow}`}>Already passed</summary>
           <ul className={styles.list}>
             {passed.map((l) => (
               <li key={l.id} className={styles.muted}>
@@ -129,7 +129,7 @@ export function AttentionPage({ data, tripId }: { data: AttentionData; tripId: s
       )}
       {data.dismissed.length > 0 && (
         <details className={styles.section}>
-          <summary className={styles.muted}>Marked as fine ({data.dismissed.length})</summary>
+          <summary className={`${styles.muted} ${styles.summaryRow}`}>Marked as fine ({data.dismissed.length})</summary>
           <ul className={styles.list}>
             {data.dismissed.map((d) => (
               <li key={d.anchor}>

@@ -9,6 +9,7 @@ import { addAllText, addedOutcome, decidedOutcome, discardedOutcome, ENTRY_GONE,
 import { createAssistantToken, revokeAssistantToken } from "@/server/services/assistant-service";
 import { disableMirror, syncMirror } from "@/server/services/mirror-service";
 import { appUrl } from "@/server/app-context";
+import { consumeRateLimit, RATE_RULES } from "@/server/security/rate-limit";
 import type { Choices } from "@/domain/import/matching";
 import { InvalidTransition } from "@/domain/state/machine";
 
@@ -72,12 +73,14 @@ export async function addAllClean(form: FormData): Promise<{ text: string }> {
 
 export interface TokenState {
   url: string | null;
+  message?: string;
 }
 
 export async function connectAssistant(_prev: TokenState, form: FormData): Promise<TokenState> {
   const tripId = z.string().uuid().parse(form.get("tripId"));
   const label = z.string().trim().min(1).max(80).catch("Assistant").parse(form.get("label"));
   const { ctx, user, view } = await loadTripPage(tripId);
+  if (!(await consumeRateLimit(ctx.db, RATE_RULES.assistantLink, user.id, ctx.now())).allowed) return { url: null, message: "You made several links just now. Wait a while and try again." };
   const scope = form.get("scope") === "read" || !view.permissions.canEdit ? "read" : "propose";
   const { token } = await createAssistantToken(ctx, user.id, { label, tripId, scope });
   revalidatePath(`/trips/${tripId}/connect`);

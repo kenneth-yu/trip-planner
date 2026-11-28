@@ -10,7 +10,7 @@ export function AssistantForm({ tripId, canSuggest }: { tripId: string; canSugge
     <form action={action}>
       <input type="hidden" name="tripId" value={tripId} />
       <div className={styles.row}>
-        <input name="label" placeholder="Name, like Jacob's Claude" required maxLength={80} />
+        <input name="label" aria-label="Link name" placeholder="Name, like Jacob's Claude" required maxLength={80} />
         {canSuggest ? (
           <select name="scope" defaultValue="propose" aria-label="What this link can do">
             <option value="propose">Can suggest items</option>
@@ -21,6 +21,7 @@ export function AssistantForm({ tripId, canSuggest }: { tripId: string; canSugge
         )}
         <button disabled={pending}>Make a link</button>
       </div>
+      {state.message && <p className={styles.warning}>{state.message}</p>}
       {state.url && (
         <div className={styles.section} style={{ marginTop: 16 }}>
           <p>Copy this now. It is shown once and works like a password.</p>

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { InputProblem } from "@/domain/import/problem";
 import { formatClock, formatDayHeader, toLocal } from "@/domain/time/format";
 import { AccessDenied } from "@/domain/visibility/project";
+import { RATE_RULES, consumeRateLimit } from "@/server/security/rate-limit";
 import { createIdea, dropIdea, editIdea, markIdeaDone, markIdeaNotDone, restoreIdea, scheduleIdea } from "@/server/services/idea-service";
 import { NotFound } from "@/server/services/trip-service";
 import { loadTripPage } from "@/server/web";
@@ -15,6 +16,7 @@ export interface IdeaState {
   undo: { intent: "restore" | "notdone"; ideaId: string } | null;
 }
 
+const TOO_MANY = "Too many changes just now. Wait a minute and try again.";
 const NOTHING: IdeaState = { status: null, error: null, undo: null };
 const Ids = z.object({ tripId: z.string().uuid(), ideaId: z.string().min(1).max(64).optional() });
 const Intent = z.enum(["add", "edit", "done", "notdone", "drop", "restore", "schedule"]);
@@ -31,6 +33,7 @@ export async function ideaAction(_previous: IdeaState, form: FormData): Promise<
   const { tripId, ideaId } = Ids.parse({ tripId: form.get("tripId"), ideaId: form.get("ideaId") ?? undefined });
   const intent = Intent.parse(form.get("intent"));
   const { ctx, requester } = await loadTripPage(tripId, `/trips/${tripId}/ideas`);
+  if (!(await consumeRateLimit(ctx.db, RATE_RULES.ideaChange, requester.userId, ctx.now())).allowed) return { ...NOTHING, error: TOO_MANY };
   const visibility = z.enum(["everyone", "only_me", "specific"]).optional().parse(text(form, "visibility"));
   const sharing = visibility ? { visibility, visibleToUserIds: visibility === "specific" ? form.getAll("visibleTo").filter((v): v is string => typeof v === "string") : [] } : {};
   const fields = { title: text(form, "title") ?? "", where: typed(form, "where"), note: typed(form, "note"), ...sharing };

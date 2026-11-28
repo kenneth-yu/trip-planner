@@ -31,24 +31,6 @@ The first real user is a two person trip: New York, Tokyo, Hong Kong, Shenzhen a
 * **No notifications in v1.** No email, push or SMS reminders.
 * **Imports never overwrite silently.** Everything imported goes to the review inbox first.
 
-## Stack (defaults, ask before changing)
+## The checks
 
-* Next.js (App Router) with TypeScript, strict mode
-* Postgres, with Drizzle ORM and migrations checked in
-* Auth.js with Google, Apple and email magic link sign in. No passwords.
-* Luxon for all time zone math (or Temporal if the polyfill is stable when you start). No manual offset arithmetic anywhere.
-* An airport to time zone lookup from a maintained dataset (IATA code to IANA zone), not a hand typed list
-* Plain CSS modules or Tailwind, whichever keeps the design rules in `docs/DESIGN.md` easiest to follow. No component library that brings its own look.
-* Installable as a PWA (manifest plus icons). No offline sync in v1.
-* Vitest for unit tests, Playwright for a handful of end to end flows
-
-## How to work
-
-* Build one phase at a time from `docs/PHASES.md`. A phase is done only when its acceptance checks pass against the fixture trip.
-* Time logic and permission logic get unit tests before UI is built on them. Use the fixture trip's flights as test cases; `docs/TIME_RULES.md` lists the expected outputs.
-* Design the phone layout first, then widen it for desktop.
-* Use real content from the fixture in every screen and story. No lorem ipsum, no "Event title" placeholders.
-* Keep UI copy short and plain. Sentence case. No emoji in the interface.
-* When a rule in these docs seems wrong or a case is not covered, stop and ask rather than inventing behavior.
-* Follow `docs/ENGINEERING.md`. In short: fix root causes, no comments in code, never swallow errors, no type casts or non-null assertions, respect layer boundaries, prove every feature with a test, run the app and show evidence, and keep `docs/ARCHITECTURE.md` and `docs/FEATURES.md` current in the same change.
-* Run `npm run check` before calling anything done. A lint error's message says what to do instead; do it rather than working around the rule.
+Rules that can be checked are checks, not prose. `npm run check` (types, lint, tests) enforces code style, layer boundaries, UI copy (sentence case, no emoji, no filler words) and that every route handler and server action is rate limited or has a reasoned exemption. `npm run e2e` enforces accessibility on every page of the demo trips (axe, 44 px tap targets, 3:1 form borders). CI also fails a branch that lacks commits main's tooling needs. Each failure says what to do instead; do that rather than working around it. `docs/ENGINEERING.md` lists every check and the rule behind it, and holds the stack defaults and how to work.

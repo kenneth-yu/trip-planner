@@ -39,6 +39,18 @@ flowchart LR
   M --> NEXT[Next wave]
 ```
 
+## Flow rules
+
+The owner's rules for keeping work moving:
+
+- No engineer sits idle. When one finishes, the architect hands over the next ready package straight away.
+- An engineer has at most 2 open PRs. Send-backs on an open PR come before starting new work.
+- All reviews start when a PR is open and CI is green. The UX lead's verdict comes after both UX passes (phone and desktop).
+- A small re-review (3 points or fewer) is done from the diff within one turn, not as a fresh full review.
+- Specs run one wave ahead: the UX lead writes a spec for a package before its engineer starts.
+- Merge each PR when it is ready. Open PRs then merge main into their branch.
+- At most 6 engineers work at once.
+
 ## A pull request's life
 
 ```mermaid
@@ -54,6 +66,13 @@ stateDiagram-v2
   ReadyToMerge --> Building: conflict or failure the architect sends back
   Merged --> [*]
 ```
+
+## Architect checklist before a merge
+
+- [ ] CI is green, including the accessibility gate in the e2e job.
+- [ ] No open critical or high security finding and no UX lead send back.
+- [ ] A reviewer finding repeated twice must come with a new check (lint rule, test, type or CI job) that catches it, with a message that says what to do instead, and the existing examples removed. Prose in docs/ENGINEERING.md alone does not close it.
+- [ ] Any prose rule that a check now enforces is deleted from the docs and replaced by a pointer to the check.
 
 ### Draft pull requests and CI
 
