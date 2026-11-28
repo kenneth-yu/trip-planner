@@ -25,6 +25,7 @@ export interface ItemFormProps {
   travelers: { id: string; name: string }[];
   members: { userId: string; name: string }[];
   initial?: ItemFormValues;
+  defaultBooked?: boolean;
   action: (prev: FormState, form: FormData) => Promise<FormState>;
   hint: (request: { tripId: string; kind: HintKind; text: string; date?: string }) => Promise<PlaceHint>;
   submitLabel?: string;
@@ -120,7 +121,7 @@ export function ItemForm(props: ItemFormProps): React.JSX.Element {
 }
 
 function ItemFormBody(props: ItemFormProps & { id: string }): React.JSX.Element {
-  const { id, tripId, travelers, members, initial, action, hint, canChangeSharing, backHref, submission, editing } = props;
+  const { id, tripId, travelers, members, initial, defaultBooked, action, hint, canChangeSharing, backHref, submission, editing } = props;
   const [state, formAction, pending] = useActionState<FormState, FormData>(action, emptyFormState);
   const [live, setLive] = useState(() => liveFrom(initial, state.values));
   const [hints, setHints] = useState<Record<string, PlaceHint>>({});
@@ -233,6 +234,8 @@ function ItemFormBody(props: ItemFormProps & { id: string }): React.JSX.Element 
     }
   }
 
+  const signalsBooked = Boolean(live.confirmationCode || live.flightNumber);
+  const booked = live.booked ? live.booked !== "no" : signalsBooked || (defaultBooked ?? true);
   const flightNumber = live.flightNumber ?? "";
   const needsAirline = type === "flight" && /^[A-Z0-9]{2}\s?\d{1,4}$/i.test(flightNumber) && !airlineFor(flightNumber);
   const checkInEstimated = (live.checkInEdited ?? "0") !== "1";
@@ -273,9 +276,21 @@ function ItemFormBody(props: ItemFormProps & { id: string }): React.JSX.Element 
       </fieldset>
       )}
 
+      <fieldset className={styles.group}>
+        <legend>Is it booked?</legend>
+        <label className={styles.choice}>
+          <input type="radio" name="booked" value="yes" checked={booked} onChange={() => setLive((l) => ({ ...l, booked: "yes" }))} />
+          <span>Yes</span>
+        </label>
+        <label className={styles.choice}>
+          <input type="radio" name="booked" value="no" checked={!booked} onChange={() => setLive((l) => ({ ...l, booked: "no" }))} />
+          <span>Not yet</span>
+        </label>
+      </fieldset>
+
       {type === "flight" && (
         <>
-          <Field label="Flight number" name="flightNumber" error={errors.flightNumber}>
+          <Field label="Flight number" name="flightNumber" error={errors.flightNumber} note={booked ? undefined : "Optional."}>
             <input {...control("flightNumber")} placeholder="NH 159" autoComplete="off" autoCapitalize="characters" spellCheck={false} />
           </Field>
           {needsAirline && (
@@ -296,10 +311,23 @@ function ItemFormBody(props: ItemFormProps & { id: string }): React.JSX.Element 
             <Field label={timeLabel("Departs", "from", "to")} name="departs" error={errors.departs}>
               <input {...control("departs")} type="time" />
             </Field>
-            <Field label={timeLabel("Arrives", "to", "from")} name="arrives" error={errors.arrives} note={overnight}>
+            <Field label={timeLabel("Arrives", "to", "from")} name="arrives" error={errors.arrives} note={overnight ?? (booked ? undefined : "Or leave it blank and say how long the flight takes.")}>
               <input {...control("arrives")} type="time" />
             </Field>
           </div>
+          {!booked && (
+            <fieldset className={styles.group}>
+              <legend>About how long?</legend>
+              <div className={styles.pair}>
+                <Field label="Hours" name="hours" error={errors.hours}>
+                  <input {...control("hours")} inputMode="numeric" autoComplete="off" />
+                </Field>
+                <Field label="Minutes" name="minutes" error={errors.minutes}>
+                  <input {...control("minutes")} inputMode="numeric" autoComplete="off" />
+                </Field>
+              </div>
+            </fieldset>
+          )}
         </>
       )}
 
@@ -390,7 +418,7 @@ function ItemFormBody(props: ItemFormProps & { id: string }): React.JSX.Element 
       {detailsOpen ? (
         <section className={styles.details} aria-label="More details">
           <h2 className={styles.detailsTitle}>More details</h2>
-          {editing && travelers.length > 1 ? (
+          {!booked ? null : editing && travelers.length > 1 ? (
             <fieldset className={styles.group}>
               <legend>Confirmation code</legend>
               <p className={styles.note}>Fill in one if you share a code.</p>
@@ -405,7 +433,7 @@ function ItemFormBody(props: ItemFormProps & { id: string }): React.JSX.Element 
               <input {...control("confirmationCode")} autoComplete="off" autoCapitalize="characters" spellCheck={false} inputMode="text" />
             </Field>
           )}
-          {type === "flight" && travelers.length > 0 && (
+          {booked && type === "flight" && travelers.length > 0 && (
             <fieldset className={styles.group}>
               <legend>Seats</legend>
               {travelers.map((t) => (
@@ -415,7 +443,7 @@ function ItemFormBody(props: ItemFormProps & { id: string }): React.JSX.Element 
               ))}
             </fieldset>
           )}
-          {editing && (
+          {booked && editing && (
             <Field label="Booking reference" name="bookingReference" error={errors.bookingReference}>
               <input {...control("bookingReference")} autoComplete="off" autoCapitalize="characters" spellCheck={false} inputMode="text" />
             </Field>
@@ -423,13 +451,15 @@ function ItemFormBody(props: ItemFormProps & { id: string }): React.JSX.Element 
           <Field label="Phone" name="phone" error={errors.phone}>
             <input {...control("phone")} type="tel" inputMode="tel" autoComplete="off" />
           </Field>
-          <Field label="Price" name="price" error={errors.price}>
-            <input {...control("price")} inputMode="decimal" placeholder="$240" autoComplete="off" />
-          </Field>
+          {booked && (
+            <Field label="Price" name="price" error={errors.price}>
+              <input {...control("price")} inputMode="decimal" placeholder="$240" autoComplete="off" />
+            </Field>
+          )}
           <Field label="Notes" name="notes" error={errors.notes}>
             <textarea id={`${id}-notes`} name="notes" defaultValue={live.notes ?? ""} rows={3} maxLength={4000} />
           </Field>
-          {!editing && (type === "flight" || type === "stay") && (
+          {booked && !editing && (type === "flight" || type === "stay") && (
           <div className={styles.pair}>
             <Field label="Free cancellation until" name="deadlineDate" error={errors.deadlineDate}>
               <input {...control("deadlineDate")} type="date" />
