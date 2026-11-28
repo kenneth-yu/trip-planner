@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { buildInput, changesApp, evaluate, GateDataError, HOLD_LABELS, isWorkflowRefusal, lastCodeCommit, semverOf, WORKFLOW_REASON } from "./merge-gate-lib.mjs";
+import { buildInput, changesApp, evaluate, GateDataError, HOLD_LABELS, isWorkflowRefusal, lastCodeCommit, pushStart, semverOf, WORKFLOW_REASON } from "./merge-gate-lib.mjs";
 
 const REPO = "kenneth-yu/trip-planner";
 const MARKER = "<!-- merge-gate -->";
@@ -90,11 +90,6 @@ function checkRunPages(sha) {
   return { total: pages.length > 0 ? pages[0].total : null, runs: pages.flatMap((page) => (Array.isArray(page.runs) ? page.runs : [])) };
 }
 
-function firstStart(runs) {
-  const starts = runs.map((run) => Date.parse(run.started_at)).filter((value) => Number.isFinite(value));
-  return starts.length > 0 ? Math.min(...starts) : null;
-}
-
 let whoAmI = null;
 
 function me() {
@@ -123,7 +118,7 @@ function gather(number) {
   }
   const normalized = commits.map((c) => ({ sha: c.sha, parents: c.parents.map((p) => p.sha) }));
   const lastCode = lastCodeCommit(normalized, verifiedMerges);
-  const lastCodePushedAt = lastCode ? firstStart(lastCode.sha === head ? checkRuns : checkRunPages(lastCode.sha).runs) : null;
+  const lastCodePushedAt = lastCode ? pushStart(normalized, lastCode.sha, (sha) => (sha === head ? checkRuns : checkRunPages(sha).runs)) : null;
   return { pr, files, comments, commits, checkRuns, checkRunsTotal, compare, verifiedMerges, lastCodePushedAt };
 }
 
