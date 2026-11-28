@@ -126,6 +126,24 @@ describe("merge-gate.mjs against a fake GitHub", () => {
     expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/comments`) && c.includes("GATE_TOKEN secret is not set") && c.includes("does not fall back"))).toBe(true);
   });
 
+  it("stops a sweep at the first missing token, without looking at the second pull request", () => {
+    const harness = makeHarness({ pullRefs: [7, 8] });
+    harness.setRoutes([{ match: "pulls?state=open", out: "7\n8\n" }, ...routesFor({ number: 7 }), ...routesFor({ number: 8 })]);
+    const result = harness.run(process.execPath, [tool, "--sweep"], { ...actions, GATE_TOKEN: "" });
+    expect(result.status).toBe(1);
+    const calls = harness.calls();
+    expect(calls.filter((c) => c.includes(`-X POST repos/${REPO}/issues/7/comments`) && c.includes("GATE_TOKEN secret is not set"))).toHaveLength(1);
+    expect(calls.some((c) => c.includes("/pulls/8") || c.includes("issues/8/"))).toBe(false);
+  });
+
+  it("exits 1 for a single pull request when GATE_TOKEN is missing", () => {
+    const harness = makeHarness({ pullRefs: [7] });
+    harness.setRoutes(routesFor({ number: 7 }));
+    const result = harness.run(process.execPath, [tool, "7"], { ...actions, GATE_TOKEN: "" });
+    expect(result.status).toBe(1);
+    expect(harness.calls().some((c) => c.includes("/pulls/7/merge") || c.includes("update-branch"))).toBe(false);
+  });
+
   it("takes the gate token out of the environment, so no gh call sees it", () => {
     const { calls } = sweep([7, 8], [{ number: 7, behindBy: 1 }, { number: 8 }]);
     expect(calls.length).toBeGreaterThan(0);
@@ -220,7 +238,7 @@ describe("merge-gate.mjs against a fake GitHub", () => {
     expect(result.status).toBe(0);
     expect(calls.filter((c) => c.includes("update-branch"))).toHaveLength(1);
     expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/labels`) && c.includes("labels[]=needs-owner"))).toBe(true);
-    expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/comments`) && c.includes("touches workflow files: needs the owner to merge"))).toBe(true);
+    expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/comments`) && c.includes("touches workflow files: needs the owner to merge") && !c.includes("Someone needs to look at it"))).toBe(true);
   });
 
   it("still applies the needs-owner label when the comment cannot be written", () => {
