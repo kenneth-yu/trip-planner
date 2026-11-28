@@ -50,7 +50,7 @@ describe("quick add form to ItemInput", () => {
     const p = inputToProposal(r.input, trip.travelers, places);
     const expected = fixtureItem(trip, byFlight("NH159"));
     expect([p.start, p.end]).toEqual([expected.start, expected.end]);
-    expect(r.sharing).toEqual({ visibility: "everyone", visibleToUserIds: [], showAsBusy: false });
+    expect(r.sharing).toEqual({ visibility: "everyone", visibleToUserIds: [], showAsBusy: false, booked: true });
   });
 
   it("accepts a city with one airport and an airport code in parentheses", () => {
@@ -260,7 +260,7 @@ describe("quick add form errors", () => {
 describe("who can see an item", () => {
   it("only me, with show as busy", () => {
     const r = parseItemForm([...nh159, ["visibility", "only_me"], ["showAsBusy", "on"]]);
-    expect(r.ok && r.sharing).toEqual({ visibility: "only_me", visibleToUserIds: [], showAsBusy: true });
+    expect(r.ok && r.sharing).toEqual({ visibility: "only_me", visibleToUserIds: [], showAsBusy: true, booked: true });
   });
 
   it("ignores show as busy for everyone", () => {
@@ -270,7 +270,7 @@ describe("who can see an item", () => {
 
   it("pick people", () => {
     const r = parseItemForm([...nh159, ["visibility", "specific"], ["person", USERS.jacob.id]]);
-    expect(r.ok && r.sharing).toEqual({ visibility: "specific", visibleToUserIds: [USERS.jacob.id], showAsBusy: false });
+    expect(r.ok && r.sharing).toEqual({ visibility: "specific", visibleToUserIds: [USERS.jacob.id], showAsBusy: false, booked: true });
   });
 });
 

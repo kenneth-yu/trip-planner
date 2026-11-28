@@ -152,7 +152,7 @@ describe("what a visitor gets", () => {
     const view = await loadViewLinkTrip(ctx, token, "UTC");
     const first = view?.items[0];
     expect(Object.keys(first ?? {}).sort()).toEqual(
-      ["createdAt", "createdBy", "deadlines", "end", "endIsEstimated", "flags", "flight", "id", "location", "notes", "private", "showAsBusy", "start", "startIsEstimated", "status", "stay", "title", "transfer", "travelerIds", "tripId", "type", "updatedAt", "updatedBy", "visibility", "visibleToUserIds"]
+      ["booked", "createdAt", "createdBy", "deadlines", "end", "endIsEstimated", "flags", "flight", "id", "location", "notes", "private", "showAsBusy", "start", "startIsEstimated", "status", "stay", "title", "transfer", "travelerIds", "tripId", "type", "updatedAt", "updatedBy", "visibility", "visibleToUserIds"]
         .sort(),
     );
     expect(first?.private).toEqual([]);

@@ -72,6 +72,7 @@ function changedFields(before: Item | null, after: Item | null, canSeeSensitive:
   if (!same(before.transfer, after.transfer)) names.push("transfer details");
   if (!same(before.travelerIds, after.travelerIds)) names.push("who it is for");
   if (!same([before.visibility, before.visibleToUserIds, before.showAsBusy], [after.visibility, after.visibleToUserIds, after.showAsBusy])) names.push("who can see it");
+  if (before.booked !== after.booked) names.push("whether it is booked");
   if (!same(before.status, after.status)) names.push("status");
   if (!same(before.deadlines, after.deadlines)) (canSeeDeadlines ? names : hidden).push("deadlines");
   if (!same(before.private, after.private) || !same(before.notes, after.notes)) (canSeeSensitive ? names : hidden).push("booking details");
@@ -79,7 +80,7 @@ function changedFields(before: Item | null, after: Item | null, canSeeSensitive:
 }
 
 function wouldChangeWhoSees(now: Item, target: Item): boolean {
-  return now.visibility !== target.visibility || !same(now.visibleToUserIds, target.visibleToUserIds) || now.showAsBusy !== target.showAsBusy;
+  return now.visibility !== target.visibility || !same(now.visibleToUserIds, target.visibleToUserIds) || now.showAsBusy !== target.showAsBusy || now.booked !== target.booked;
 }
 
 function viaLabel(via: string): string | null {

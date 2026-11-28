@@ -219,3 +219,7 @@
   font-size: var(--size-small);
   text-decoration: none;
 }
+
+.draft {
+  border: 1px dashed currentColor;
+}
