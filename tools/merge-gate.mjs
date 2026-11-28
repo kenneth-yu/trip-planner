@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { buildInput, changesApp, evaluate, GateDataError, HOLD_LABELS, isWorkflowRefusal, lastCodeCommit, pushStart, semverOf, WORKFLOW_REASON } from "./merge-gate-lib.mjs";
 
 const REPO = "kenneth-yu/trip-planner";
@@ -75,12 +76,53 @@ function git(parameters) {
   return execFileSync("git", parameters, { encoding: "utf8", timeout: 120000 }).trim();
 }
 
-function mergeAddsNothing(commit) {
+function isAncestorOfMain(sha) {
   try {
-    const fresh = git(["merge-tree", "--write-tree", "--no-messages", commit.parents[0], commit.parents[1]]).split("\n")[0];
-    return fresh === git(["rev-parse", `${commit.sha}^{tree}`]);
+    git(["merge-base", "--is-ancestor", sha, "origin/main"]);
+    return true;
   } catch (error) {
     if (error instanceof Error && "status" in error) return false;
+    throw error;
+  }
+}
+
+const ownDiffs = new Map();
+
+function ownDiff(sha) {
+  if (ownDiffs.has(sha)) return ownDiffs.get(sha);
+  let digest = null;
+  try {
+    const base = git(["merge-base", "origin/main", sha]);
+    const patch = git(["diff", "-U0", "--text", "--no-color", "--no-ext-diff", "--no-renames", base, sha]);
+    const kept = patch.split("\n").filter((line) => line.startsWith("diff --git") || line.startsWith("+") || line.startsWith("-"));
+    digest = createHash("sha256").update(kept.join("\n")).digest("hex");
+  } catch (error) {
+    if (!(error instanceof Error && "status" in error)) throw error;
+  }
+  ownDiffs.set(sha, digest);
+  return digest;
+}
+
+function mergeOutput(commit) {
+  try {
+    return git(["merge-tree", "--write-tree", "--name-only", "--no-messages", commit.parents[0], commit.parents[1]]);
+  } catch (error) {
+    if (error instanceof Error && "status" in error && error.status === 1 && typeof error.stdout === "string") return error.stdout.trim();
+    if (error instanceof Error && "status" in error) return null;
+    throw error;
+  }
+}
+
+function resolvesOnly(commit) {
+  const output = mergeOutput(commit);
+  if (output === null) return null;
+  const [tree, ...names] = output.split("\n");
+  const conflicted = new Set(names.filter((name) => name.length > 0));
+  try {
+    const differing = git(["diff-tree", "-r", "--name-only", "--no-renames", tree, `${commit.sha}^{tree}`]).split("\n").filter((name) => name.length > 0);
+    return differing.every((name) => conflicted.has(name)) ? { conflicted: conflicted.size > 0 } : null;
+  } catch (error) {
+    if (error instanceof Error && "status" in error) return null;
     throw error;
   }
 }
@@ -112,14 +154,20 @@ function gather(number) {
   const compare = api(`repos/${REPO}/compare/main...${head}`);
   git(["fetch", "-q", "origin", "main", `pull/${number}/head`]);
   const verifiedMerges = new Set();
+  const conflictMerges = new Set();
   for (const commit of commits.filter((c) => c.parents.length === 2)) {
-    const status = api(`repos/${REPO}/compare/${commit.parents[1].sha}...main`).status;
-    if ((status === "ahead" || status === "identical") && mergeAddsNothing({ sha: commit.sha, parents: commit.parents.map((p) => p.sha) })) verifiedMerges.add(commit.sha);
+    if (!isAncestorOfMain(commit.parents[1].sha)) continue;
+    const parents = commit.parents.map((p) => p.sha);
+    const resolution = resolvesOnly({ sha: commit.sha, parents });
+    if (resolution === null) continue;
+    const unchanged = ownDiff(commit.sha) !== null && ownDiff(commit.sha) === ownDiff(parents[0]);
+    if (!resolution.conflicted || unchanged) verifiedMerges.add(commit.sha);
+    else conflictMerges.add(commit.sha);
   }
   const normalized = commits.map((c) => ({ sha: c.sha, parents: c.parents.map((p) => p.sha) }));
   const lastCode = lastCodeCommit(normalized, verifiedMerges);
   const lastCodePushedAt = lastCode ? pushStart(normalized, lastCode.sha, (sha) => (sha === head ? checkRuns : checkRunPages(sha).runs)) : null;
-  return { pr, files, comments, commits, checkRuns, checkRunsTotal, compare, verifiedMerges, lastCodePushedAt };
+  return { pr, files, comments, commits, checkRuns, checkRunsTotal, compare, verifiedMerges, conflictMerges, lastCodePushedAt };
 }
 
 function commentAuthor() {
@@ -143,14 +191,18 @@ function say(message) {
   process.stdout.write(`${message}\n`);
 }
 
-function processPullRequest(number) {
+function processPullRequest(number, defer = false) {
   const callsBefore = apiCalls;
-  const outcome = evaluateAndAct(number);
+  const outcome = evaluateAndAct(number, defer);
   say(`#${number}: ${apiCalls - callsBefore} API calls`);
   return outcome;
 }
 
-function evaluateAndAct(number) {
+function checksRunning(checkRuns) {
+  return checkRuns.some((run) => run.appSlug === "github-actions" && run.status !== "completed");
+}
+
+function evaluateAndAct(number, defer) {
   let raw;
   let input;
   try {
@@ -165,7 +217,8 @@ function evaluateAndAct(number) {
   }
   const verdict = evaluate(input);
   const branch = raw.pr.head.ref;
-  if (!verdict.ok) {
+  const updatable = verdict.behind && verdict.approved;
+  if (!verdict.ok && !updatable) {
     say(`#${number}: blocked\n${verdict.reasons.map((r) => `  - ${r}`).join("\n")}`);
     if (!dryRun) {
       upsertComment(number, ["Not merging yet. What is missing:", "", ...verdict.reasons.map((r) => `- ${r}`)]);
@@ -173,22 +226,35 @@ function evaluateAndAct(number) {
     }
     return "blocked";
   }
-  const paths = input.files.flatMap((f) => [f.filename, f.previousFilename].filter((p) => typeof p === "string"));
   const gate = gateToken();
   if (verdict.behind) {
-    say(`#${number}: passes, but the branch is behind main`);
-    if (dryRun) return "updated";
-    if (!gate.ok) return missingToken(number);
-    try {
-      gh(["api", "-X", "PUT", `repos/${REPO}/pulls/${number}/update-branch`, "-f", `expected_head_sha=${raw.pr.head.sha}`], gate.token);
-    } catch (error) {
-      return refused(number, "update the branch with main", error, input.labels);
+    if (checksRunning(input.checkRuns)) {
+      say(`#${number}: behind main, but its checks are running, so it is not updated again`);
+      return "waiting";
     }
-    upsertComment(number, ["Everything else passes. The branch was behind main, so the gate updated it. The checks run again, and it merges once they pass."]);
-    return "updated";
+    say(verdict.ok ? `#${number}: passes, but the branch is behind main` : `#${number}: approved, but the branch is behind main and its checks have not passed, so it is updated to run them again`);
+    if (dryRun) return "updated";
+    const update = () => {
+      if (!gate.ok) return missingToken(number);
+      try {
+        gh(["api", "-X", "PUT", `repos/${REPO}/pulls/${number}/update-branch`, "-f", `expected_head_sha=${raw.pr.head.sha}`], gate.token);
+      } catch (error) {
+        return refused(number, "update the branch with main", error, input.labels);
+      }
+      upsertComment(number, ["The reviews pass. The branch was behind main, so the gate updated it. The checks run again, and it merges once they pass."]);
+      say(`#${number}: updated`);
+      return "updated";
+    };
+    return defer ? { status: "behind", number, run: update } : update();
   }
   say(`#${number}: passes at ${raw.pr.head.sha}`);
   if (dryRun) return "merged";
+  const merge = () => mergeNow(number, raw, input, gate, branch);
+  return defer ? { status: "ready", number, run: merge } : merge();
+}
+
+function mergeNow(number, raw, input, gate, branch) {
+  const paths = input.files.flatMap((f) => [f.filename, f.previousFilename].filter((p) => typeof p === "string"));
   if (!gate.ok) return missingToken(number);
   const mergeArguments = ["api", "-X", "PUT", `repos/${REPO}/pulls/${number}/merge`, "-f", "merge_method=merge", "-f", `sha=${raw.pr.head.sha}`];
   if (changesApp(paths)) mergeArguments.push("-f", `commit_message=Semver: ${semverOf(input.body).level}`);
@@ -316,15 +382,30 @@ function main() {
     process.stdout.write(`::warning::Merge gate skipped: ${budget.remaining} API calls left, below the ${RESERVE} it needs. It resets at ${budget.resetsAt}.\n`);
     return 0;
   }
+  const pending = [];
   for (const { number, labels } of open) {
     const held = HOLD_LABELS.filter((label) => labels.includes(label));
     if (held.length > 0) {
       say(`#${number}: skipped, it carries the ${held.join(" and ")} label`);
       continue;
     }
-    const outcome = processPullRequest(number);
-    if (outcome === "merged" || outcome === "updated") break;
+    const outcome = processPullRequest(number, true);
+    if (typeof outcome === "object") pending.push(outcome);
+    else if (outcome === "missing-token") return 1;
+  }
+  const act = (item) => {
+    const callsBefore = apiCalls;
+    const outcome = item.run();
+    say(`#${item.number}: ${apiCalls - callsBefore} API calls to ${item.status === "ready" ? "merge" : "update"}`);
+    return outcome;
+  };
+  for (const ready of pending.filter((item) => item.status === "ready")) {
+    const outcome = act(ready);
     if (outcome === "missing-token") return 1;
+    if (outcome === "merged") break;
+  }
+  for (const behind of pending.filter((item) => item.status === "behind")) {
+    if (act(behind) === "missing-token") return 1;
   }
   return 0;
 }
