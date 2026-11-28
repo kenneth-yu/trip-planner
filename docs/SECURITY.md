@@ -13,6 +13,7 @@ This app holds personal data that can hurt people if it leaks: who is travelling
 | Imported raw records (emails, calendar events) | imported_items.raw | May contain everything above and more | Editors of the trip |
 | Google refresh tokens | google_connections | Access to the user's Google calendars the app created | Nobody; encrypted at rest |
 | Session, invite, view link, assistant tokens | cookies, hashed columns | Account and trip access | Nobody; only hashes are stored |
+| Travel tip settings (tips on, kinds off, intro seen) | users | Preferences only, no trip data; read and written only for the signed in person, in their data export, deleted with the account | The person themselves |
 | Activity log | activity | Before and after copies of items | Filtered by the same projection as items |
 
 ## Rules

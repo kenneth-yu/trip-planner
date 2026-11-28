@@ -5,6 +5,8 @@ import styles from "./account.module.css";
 import { requestContext } from "@/server/app-context";
 import { requireUser } from "@/server/web";
 import { hasSharedSpecificItems, tripsBlockingDeletion } from "@/server/services/deletion-service";
+import { loadTipPreferences } from "@/server/services/preference-service";
+import { TravelTipsSection } from "./travel-tips-section";
 import { DeleteAccountSection } from "./delete-account-section";
 import { ExportButton } from "./export-button";
 
@@ -13,6 +15,7 @@ export const metadata: Metadata = { title: "Your account", robots: { index: fals
 export default async function AccountPage() {
   const user = await requireUser("/account");
   const ctx = await requestContext();
+  const tips = await loadTipPreferences(ctx, user.id);
   const blocking = await tripsBlockingDeletion(ctx.db, user.id);
   const shared = blocking.length === 0 && (await hasSharedSpecificItems(ctx, user.id));
   return (
@@ -25,6 +28,7 @@ export default async function AccountPage() {
       <h1 className={pageStyles.title}>Your account</h1>
       <p>Signed in as {user.name}</p>
       <p className={pageStyles.muted}>{user.email}</p>
+      <TravelTipsSection tipsOn={tips.tipsOn} kindsOff={tips.kindsOff} />
       <section className={styles.section}>
         <h2 className={pageStyles.sectionTitle}>Your data</h2>
         <p>Download a copy of everything the app holds about you: your trips as you see them, including the codes and seats you can see.</p>
