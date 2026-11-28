@@ -39,7 +39,7 @@ function everyText(plan: SleepPlan): string[] {
   return [
     ...plan.stretches.flatMap((s) => [s.title, s.datesLine, s.arrivalLine ?? "", s.departureLine ?? "", ...s.warnings]),
     ...plan.planeNights.flatMap((p) => [p.line, p.explanation]),
-    ...(plan.summary ? [plan.summary.heading, ...plan.summary.stretchLines.map((l) => l.line), ...plan.summary.skippedLines] : []),
+    ...(plan.summary ? [plan.summary.heading, ...plan.summary.stretchLines.map((l) => l.line), ...plan.summary.hints.flatMap((h) => [h.text, h.why]), ...plan.summary.nightNotes] : []),
   ];
 }
 
@@ -65,9 +65,16 @@ describe("the owner's worked example: Jan 15 to 27, 2027, in Hong Kong", () => {
       checkOut: "2027-01-27",
       cities: ["Hong Kong"],
       heading: "You need a place to stay: 11 nights",
-      stretchLines: [{ city: "Hong Kong", checkIn: "2027-01-16", checkOut: "2027-01-27", line: "Hong Kong: check in Sat Jan 16, check out Wed Jan 27" }],
-      skippedLines: [
-        "No bed needed on Fri Jan 15: you're on the plane overnight and land Sat Jan 16 at about 2:00pm Hong Kong time.",
+      stretchLines: [{ city: "Hong Kong", checkIn: "2027-01-16", checkOut: "2027-01-27", line: "Check in Sat Jan 16 · Check out Wed Jan 27" }],
+      hints: [
+        {
+          text: "Not Fri Jan 15: you're on the plane.",
+          why: "You leave New York Fri Jan 15 at 9:00am and land in Hong Kong Sat Jan 16 at about 2:00pm Hong Kong time (1:00am New York). The night of Fri Jan 15 is spent on the plane.",
+        },
+      ],
+      moreHints: 0,
+      nightNotes: [
+        "You leave New York Fri Jan 15 at 9:00am and land in Hong Kong Sat Jan 16 at about 2:00pm Hong Kong time (1:00am New York). The night of Fri Jan 15 is spent on the plane.",
         "Coming home, you land in New York on Wed Jan 27 at about 6:30pm, the same day you leave Hong Kong. No night on the plane.",
       ],
     });
@@ -102,7 +109,8 @@ describe("the owner's worked example: Jan 15 to 27, 2027, in Hong Kong", () => {
   it("drops the word about when the arrival time is not an estimate", () => {
     const exact = sleepPlan(viewOf(worked()));
     expect(onlyStretch(exact).arrivalLine).toBe("You land Sat Jan 16, 2:00pm Hong Kong time (1:00am New York).");
-    expect(exact.summary?.skippedLines[0]).toBe("No bed needed on Fri Jan 15: you're on the plane overnight and land Sat Jan 16 at 2:00pm Hong Kong time.");
+    expect(exact.summary?.hints[0].why).toContain("land in Hong Kong Sat Jan 16 at 2:00pm Hong Kong time");
+    expect(exact.summary?.hints[0].why).not.toContain("about");
   });
 
   it("names every weekday against the January 2027 calendar", () => {
@@ -122,7 +130,7 @@ describe("shrinking when a stay covers some nights", () => {
     const part = { input: { ...hongKongStay.input, checkOutDate: "2027-01-21" } };
     const plan = sleepPlan(viewOf(trip([outbound("2027-01-15T09:00", "2027-01-16T14:00"), part, inbound]), true));
     expect(plan.summary?.heading).toBe("You need a place to stay: 6 nights");
-    expect(plan.summary?.stretchLines[0].line).toBe("Hong Kong: check in Thu Jan 21, check out Wed Jan 27");
+    expect(plan.summary?.stretchLines[0].line).toBe("Check in Thu Jan 21 · Check out Wed Jan 27");
   });
 
   it("disappears when every night is covered, leaving no summary and no stretch", () => {
@@ -147,7 +155,7 @@ describe("arrival that crosses midnight", () => {
 
   it("no longer counts that night as on the plane", () => {
     expect(plan.planeNights.map((p) => p.night)).toEqual(["2027-01-15"]);
-    expect(plan.summary?.skippedLines[0]).toContain("No bed needed on Fri Jan 15:");
+    expect(plan.summary?.hints[0].text).toBe("Not Fri Jan 15: you're on the plane.");
   });
 
   it("keeps at most two warnings, arrival first", () => {
@@ -174,29 +182,52 @@ describe("leaving very early", () => {
 });
 
 describe("crossing the date line", () => {
-  it("westward over two calendar dates, names both lost nights in one line", () => {
-    const plan = sleepPlan(viewOf(trip([flight("LAX", "SYD", "2027-01-15T22:00", "2027-01-17T08:30"), flight("SYD", "LAX", "2027-01-25T10:00", "2027-01-25T06:00", "QF12")]), true));
-    expect(plan.summary?.skippedLines[0]).toBe("No bed needed on Fri Jan 15 or Sat Jan 16: you cross the date line and land Sun Jan 17 at about 8:30am Sydney time.");
+  const west = () => sleepPlan(viewOf(trip([flight("LAX", "SYD", "2027-01-15T22:00", "2027-01-17T08:30"), flight("SYD", "LAX", "2027-01-25T10:00", "2027-01-25T06:00", "QF12")]), true));
+
+  it("westward over two calendar dates, one hint names both lost nights and Why? gives the sentence", () => {
+    const hint = west().summary?.hints[0];
+    expect(hint?.text).toBe("Not Fri Jan 15 or Sat Jan 16: you're on the plane.");
+    expect(hint?.why).toBe(
+      "You leave Los Angeles Fri Jan 15 at 10:00pm and land in Sydney Sun Jan 17 at about 8:30am Sydney time. Crossing the date line skips Sat Jan 16, so you spend the nights of Fri Jan 15 and Sat Jan 16 on the plane.",
+    );
   });
 
-  it("a day gained on the way home says there is no night on the plane", () => {
-    const plan = sleepPlan(viewOf(trip([flight("LAX", "SYD", "2027-01-15T22:00", "2027-01-17T08:30"), flight("SYD", "LAX", "2027-01-25T10:00", "2027-01-25T06:00", "QF12")]), true));
-    expect(plan.summary?.skippedLines.at(-1)).toBe("Coming home, you land in Los Angeles on Mon Jan 25 at about 6:00am, the same day you leave Sydney. No night on the plane.");
+  it("a day gained on the way home has no hint, only the Night by night line", () => {
+    const summary = west().summary;
+    expect(summary?.hints).toHaveLength(1);
+    expect(summary?.nightNotes.at(-1)).toBe("Coming home, you land in Los Angeles on Mon Jan 25 at about 6:00am, the same day you leave Sydney. No night on the plane.");
   });
 
-  it("a day gained away from home counts that night and names the city", () => {
+  it("a day gained away from home counts that night, with an Includes hint", () => {
     const plan = sleepPlan(viewOf(trip([flight("NRT", "HNL", "2027-01-15T20:00", "2027-01-15T09:00", "JL72"), flight("HNL", "NRT", "2027-01-20T12:00", "2027-01-21T16:00", "JL71")]), true));
-    expect(plan.summary?.skippedLines[0]).toBe("You land in Honolulu on Fri Jan 15 at about 9:00am, the same day you leave Tokyo, so you need a bed in Honolulu that night.");
+    expect(plan.summary?.hints[0]).toEqual({
+      text: "Includes Fri Jan 15: you land the same day you leave.",
+      why: "You leave Tokyo Fri Jan 15 at 8:00pm and land in Honolulu Fri Jan 15 at about 9:00am. You cross the date line, so you need a bed in Honolulu that night.",
+    });
   });
 
   it("landing on the calendar day before you left says so", () => {
     const plan = sleepPlan(viewOf(trip([flight("NRT", "HNL", "2027-01-15T08:00", "2027-01-14T21:00", "JL72"), flight("HNL", "NRT", "2027-01-20T12:00", "2027-01-21T16:00", "JL71")]), true));
-    expect(plan.summary?.skippedLines[0]).toBe("You land in Honolulu on Thu Jan 14, the day before you left Tokyo by the calendar, so you need a bed there from the night of Thu Jan 14.");
+    expect(plan.summary?.hints[0]).toEqual({
+      text: "Includes Thu Jan 14: you land the day before you left.",
+      why: "You leave Tokyo Fri Jan 15 at 8:00am and land in Honolulu Thu Jan 14 at about 9:00pm Honolulu time. Crossing the date line puts you a day back, so you need a bed there from the night of Thu Jan 14.",
+    });
   });
 
   it("a short flight inside one date says nothing", () => {
     const plan = sleepPlan(viewOf(trip([flight("JFK", "LHR", "2027-01-15T22:00", "2027-01-16T10:00", "BA112"), flight("LHR", "JFK", "2027-01-20T10:00", "2027-01-20T10:30", "BA117")])));
-    expect(plan.summary?.skippedLines.some((l) => l.includes("Coming home"))).toBe(false);
+    expect(plan.summary?.nightNotes.some((l) => l.includes("Coming home"))).toBe(false);
+  });
+
+  it("shows at most two hints and counts the rest", () => {
+    const flights = [
+      flight("LAX", "SYD", "2027-01-15T22:00", "2027-01-17T08:30", "QF11"),
+      flight("SYD", "AKL", "2027-01-20T09:00", "2027-01-21T12:00", "NZ100"),
+      flight("AKL", "HNL", "2027-01-23T08:00", "2027-01-22T21:00", "NZ101"),
+    ];
+    const plan = sleepPlan(viewOf(trip(flights), true));
+    expect((plan.summary?.hints.length ?? 0) + (plan.summary?.moreHints ?? 0)).toBeGreaterThan(2);
+    expect(plan.summary?.hints.length).toBeLessThanOrEqual(2);
   });
 });
 

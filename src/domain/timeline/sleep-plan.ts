@@ -90,7 +90,14 @@ export interface SleepSummary {
   cities: string[];
   heading: string;
   stretchLines: { city: string; checkIn: string; checkOut: string; line: string }[];
-  skippedLines: string[];
+  hints: NightHint[];
+  moreHints: number;
+  nightNotes: string[];
+}
+
+export interface NightHint {
+  text: string;
+  why: string;
 }
 
 const LONG_FLIGHT_MS = 6 * HOUR;
@@ -193,37 +200,84 @@ function planeNightsOf(flights: VisibleItem[], statuses: NightStatus[], inStretc
 }
 
 function clockAt(t: ZonedTime, estimated: boolean): string {
-  return `at ${estimated ? "about " : ""}${formatClockExact(toLocal(t))}`;
+  return `${estimated ? "about " : ""}${formatClockExact(toLocal(t))}`;
 }
 
-function skippedLines(flights: VisibleItem[], inStretch: Set<string>, homeZone: Zone): string[] {
-  const homeCities = new Set([zonePlace(homeZone), flightCities(flights[0]).from].filter((c): c is string => c !== null));
-  const out: string[] = [];
-  for (const f of flights) {
-    const departs = localDateKey(f.start);
-    const lands = localDateKey(f.end);
-    const days = DateTime.fromISO(lands).diff(DateTime.fromISO(departs), "days").days;
-    const from = flightCities(f).from ?? zonePlace(f.start.zone);
-    const to = flightCities(f).to ?? zonePlace(f.end.zone);
-    const landed = `${dayLabel(lands)} ${clockAt(f.end, f.endIsEstimated)}`;
-    if (days >= 1) {
-      const lost = Array.from({ length: days }, (_, i) => DateTime.fromISO(departs).plus({ days: i }).toISODate()).filter((n) => !inStretch.has(n));
-      if (!lost.length) continue;
-      const names = lost.map(dayLabel);
-      const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
-      out.push(
-        days >= 2
-          ? `No bed needed on ${list}: you cross the date line and land ${landed} ${to} time.`
-          : `No bed needed on ${list}: you're on the plane overnight and land ${landed} ${to} time.`,
-      );
-    } else if (instantMs(f.end) - instantMs(f.start) >= LONG_FLIGHT_MS) {
-      const atHome = homeCities.has(to);
-      if (days === 0 && atHome) out.push(`Coming home, you land in ${to} on ${landed}, the same day you leave ${from}. No night on the plane.`);
-      else if (days === 0) out.push(`You land in ${to} on ${landed}, the same day you leave ${from}, so you need a bed in ${to} that night.`);
-      else if (!atHome) out.push(`You land in ${to} on ${dayLabel(lands)}, the day before you left ${from} by the calendar, so you need a bed there from the night of ${dayLabel(lands)}.`);
+function listOf(names: string[]): string {
+  return names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+}
+
+interface FlightNote {
+  hint: NightHint | null;
+  coming: string | null;
+}
+
+function noteFor(f: VisibleItem, inStretch: Set<string>, homeCities: Set<string>, homeZone: Zone): FlightNote | null {
+  const departs = localDateKey(f.start);
+  const lands = localDateKey(f.end);
+  const days = DateTime.fromISO(lands).diff(DateTime.fromISO(departs), "days").days;
+  const from = flightCities(f).from ?? zonePlace(f.start.zone);
+  const to = flightCities(f).to ?? zonePlace(f.end.zone);
+  const leaves = `You leave ${from} ${dayLabel(departs)} at ${formatClockExact(toLocal(f.start))}`;
+  const arrives = `${dayLabel(lands)} at ${clockAt(f.end, f.endIsEstimated)}`;
+  if (days >= 1) {
+    const lost = Array.from({ length: days }, (_, i) => DateTime.fromISO(departs).plus({ days: i }).toISODate()).filter((n) => !inStretch.has(n));
+    if (!lost.length) return null;
+    const names = lost.map(dayLabel);
+    if (days === 1) {
+      return {
+        hint: {
+          text: `Not ${names[0]}: you're on the plane.`,
+          why: `${leaves} and land in ${to} ${arrives} ${to} time${homeBracket(f.end, homeZone)}. The night of ${names[0]} is spent on the plane.`,
+        },
+        coming: null,
+      };
     }
+    const skipped = Array.from({ length: days - 1 }, (_, i) => dayLabel(DateTime.fromISO(departs).plus({ days: i + 1 }).toISODate()));
+    return {
+      hint: {
+        text: `Not ${listOf(names)}: you're on the plane.`,
+        why: `${leaves} and land in ${to} ${arrives} ${to} time. Crossing the date line skips ${listOf(skipped)}, so you spend the nights of ${names.slice(0, -1).join(", ")}${names.length > 1 ? " and " : ""}${names[names.length - 1]} on the plane.`,
+      },
+      coming: null,
+    };
   }
-  return out;
+  if (instantMs(f.end) - instantMs(f.start) < LONG_FLIGHT_MS) return null;
+  const atHome = homeCities.has(to);
+  if (days === 0 && atHome) return { hint: null, coming: `Coming home, you land in ${to} on ${arrives}, the same day you leave ${from}. No night on the plane.` };
+  if (days === 0) {
+    return {
+      hint: {
+        text: `Includes ${dayLabel(lands)}: you land the same day you leave.`,
+        why: `${leaves} and land in ${to} ${dayLabel(lands)} at ${clockAt(f.end, f.endIsEstimated)}. You cross the date line, so you need a bed in ${to} that night.`,
+      },
+      coming: null,
+    };
+  }
+  if (atHome) return null;
+  return {
+    hint: {
+      text: `Includes ${dayLabel(lands)}: you land the day before you left.`,
+      why: `${leaves} and land in ${to} ${dayLabel(lands)} at ${clockAt(f.end, f.endIsEstimated)} ${to} time. Crossing the date line puts you a day back, so you need a bed there from the night of ${dayLabel(lands)}.`,
+    },
+    coming: null,
+  };
+}
+
+const MAX_HINTS = 2;
+
+function nightNotes(flights: VisibleItem[], inStretch: Set<string>, homeZone: Zone): { hints: NightHint[]; moreHints: number; nightNotes: string[] } {
+  const homeCities = new Set([zonePlace(homeZone), flightCities(flights[0]).from].filter((c): c is string => c !== null));
+  const notes = flights.flatMap((f) => {
+    const note = noteFor(f, inStretch, homeCities, homeZone);
+    return note ? [note] : [];
+  });
+  const hints = notes.flatMap((n) => (n.hint ? [n.hint] : []));
+  return {
+    hints: hints.slice(0, MAX_HINTS),
+    moreHints: Math.max(0, hints.length - MAX_HINTS),
+    nightNotes: notes.flatMap((n) => [n.hint?.why ?? n.coming ?? ""].filter(Boolean)),
+  };
 }
 
 export function sleepPlan(view: Pick<TripView, "items" | "homeZone">): SleepPlan {
@@ -254,8 +308,13 @@ export function sleepPlan(view: Pick<TripView, "items" | "homeZone">): SleepPlan
         checkOut: stretches[stretches.length - 1].checkOut,
         cities,
         heading: `${cities.length > 1 ? "You need places to stay" : "You need a place to stay"}: ${nights} ${nights === 1 ? "night" : "nights"}`,
-        stretchLines: stretches.map((st) => ({ city: st.city, checkIn: st.checkIn, checkOut: st.checkOut, line: `${st.city}: check in ${dayLabel(st.checkIn)}, check out ${dayLabel(st.checkOut)}` })),
-        skippedLines: skippedLines(flights, inStretch, view.homeZone),
+        stretchLines: stretches.map((st) => ({
+          city: st.city,
+          checkIn: st.checkIn,
+          checkOut: st.checkOut,
+          line: `${cities.length > 1 ? `${st.city}: ` : ""}Check in ${dayLabel(st.checkIn)} · Check out ${dayLabel(st.checkOut)}`,
+        })),
+        ...nightNotes(flights, inStretch, view.homeZone),
       }
     : null;
   return { stretches, planeNights, entries, summary };
