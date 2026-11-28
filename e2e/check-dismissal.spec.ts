@@ -12,8 +12,8 @@ async function expectNoSeriousViolations(page: Page): Promise<void> {
 
 test("This is fine hides a check for the whole trip, can be undone, and is listed for the other editor", async ({ pageSignedInAs }) => {
   const kenny = await pageSignedInAs("kenny", DEADLINES);
-  await expect(kenny.getByRole("heading", { name: "Deadlines and checks" })).toBeVisible();
-  await expect(kenny.getByRole("heading", { name: "Worth a look" })).toBeVisible();
+  await expect(kenny.getByRole("heading", { name: "Deadlines and checks", exact: true })).toBeVisible();
+  await expect(kenny.getByRole("heading", { name: "Worth a look", exact: true })).toBeVisible();
 
   const overlap = kenny.getByRole("listitem").filter({ hasText: "Two stays overlap" }).first();
   const sentence = (await overlap.locator("div").first().innerText()).trim();
@@ -22,7 +22,7 @@ test("This is fine hides a check for the whole trip, can be undone, and is liste
   expect((await fine.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
   await fine.click();
   await expect(kenny.getByRole("status").filter({ hasText: "Marked as fine." })).toBeVisible();
-  const undo = kenny.getByRole("button", { name: "Undo" }).first();
+  const undo = kenny.getByRole("button", { name: "Undo", exact: true }).first();
   await expect(undo).toBeFocused();
 
   await kenny.goto(DEADLINES);
@@ -37,7 +37,7 @@ test("This is fine hides a check for the whole trip, can be undone, and is liste
   await expect(jacob.getByText(sentence, { exact: true }).filter({ visible: true })).toHaveCount(0);
   await jacob.getByText(/^Marked as fine \(\d+\)$/).click();
   await expect(jacob.getByText(/^Kenneth, [A-Z][a-z]{2} \d{1,2}$/).first()).toBeVisible();
-  await jacob.getByRole("button", { name: "Show again" }).first().click();
+  await jacob.getByRole("button", { name: "Show again", exact: true }).first().click();
   await expect(jacob.getByRole("status").filter({ hasText: "Showing again." })).toBeVisible();
   await jacob.goto(DEADLINES);
   await expect(jacob.getByText(sentence, { exact: true }).filter({ visible: true }).first()).toBeVisible();
@@ -56,7 +56,7 @@ test("a check on the trip page links to its line on the deadlines page", async (
 
 test("an empty trip has no Worth a look and no folded list", async ({ pageSignedInAs }) => {
   const kenny = await pageSignedInAs("kenny", `/trips/${LISBON_TRIP}/deadlines`);
-  await expect(kenny.getByRole("heading", { name: "Deadlines and checks" })).toBeVisible();
-  await expect(kenny.getByRole("heading", { name: "Worth a look" })).toHaveCount(0);
+  await expect(kenny.getByRole("heading", { name: "Deadlines and checks", exact: true })).toBeVisible();
+  await expect(kenny.getByRole("heading", { name: "Worth a look", exact: true })).toHaveCount(0);
   await expect(kenny.getByText(/^Marked as fine/)).toHaveCount(0);
 });

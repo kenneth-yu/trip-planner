@@ -26,13 +26,13 @@ test("a navigation with no network shows the offline page and Try again reloads"
   await page.reload();
   await context.setOffline(true);
   await page.goto(`/trips/${DECEMBER_TRIP}`);
-  await expect(page.getByRole("heading", { level: 1, name: "Your trip can't load right now." })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Your trip can't load right now.", exact: true })).toBeVisible();
   await expect(page.getByText("You may be offline, or the connection is too slow. Try again in a moment.")).toBeVisible();
   await expect(page.getByText("If you saved screenshots of your bookings, they are in your photos.")).toBeVisible();
   await expect(page.getByText("Asia, December 2026")).toHaveCount(0);
   await context.setOffline(false);
-  await page.getByRole("button", { name: "Try again" }).click();
-  await expect(page.getByRole("heading", { name: "Asia, December 2026" })).toBeVisible();
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Asia, December 2026", exact: true })).toBeVisible();
 });
 
 test("the offline page is the same bytes for an anonymous visitor and a signed in traveler, nonce aside", async ({ page, request, signIn }) => {

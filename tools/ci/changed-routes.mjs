@@ -1,0 +1,24 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { concreteRoute, finalRoutes, routeOfPage, selectPages } from "./changed-routes-lib.mjs";
+
+const pages = readdirSync("src/app", { recursive: true, encoding: "utf8" })
+  .filter((entry) => entry.endsWith("page.tsx") && (entry === "page.tsx" || entry.endsWith("/page.tsx")))
+  .map((entry) => `src/app/${entry}`);
+
+const all = process.argv.includes("--all");
+const changed = all
+  ? []
+  : readFileSync(0, "utf8")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+const total = Number.parseInt(process.env.CHANGED_TOTAL ?? "", 10);
+const trusted = all || (changed.length > 0 && Number.isInteger(total) && total < 3000);
+
+const selection = all || !trusted ? { pages, reason: null } : selectPages(changed, pages);
+if (selection.reason) process.stderr.write(`Every route is checked: ${selection.reason}.\n`);
+const skipped = selection.pages.filter((page) => concreteRoute(routeOfPage(page)) === null).map(routeOfPage);
+if (skipped.length > 0) process.stderr.write(`Routes the checker cannot open, so axe does not cover them: ${skipped.join(", ")}\n`);
+const result = finalRoutes(selection.pages, pages);
+if (result.rejected.length > 0) process.stderr.write(`Page folders with unusual names were left out and every other route is checked: ${result.rejected.map((route) => JSON.stringify(route)).join(", ")}\n`);
+process.stdout.write(`${result.routes.join(",")}\n`);
