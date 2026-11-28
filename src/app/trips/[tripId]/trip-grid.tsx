@@ -51,6 +51,16 @@ export function TripGridView({ grid, dayHref, selectedKey, checkHref }: { grid: 
           </div>
         ))}
 
+        {grid.nights.map((mark, i) =>
+          mark === null ? null : (
+            <div key={`night-${grid.days[i].key}`} className={styles.sleep} style={{ gridColumn: col(i), gridRow: rows.sleep }}>
+              <a className={mark === "bed" ? styles.needBed : styles.onPlane} href={dayHref(grid.days[i].key)}>
+                {mark === "bed" ? "Need a bed" : "On the plane"}
+              </a>
+            </div>
+          ),
+        )}
+
         {hasTravel && <span className={`${styles.rowLabel} ${styles.bandTravel}`} style={{ gridRow: rows.travel }}>Travel</span>}
         {hasTravel && grid.travel.map((entries, i) => (
           <div key={`travel-${grid.days[i].key}`} className={styles.cell} style={{ gridColumn: col(i), gridRow: rows.travel }}>
