@@ -16,28 +16,28 @@ function remember(url: string, scrollY: number): void {
   if (places.size > PLACES_KEPT && !oldest.done) places.delete(oldest.value);
 }
 
-let traversalPending = false;
+const here = () => `${window.location.pathname}${window.location.search}`;
+
+let traversalUrl: string | null = null;
 
 if (typeof window !== "undefined") {
   window.addEventListener("popstate", () => {
-    traversalPending = true;
+    traversalUrl = here();
   });
   document.addEventListener(
     "click",
     () => {
-      traversalPending = false;
+      traversalUrl = null;
     },
     true,
   );
 }
 
 function consumeTraversal(): boolean {
-  const arrived = traversalPending;
-  traversalPending = false;
+  const arrived = traversalUrl !== null && traversalUrl === here();
+  traversalUrl = null;
   return arrived;
 }
-
-const here = () => `${window.location.pathname}${window.location.search}`;
 
 const CITY = [styles.city1, styles.city2, styles.city3, styles.city4, styles.city5];
 
@@ -60,15 +60,26 @@ export function DayStrip({ days, selectedKey }: { days: StripDay[]; selectedKey:
       if (lastUrl.current) remember(lastUrl.current, window.scrollY);
     };
     const scrolled = () => remember(here(), window.scrollY);
+    const pagehide = () => {
+      window.history.scrollRestoration = native;
+    };
+    const pageshow = (event: PageTransitionEvent) => {
+      if (event.persisted) window.history.scrollRestoration = "manual";
+    };
     window.addEventListener("popstate", leaving);
     window.addEventListener("scroll", scrolled, { passive: true });
+    window.addEventListener("pagehide", pagehide);
+    window.addEventListener("pageshow", pageshow);
     return () => {
       window.removeEventListener("popstate", leaving);
       window.removeEventListener("scroll", scrolled);
+      window.removeEventListener("pagehide", pagehide);
+      window.removeEventListener("pageshow", pageshow);
       window.history.scrollRestoration = native;
     };
   }, []);
   useEffect(() => {
+    consumeTraversal();
     const url = here();
     const arrived = arrivedByTraversal.current;
     arrivedByTraversal.current = false;
@@ -124,9 +135,9 @@ export function DayStrip({ days, selectedKey }: { days: StripDay[]; selectedKey:
             }}
             className={`${styles.chip} ${isChosen ? styles.chosen : ""} ${d.cityIndex !== null ? CITY[d.cityIndex % CITY.length] : ""}`}
             aria-current={isChosen ? "date" : undefined}
-            aria-label={`${d.weekday} ${d.month ?? ""} ${d.day}${d.city ? `, sleeping in ${d.city}` : ""}${d.needsAttention ? ", needs a look" : ""}`}
+            aria-label={`${d.month ?? d.weekday} ${d.day}${d.month ? `, ${d.weekday}` : ""}${d.city ? `, sleeping in ${d.city}` : ""}${d.needsAttention ? ", needs a look" : ""}`}
           >
-            {d.month ?? d.weekday}
+            {d.month ?? d.weekday}{" "}
             <b>{d.day}</b>
             <span className={styles.bar} />
             <span className={styles.dots}>

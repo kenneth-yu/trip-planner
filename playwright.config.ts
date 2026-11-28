@@ -34,6 +34,7 @@ export default defineConfig({
       DATABASE_URL: production ? (process.env.E2E_DATABASE_URL ?? "") : "",
       ...(production ? { VERCEL: "1", VERCEL_ENV: "preview", TRUST_PROXY: "0" } : {}),
       DEV_SIGN_IN: "1",
+      GOOGLE_IMPORT_FAKE: "1",
       EMAIL_API_KEY: "",
       EMAIL_FROM: "",
       GOOGLE_CLIENT_ID: "",

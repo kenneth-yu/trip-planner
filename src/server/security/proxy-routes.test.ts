@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createPgliteDb } from "@/server/db/client";
 
@@ -20,8 +20,15 @@ vi.mock("@/server/db/client", async (importOriginal) => {
 
 import { proxy } from "@/proxy";
 
+const MID_WINDOW = new Date("2026-11-27T10:07:30.000Z");
+
 beforeAll(() => {
   process.env.SESSION_SECRET = "test-secret-test-secret-test-secret-0123";
+  vi.useFakeTimers({ toFake: ["Date"], now: MID_WINDOW });
+});
+
+afterAll(() => {
+  vi.useRealTimers();
 });
 
 async function statuses(method: string, url: string, times: number) {
@@ -31,20 +38,21 @@ async function statuses(method: string, url: string, times: number) {
 }
 
 describe("proxy rate limits sign in", () => {
-  beforeEach(() => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2026-11-27T10:07:30Z"));
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   it("refuses POST /api/auth/signin/email after 10 in 15 minutes", async () => {
     store.db = createPgliteDb();
     const seen = await statuses("POST", "https://trips.test/api/auth/signin/email", 11);
     expect(seen.slice(0, 10).every((s) => s === 200)).toBe(true);
     expect(seen[10]).toBe(429);
+  });
+
+  it("answers a visitor over the limit with the visitor sentence and no trip data", async () => {
+    store.db = createPgliteDb();
+    let last = new Response("", { status: 200 });
+    for (let i = 0; i < 121; i++) last = await proxy(new NextRequest("https://trips.test/v/tpv_x", { method: "GET" }));
+    expect(last.status).toBe(429);
+    expect(await last.text()).toBe("Too many visits from this connection. Wait a minute and try again.");
+    expect(last.headers.get("retry-after")).not.toBeNull();
+    expect(last.headers.get("cache-control")).toBe("private, no-store");
   });
 
   it("leaves page POSTs to the actions, so signing out on the home page spends nothing", async () => {
