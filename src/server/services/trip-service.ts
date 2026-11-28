@@ -106,6 +106,7 @@ export function idempotentItemId(userId: string, tripId: string, key: string): s
 
 export interface QuickAddOptions {
   idempotencyKey?: string;
+  endEstimated?: boolean;
 }
 
 export async function quickAddItem(
@@ -127,7 +128,7 @@ export async function quickAddItem(
     assertCanEditTrip(agg, requester);
     const existing = fixedId ? agg.items.find((i) => i.id === fixedId) : undefined;
     if (existing) return { item: existing, added: false };
-    const proposed = proposalToItem(ctx, tripId, actorId, inputToProposal(input, agg.travelers, places), sharing);
+    const proposed = proposalToItem(ctx, tripId, actorId, inputToProposal(input, agg.travelers, places, { draft: sharing.booked === false, endEstimated: options.endEstimated }), sharing);
     const created = fixedId ? { ...proposed, id: fixedId } : proposed;
     await saveItem(tx, created);
     await touchTrip(tx, tripId);

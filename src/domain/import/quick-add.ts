@@ -70,7 +70,7 @@ const common = {
 
 export const FlightInput = z.object({
   type: z.literal("flight"),
-  flightNumber: z.string().regex(/^[A-Z0-9]{2}\s?\d{1,4}$/i, "Use a flight number like CX509"),
+  flightNumber: z.string().regex(/^[A-Z0-9]{2}\s?\d{1,4}$/i, "Use a flight number like CX509").optional(),
   airline: z.string().max(80).optional(),
   fromAirport: z.string().length(3).describe("IATA code, e.g. NRT"),
   toAirport: z.string().length(3).describe("IATA code, e.g. HKG"),
@@ -149,12 +149,17 @@ function resolveTravelers(names: string[] | undefined, travelers: Pick<Traveler,
   });
 }
 
-export function inputToProposal(raw: unknown, travelers: Pick<Traveler, "id" | "name">[], places: PlaceContext): ProposedItem {
-  const proposal = buildProposal(raw, travelers, places);
+export interface ProposalOptions {
+  draft?: boolean;
+  endEstimated?: boolean;
+}
+
+export function inputToProposal(raw: unknown, travelers: Pick<Traveler, "id" | "name">[], places: PlaceContext, opts: ProposalOptions = {}): ProposedItem {
+  const proposal = buildProposal(raw, travelers, places, opts);
   return proposal.problems.length ? { ...proposal, status: "needs_review" } : proposal;
 }
 
-function buildProposal(raw: unknown, travelers: Pick<Traveler, "id" | "name">[], places: PlaceContext): ProposedItem {
+function buildProposal(raw: unknown, travelers: Pick<Traveler, "id" | "name">[], places: PlaceContext, opts: ProposalOptions): ProposedItem {
   const input = ItemInput.parse(raw);
   const travelerIds = resolveTravelers(input.travelers, travelers);
   const shared: Omit<ItemPrivate, "travelerId"> = {
@@ -206,7 +211,8 @@ function buildProposal(raw: unknown, travelers: Pick<Traveler, "id" | "name">[],
       checked(input.departLocal, fromZone, "Departure at");
       checked(input.arriveLocal, toZone, "Arrival at");
       if (end.at <= start.at) throw new InputProblem("The arrival is before the departure. Check both are local times at each airport.");
-      const flightNumber = input.flightNumber.replace(/\s/g, "").toUpperCase();
+      const flightNumber = (input.flightNumber ?? "").replace(/\s/g, "").toUpperCase();
+      if (!flightNumber && !opts.draft) throw new InputProblem("Enter the flight number.");
       const seats: ItemPrivate[] = (input.seats ?? []).map((s) => ({
         travelerId: resolveTravelers([s.traveler], travelers)[0],
         seat: s.seat,
@@ -215,11 +221,11 @@ function buildProposal(raw: unknown, travelers: Pick<Traveler, "id" | "name">[],
       return {
         ...base,
         type: "flight",
-        title: flightNumber,
+        title: flightNumber || `${from} to ${to}`,
         start,
         end,
         startIsEstimated: false,
-        endIsEstimated: false,
+        endIsEstimated: opts.endEstimated === true,
         location: null,
         flight: { flightNumber, airline: input.airline, fromAirport: from, toAirport: to },
         private: [...seats, ...privates],

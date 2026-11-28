@@ -50,8 +50,8 @@ export async function editItem(_prev: FormState, form: FormData): Promise<FormSt
   const parsed = parseEditForm(entries, { travelerIds: item.travelerIds, previous: item.private, zoneOf });
   if (!parsed.ok) return { errors: parsed.errors, message: parsed.errors.form ?? null, values: entries };
   try {
-    const proposal = inputToProposal({ ...parsed.input, travelers: item.travelerIds }, view.travelers, places);
-    const patch = editPatch(item, proposal, parsed.private);
+    const proposal = inputToProposal({ ...parsed.input, travelers: item.travelerIds }, view.travelers, places, { draft: !parsed.booked, endEstimated: parsed.endEstimated });
+    const patch = editPatch(item, proposal, parsed.private, parsed.booked);
     if (Object.keys(patch).length > 0) await updateItem(ctx, tripId, itemId, requester, patch);
   } catch (e) {
     if (e instanceof NotFound) return { errors: {}, message: null, values: entries, gone: "deleted" };
