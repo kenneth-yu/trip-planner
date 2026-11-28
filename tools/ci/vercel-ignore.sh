@@ -2,8 +2,21 @@
 set -u
 
 if [ "${VERCEL_ENV:-}" = "production" ]; then
-  echo "Building: production."
-  exit 1
+  sha="${VERCEL_GIT_COMMIT_SHA:-}"
+  case "$sha" in
+    *[!0-9a-f]*) sha="" ;;
+  esac
+  if [ "${#sha}" -ne 40 ]; then
+    echo "Skipping: production builds only when the owner approved the commit, and this commit id is missing or malformed."
+    exit 0
+  fi
+  if reply="$(curl -fsS --max-time 15 --max-filesize 1048576 "https://api.github.com/repos/kenneth-yu/trip-planner/commits/${sha}/statuses?per_page=100")" \
+    && printf '%s' "$reply" | node -e 'let d="";process.stdin.on("data",(c)=>{d+=c}).on("end",()=>{try{const list=JSON.parse(d);const latest=Array.isArray(list)?list.find((x)=>x&&x.context==="deploy/approved"):undefined;process.exit(latest&&latest.state==="success"&&latest.creator&&latest.creator.login==="github-actions[bot]"?0:1)}catch(e){process.exit(1)}})'; then
+    echo "Building: the owner approved this commit for production (deploy/approved)."
+    exit 1
+  fi
+  echo "Skipping: production deploys happen only when the owner asks for a release (deploy/approved is not set to success on this commit, or it could not be read)."
+  exit 0
 fi
 
 case "${VERCEL_GIT_COMMIT_REF:-}" in

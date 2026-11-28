@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { ruleForRequest } from "./rate-limit";
 
 const APP_DIR = path.join(import.meta.dirname, "..", "..", "app");
-const LIMIT_CALLS = new Set(["consumeRateLimit", "spendSignInAttempt", "spendInviteBudget"]);
+const LIMIT_CALLS = new Set(["consumeRateLimit", "spendSignInAttempt", "spendInviteBudget", "spendLinkBudget"]);
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
 const ROUTE_ALLOWLIST: Record<string, string> = {
@@ -21,7 +21,6 @@ const ACTION_ALLOWLIST: Record<string, string> = {
   "src/app/trips/new/actions.ts#createTripAction": "Signed in, creates only the caller's own empty trip; SECURITY.md lists no per person limit for it.",
   "src/app/trips/[tripId]/actions.ts#decideEntry": "Signed in and permission checked in the service; SECURITY.md lists no per person limit for it.",
   "src/app/trips/[tripId]/actions.ts#addAllClean": "Signed in and permission checked in the service; SECURITY.md lists no per person limit for it.",
-  "src/app/trips/[tripId]/actions.ts#connectAssistant": "Any trip member can mint links (viewers get read only ones) and nothing limits how many; known gap. Needs a per person rule in RATE_RULES, then remove this entry.",
   "src/app/trips/[tripId]/actions.ts#revokeAssistant": "Signed in; revokeAssistantToken checks the token is the caller's own, and revoking twice is harmless.",
   "src/app/account/actions.ts#deleteAccountAction": "Signed in, deletes only the caller's own account after a typed confirmation. A blocked, Google or failed outcome can be resubmitted and repeats only the caller's own Google calendar teardown, bounded by their own calendars.",
   "src/app/account/notice-actions.ts#clearOneTimeNotice": "Signed in and clears one notice flag on the caller's own session; idempotent and harmless.",
@@ -40,6 +39,9 @@ const ACTION_ALLOWLIST: Record<string, string> = {
   "src/app/trips/[tripId]/share/actions.ts#changeRoleAction": "Owner only, checked in the service; SECURITY.md lists no per person limit for it.",
   "src/app/trips/[tripId]/share/actions.ts#previewRemoval": "Owner only, checked in the service; it only reads what removing a member would take.",
   "src/app/trips/[tripId]/share/actions.ts#removeMemberAction": "Owner only, checked in the service; each call removes one member.",
+  "src/app/trips/[tripId]/share/actions.ts#disableLinkAction": "Owner only, checked in the service; turning the view link off is idempotent and gives nothing away.",
+  "src/app/trips/[tripId]/share/actions.ts#setLinkDeadlinesAction": "Owner only, checked in the service; a switch that is idempotent and changes one flag.",
+  "src/app/trips/[tripId]/share/actions.ts#setViewerDeadlinesAction": "Owner only, checked in the service; a switch that is idempotent and changes one flag.",
   "src/app/trips/[tripId]/actions.ts#mirrorAction": "Signed in and acts only on the caller's own mirror, but can start Google Calendar API calls with no per person limit; Google's quota is the only brake. Known gap; add a rule if it is abused.",
 };
 

@@ -39,6 +39,7 @@ export const PAGES: PageUnderTest[] = [
   { label: "trip not on your account", path: "/not-on-your-account", route: "/not-on-your-account", signedIn: true },
   { label: "account", path: "/account", route: "/account", signedIn: true },
   { label: "page not found", path: "/no-such-page", route: "/not-found", signedIn: true, status: 404 },
+  { label: "view link that does not work", path: "/v/not-a-working-link", route: "/v/[token]", signedIn: false, status: 404 },
   { label: "invite lost", path: "/invite/lost", route: "/invite/lost", signedIn: false },
   { label: "invite join without a cookie", path: "/invite/join", route: "/invite/join", signedIn: false },
   { label: "invite expired", path: "/invite/problem/expired", route: "/invite/problem/[kind]", signedIn: false },

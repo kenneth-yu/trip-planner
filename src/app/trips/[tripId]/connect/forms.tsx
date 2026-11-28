@@ -21,6 +21,7 @@ export function AssistantForm({ tripId, canSuggest }: { tripId: string; canSugge
         )}
         <button disabled={pending}>Make a link</button>
       </div>
+      {state.message && <p className={styles.warning}>{state.message}</p>}
       {state.url && (
         <div className={styles.section} style={{ marginTop: 16 }}>
           <p>Copy this now. It is shown once and works like a password.</p>

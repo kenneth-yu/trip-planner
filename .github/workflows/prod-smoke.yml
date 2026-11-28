@@ -1,0 +1,60 @@
+name: prod-smoke
+
+on:
+  deployment_status:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: prod-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.deployment_status.state == 'success' && github.event.deployment_status.environment == 'Production') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Log what triggered this run
+        env:
+          EVENT: ${{ github.event_name }}
+          DEPLOYMENT_URL: ${{ github.event.deployment_status.environment_url || github.event.deployment_status.target_url }}
+        run: echo "Triggered by $EVENT. The deployment address ($DEPLOYMENT_URL) is only logged, never requested; the pinned production alias is checked."
+      - name: Request the sign in page, the offline page and a bogus view link on the production alias
+        id: smoke
+        env:
+          SMOKE_URL: https://trip-planner-lilac-six.vercel.app
+          SMOKE_REPORT: ${{ runner.temp }}/smoke.md
+        run: node tools/ci/prod-smoke.mjs
+      - name: Open or update the one prod-broken issue
+        if: ${{ failure() && steps.smoke.outcome == 'failure' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPORT: ${{ runner.temp }}/smoke.md
+        run: |
+          {
+            echo "The production smoke test failed. Run: $RUN_URL"
+            echo
+            cat "$REPORT"
+          } > issue.md
+          open_issues="$(gh api "repos/${GH_REPO}/issues?labels=prod-broken&state=open&per_page=100" --jq '.[] | select(.pull_request == null) | .number')"
+          number="$(printf '%s\n' "$open_issues" | head -n 1)"
+          if [ -n "$number" ]; then
+            gh api -X POST "repos/${GH_REPO}/issues/${number}/comments" -F body=@issue.md
+          else
+            gh api -X POST "repos/${GH_REPO}/issues" -f title="Production smoke test failed" -F body=@issue.md -f "labels[]=prod-broken"
+          fi

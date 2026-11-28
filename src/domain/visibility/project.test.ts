@@ -58,6 +58,14 @@ describe("projectTrip: sensitive fields", () => {
     }
   });
 
+  it("view link visitors receive no check flags, members do", () => {
+    const agg = tripWithViewer();
+    fixtureItem(agg, byFlight("CX509")).flags = ["Check where this is"];
+    expect(projectTrip(agg, link).items.flatMap((i) => i.flags)).toEqual([]);
+    expect(json(projectTrip(agg, link))).not.toContain("Check where this is");
+    expect(projectTrip(agg, owner).items.flatMap((i) => i.flags)).toEqual(["Check where this is"]);
+  });
+
   it.each([
     ["invited viewer", viewer],
     ["view link visitor", link],
