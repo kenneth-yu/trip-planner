@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import * as t from "../db/schema";
 import { openJson, SealError, sealJson } from "../crypto/sealed";
@@ -163,6 +163,10 @@ export async function saveItem(db: DbOrTx, item: Item): Promise<void> {
       })),
     );
   }
+}
+
+export async function lockItemRow(db: DbOrTx, tripId: string, itemId: string): Promise<void> {
+  await db.execute(sql`select id from items where id = ${itemId} and trip_id = ${tripId} for update`);
 }
 
 export async function deleteItem(db: DbOrTx, tripId: string, itemId: string): Promise<void> {
