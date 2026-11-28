@@ -35,10 +35,23 @@ function repoWith(commits: string[][], withStart = true): Repo {
   return { dir, shas };
 }
 
-function run(repo: Repo, env: Record<string, string> = {}): "build" | "skip" {
+interface FakeCurl {
+  body?: string;
+  exitCode?: number;
+}
+
+function fakeCurlDirectory(curl: FakeCurl): string {
+  const bin = mkdtempSync(path.join(tmpdir(), "fake-curl-"));
+  const script = curl.exitCode ? `#!/usr/bin/env bash\nexit ${curl.exitCode}\n` : `#!/usr/bin/env bash\ncat <<'JSON'\n${curl.body ?? ""}\nJSON\n`;
+  writeFileSync(path.join(bin, "curl"), script, { mode: 0o755 });
+  return bin;
+}
+
+function run(repo: Repo, env: Record<string, string> = {}, curl?: FakeCurl): "build" | "skip" {
+  const path_ = curl ? `${fakeCurlDirectory(curl)}:${process.env.PATH ?? ""}` : (process.env.PATH ?? "");
   const result = spawnSync("bash", [SCRIPT], {
     cwd: repo.dir,
-    env: { ...process.env, VERCEL_ENV: "", VERCEL_GIT_COMMIT_REF: "", VERCEL_GIT_PREVIOUS_SHA: "", ...env },
+    env: { ...process.env, PATH: path_, VERCEL_ENV: "", VERCEL_GIT_COMMIT_REF: "", VERCEL_GIT_PREVIOUS_SHA: "", VERCEL_GIT_COMMIT_SHA: "", ...env },
     encoding: "utf8",
   });
   if (result.status === 0) return "skip";
@@ -128,5 +141,54 @@ describe("Vercel ignore rule", () => {
     expect(decide("src/app/page.tsx", { VERCEL_GIT_COMMIT_REF: "owner/roles" })).toBe("skip");
     expect(decide("src/app/page.tsx", { VERCEL_GIT_COMMIT_REF: "wp/10b-core-edit" })).toBe("build");
     expect(decide("docs/UX.md", { VERCEL_GIT_COMMIT_REF: "wp/10b-core-edit" })).toBe("skip");
+  });
+});
+
+describe("Vercel ignore rule for production", () => {
+  const SHA = "0123456789abcdef0123456789abcdef01234567";
+  const bot = { login: "github-actions[bot]" };
+  const entry = (context: string, state: string, creator: { login: string } | null = bot) => ({ context, state, ...(creator ? { creator } : {}) });
+  const approved = JSON.stringify([entry("ci/other", "failure"), entry("deploy/approved", "success")]);
+  const production = (curl: FakeCurl, sha = SHA) => run(repoWith([["src/app/page.tsx"]]), { VERCEL_ENV: "production", VERCEL_GIT_COMMIT_SHA: sha }, curl);
+
+  it("builds only when the newest deploy/approved status is a success created by the Actions bot", () => {
+    expect(production({ body: approved })).toBe("build");
+    expect(production({ body: JSON.stringify([entry("deploy/approved", "success"), entry("deploy/approved", "failure")]) })).toBe("build");
+  });
+
+  it("lets a newer status that is not a success beat an older success, because the list is newest first", () => {
+    expect(production({ body: JSON.stringify([entry("deploy/approved", "failure"), entry("deploy/approved", "success")]) })).toBe("skip");
+    expect(production({ body: JSON.stringify([entry("deploy/approved", "pending"), entry("deploy/approved", "success")]) })).toBe("skip");
+  });
+
+  it.each([
+    ["pending", JSON.stringify([entry("deploy/approved", "pending")])],
+    ["failure", JSON.stringify([entry("deploy/approved", "failure")])],
+    ["the same status from another account", JSON.stringify([entry("deploy/approved", "success", { login: "someone-with-write-access" })])],
+    ["a newer success from another account over an older one from the bot", JSON.stringify([entry("deploy/approved", "success", { login: "someone-with-write-access" }), entry("deploy/approved", "success")])],
+    ["the same status from a lookalike bot", JSON.stringify([entry("deploy/approved", "success", { login: "github-actions" })])],
+    ["the same status with no creator", JSON.stringify([entry("deploy/approved", "success", null)])],
+    ["another context", JSON.stringify([entry("deploy/approved-ish", "success"), entry("approved", "success")])],
+    ["an empty list", "[]"],
+    ["the combined status shape, which has no creators", JSON.stringify({ state: "success", statuses: [{ context: "deploy/approved", state: "success" }] })],
+    ["a rate limit answer", JSON.stringify({ message: "API rate limit exceeded", documentation_url: "https://docs.github.com" })],
+    ["a list of things that are not statuses", JSON.stringify([null, 3, "deploy/approved"])],
+    ["a page that is not JSON", "<html>Bad gateway</html>"],
+    ["an empty answer", ""],
+  ])("skips on %s", (_name, body) => {
+    expect(production({ body })).toBe("skip");
+  });
+
+  it("skips when the API cannot be reached or answers an error", () => {
+    expect(production({ exitCode: 22 })).toBe("skip");
+    expect(production({ exitCode: 28 })).toBe("skip");
+  });
+
+  it.each(["", "abc", "0123456789ABCDEF0123456789ABCDEF01234567", `${SHA}0`, `${SHA.slice(0, 39)}g`, "../../etc/passwd"])("skips without asking GitHub when the commit id is %j", (sha) => {
+    expect(production({ body: approved }, sha)).toBe("skip");
+  });
+
+  it("applies to production only: a preview never needs the approval", () => {
+    expect(run(repoWith([["src/app/page.tsx"]]), { VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "wp/x" }, { exitCode: 22 })).toBe("build");
   });
 });
