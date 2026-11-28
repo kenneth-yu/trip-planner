@@ -1,3 +1,4 @@
+import { ideaCity, type Idea } from "@/domain/ideas/ideas";
 import { buildDays, type DayEntry } from "@/domain/time/days";
 import type { DeadlineLine } from "@/domain/deadlines/deadlines";
 import type { Finding } from "@/domain/checks/checks";
@@ -24,6 +25,15 @@ function entryLine(e: DayEntry): string {
     case "busy":
       return `${e.time} Busy`;
   }
+}
+
+export function describeIdeas(ideas: Idea[]): string {
+  if (ideas.length === 0) return "";
+  const lines = ideas.map((idea) => {
+    const where = [ideaCity(idea), idea.location?.name].filter(Boolean).join(", ");
+    return `- ${idea.title}${where ? ` (${where})` : ""}${idea.state === "done" ? " [done]" : ""}${idea.note ? `: ${idea.note}` : ""}`;
+  });
+  return `\n\nIdeas, things to do with no time yet. They are not on the schedule:\n${lines.join("\n")}`;
 }
 
 export function describeTrip(view: TripView, deadlines: DeadlineLine[], findings: Finding[]): string {
