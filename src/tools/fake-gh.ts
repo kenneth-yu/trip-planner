@@ -7,6 +7,7 @@ export interface Route {
   match: string;
   out?: string;
   fail?: string;
+  failBody?: string;
   failTimes?: number;
 }
 
@@ -23,6 +24,7 @@ if (!route) {
 }
 const earlier = route ? before.filter((l) => l.includes(route.match)).length : 0;
 if (route && route.fail && (route.failTimes === undefined || earlier < route.failTimes)) {
+  if (route.failBody) process.stdout.write(route.failBody);
   process.stderr.write(route.fail + "\\n");
   process.exit(1);
 }
