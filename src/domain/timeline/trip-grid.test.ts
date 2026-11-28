@@ -4,7 +4,7 @@ import { present } from "@/testing/present";
 import { projectTrip } from "../visibility/project";
 import { DateTime } from "../time/luxon";
 import { fromLocal } from "../time/format";
-import { buildTripGrid, dayStrip, pickDay, tripSpan, upNext } from "./trip-grid";
+import { buildTripGrid, dayStrip, pickDay, spanText, tripSpan, upNext } from "./trip-grid";
 
 const NY = "America/New_York";
 const now = new Date(FIXTURE_TODAY).getTime();
@@ -101,7 +101,63 @@ describe("trip grid on the fixture trip", () => {
   });
 
   it("summarizes dates with a friendly countdown", () => {
-    expect(tripSpan(view, now)).toEqual({ dates: "Dec 1 to 15", countdown: "You leave in 5 days" });
+    expect(tripSpan(view, now)).toEqual({ dates: "Dec 1 to 15", countdown: "You leave in 5 days", planning: false });
+  });
+
+  describe("the planning line", () => {
+    const drafted = (every: boolean) => ({ ...view, items: view.items.map((item, index) => ({ ...item, booked: every ? false : index !== 0 })) });
+
+    it("reads Planning and the dates, in place of the countdown, when every item is not booked yet", () => {
+      const span = present(tripSpan(drafted(true), now));
+      expect(span).toEqual({ dates: "Dec 1 to 15", countdown: null, planning: true });
+      expect(spanText(span)).toBe("Planning, Dec 1 to 15");
+    });
+
+    it("goes back to the normal line the moment one item is booked", () => {
+      const span = present(tripSpan(drafted(false), now));
+      expect(span.planning).toBe(false);
+      expect(spanText(span)).toBe("Dec 1 to 15 · You leave in 5 days");
+    });
+
+    it("stays on Planning while the dates have not been booked, even when they have already begun or passed", () => {
+      const during = DateTime.fromISO("2026-12-07T12:00", { zone: "Asia/Shanghai" }).toMillis();
+      const after = DateTime.fromISO("2027-02-01T12:00", { zone: "Asia/Shanghai" }).toMillis();
+      for (const at of [during, after]) expect(spanText(present(tripSpan(drafted(true), at)))).toBe("Planning, Dec 1 to 15");
+    });
+
+    it("says the dates across two months, as the normal line does", () => {
+      const span = present(tripSpan({ ...drafted(true), items: drafted(true).items.filter((i) => i.start.at < "2026-12-02T00:00:00Z" || i.end.at > "2026-12-14T00:00:00Z") }, now));
+      expect(spanText(span)).toMatch(/^Planning, [A-Z][a-z]{2} \d+ to \d+$/);
+    });
+
+    it("goes through the projection: the editor of an all-draft trip sees Planning, an invited viewer and a link visitor see no line at all", () => {
+      const agg = buildFixtureTrip();
+      for (const item of agg.items) item.booked = false;
+      agg.memberships.push({ tripId: TRIP_ID, userId: "user-mom", role: "viewer" });
+      agg.shareLink = { enabled: true, showsDeadlines: false };
+      const owner = projectTrip(agg, kenny);
+      expect(spanText(present(tripSpan(owner, now)))).toBe("Planning, Dec 1 to 15");
+      expect(tripSpan(projectTrip(agg, { kind: "member", userId: "user-mom", homeZone: NY }), now)).toBeNull();
+      expect(tripSpan(projectTrip(agg, { kind: "link", homeZone: NY }), now)).toBeNull();
+    });
+
+    it("keeps the normal line for an invited viewer when only some items are not booked", () => {
+      const agg = buildFixtureTrip();
+      agg.items[0].booked = false;
+      agg.memberships.push({ tripId: TRIP_ID, userId: "user-mom", role: "viewer" });
+      const span = present(tripSpan(projectTrip(agg, { kind: "member", userId: "user-mom", homeZone: NY }), now));
+      expect(span.planning).toBe(false);
+      expect(spanText(span)).toMatch(/^[A-Z][a-z]{2} \d+ to .+ · You leave in \d+ days$/);
+    });
+
+    it("shows nothing for a trip with no items, planning or not", () => {
+      expect(tripSpan({ ...view, items: [] }, now)).toBeNull();
+    });
+  });
+
+  it("writes the normal line with the countdown after the dates, and the dates alone when there is none", () => {
+    expect(spanText({ dates: "Dec 1 to 15", countdown: "You leave in 5 days", planning: false })).toBe("Dec 1 to 15 · You leave in 5 days");
+    expect(spanText({ dates: "Dec 1 to 15", countdown: null, planning: false })).toBe("Dec 1 to 15");
   });
 });
 
