@@ -155,10 +155,15 @@ describe("merge-gate.mjs against a fake GitHub", () => {
       expect(result.stdout).toContain("This run made 9.");
     });
 
-    it("asks for whole pages, and never reads the same comments twice for one pull request", () => {
-      const { calls } = sweep([7], [{ number: 7, checkRunsTotal: 40 }]);
+    it("asks for whole pages", () => {
+      const { calls } = sweep([7], [{ number: 7 }]);
       for (const part of ["/files", "/comments", "/commits", "/check-runs"]) expect(calls.filter((c) => c.includes(part) && !c.includes("-X")).every((c) => c.includes("per_page=100"))).toBe(true);
+    });
+
+    it("reads the comments of a blocked pull request once, and writes its own comment from that read", () => {
+      const { calls } = sweep([7], [{ number: 7, files: ["src/server/services/a.ts"], body: "no version" }]);
       expect(calls.filter((c) => c.includes("/issues/7/comments") && !c.includes("-X"))).toHaveLength(1);
+      expect(calls.filter((c) => c.includes(`-X POST repos/${REPO}/issues/7/comments`) || c.includes("-X PATCH"))).toHaveLength(1);
     });
 
     it("skips a pull request that carries a hold label, without reading it", () => {
@@ -177,6 +182,36 @@ describe("merge-gate.mjs against a fake GitHub", () => {
       expect(result.status).toBe(0);
       expect(result.stdout).toContain("::warning::Merge gate skipped: 40 API calls left");
       expect(harness.calls().some((c) => c.includes("/pulls/7"))).toBe(false);
+    });
+
+    it("stops the run, with no further writes, when the limit is hit on a comment write", () => {
+      const limited = routesFor({ number: 7, files: ["src/server/services/a.ts"], body: "no version" }).map((route) => (route.match === `-X POST ${REPO_BASE}/issues/7/comments` ? { match: route.match, fail: "gh: API rate limit exceeded for installation. (HTTP 403)" } : route));
+      const harness = makeHarness({ pullRefs: [7, 8] });
+      harness.setRoutes([budget(900), { match: "pulls?state=open", out: listed(7, 8) }, ...limited, ...routesFor({ number: 8 })]);
+      const result = harness.run(process.execPath, [tool, "--sweep"], actions);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("GitHub's API rate limit is used up");
+      const calls = harness.calls();
+      expect(calls.filter((c) => c.includes("-X POST") && c.includes("/comments"))).toHaveLength(1);
+      expect(calls.some((c) => c.includes("/pulls/8"))).toBe(false);
+    });
+
+    it("stops the run when the limit is hit while refusing a merge, while deleting the merged branch, or while saying the token is missing", () => {
+      const limit = "gh: API rate limit exceeded for installation. (HTTP 403)";
+      const cases: Array<[string, Options, string, Record<string, string>]> = [
+        ["a refused merge's comment", { number: 7, mergeFails: true }, `-X POST ${REPO_BASE}/issues/7/comments`, {}],
+        ["the branch delete", { number: 7 }, `-X DELETE ${REPO_BASE}/git/refs/heads/`, {}],
+        ["the missing token comment", { number: 7 }, `-X POST ${REPO_BASE}/issues/7/comments`, { GATE_TOKEN: "" }],
+      ];
+      for (const [, options, failing, env] of cases) {
+        const routes = routesFor(options).map((route) => (route.match === failing ? { match: route.match, fail: limit } : route));
+        const harness = makeHarness({ pullRefs: [7, 8] });
+        harness.setRoutes([budget(900), { match: "pulls?state=open", out: listed(7, 8) }, ...routes, ...routesFor({ number: 8 })]);
+        const result = harness.run(process.execPath, [tool, "--sweep"], { ...actions, ...env });
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain("GitHub's API rate limit is used up");
+        expect(harness.calls().some((c) => c.includes("/pulls/8"))).toBe(false);
+      }
     });
 
     it("stops at the first rate limit answer: no merge, no comment on any pull request, and a failed run", () => {

@@ -208,6 +208,7 @@ function evaluateAndAct(number) {
     try {
       gh(["api", "-X", "DELETE", `repos/${REPO}/git/refs/heads/${branch.split("/").map(encodeURIComponent).join("/")}`], gate.token);
     } catch (error) {
+      if (error instanceof RateLimited) throw error;
       say(`#${number}: merged, but the branch could not be deleted (${describe(error)}).`);
     }
   }
@@ -237,6 +238,7 @@ function missingToken(number) {
   try {
     upsertComment(number, ["Everything the gate checks passes, but:", "", `- ${MISSING_TOKEN}`]);
   } catch (commentError) {
+    if (commentError instanceof RateLimited) throw commentError;
     say(`#${number}: the comment could not be written either (${describe(commentError)}).`);
   }
   return "missing-token";
@@ -268,12 +270,14 @@ function refused(number, action, error, labels = []) {
     try {
       upsertComment(number, ["Everything the gate checks passes, but:", "", `- ${WORKFLOW_REASON}`]);
     } catch (commentError) {
+      if (commentError instanceof RateLimited) throw commentError;
       say(`#${number}: the comment could not be written (${describe(commentError)}).`);
     }
     if (!labels.includes("needs-owner")) {
       try {
         gh(["api", "-X", "POST", `repos/${REPO}/issues/${number}/labels`, "-f", "labels[]=needs-owner"]);
       } catch (labelError) {
+        if (labelError instanceof RateLimited) throw labelError;
         say(`#${number}: the needs-owner label could not be applied (${describe(labelError)}).`);
       }
     }
@@ -284,6 +288,7 @@ function refused(number, action, error, labels = []) {
   try {
     upsertComment(number, ["Everything the gate checks passes, but:", "", `- ${reason}`]);
   } catch (commentError) {
+    if (commentError instanceof RateLimited) throw commentError;
     say(`#${number}: the comment could not be written either (${describe(commentError)}).`);
   }
   return "failed";
