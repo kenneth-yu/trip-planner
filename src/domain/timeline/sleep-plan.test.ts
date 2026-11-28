@@ -288,6 +288,22 @@ describe("once the trip has started", () => {
   });
 });
 
+describe("a stay that covers the arrival night", () => {
+  it("keeps the stretch after it free of the arrival's warnings and gaps (found by the property test, seed -2078610998)", () => {
+    const covered = trip([
+      flight("JFK", "HKG", "2026-03-02T19:00", "2026-03-04T00:00"),
+      { input: { type: "stay" as const, name: "Stay", city: "Hong Kong", checkInDate: "2026-03-04", checkOutDate: "2026-03-05" } },
+      flight("HKG", "JFK", "2026-03-06T08:00", "2026-03-06T00:00", "CX846"),
+    ]);
+    const plan = sleepPlan(viewOf(covered));
+    const block = onlyStretch(plan);
+    expect(block.nights).toEqual(["2026-03-05"]);
+    expect(block.checkIn).toBe("2026-03-05");
+    expect(block.arrivalLine).toBeNull();
+    expect(block.warnings.join(" ")).not.toContain("You get there");
+  });
+});
+
 describe("a trip with no flights", () => {
   it("has nothing to plan", () => {
     expect(sleepPlan(viewOf(trip([hongKongStay])))).toEqual({ stretches: [], planeNights: [], entries: [], summary: null });

@@ -137,11 +137,12 @@ function buildStretch(group: NightStatus[], legs: Leg[], homeZone: Zone, statuse
     .filter((l) => instantMs(l.end) <= bedMs(first, zone) && destinationCity(l) === city)
     .sort((a, b) => instantMs(b.end) - instantMs(a.end))[0];
   const departure = legs.filter((l) => instantMs(l.start) >= bedMs(last, zone)).sort(byStart)[0];
+  const arrivesHere = arrival !== undefined && localDateKey(arrival.end) === first;
 
   const warnings: string[] = [];
   let nights = group.map((n) => n.night);
 
-  if (arrival?.type === "flight") {
+  if (arrivesHere && arrival.type === "flight") {
     const ready = instantMs(arrival.end) + (isDomestic(arrival) ? DOMESTIC_EXIT_MS : INTERNATIONAL_EXIT_MS);
     const readyLocal = DateTime.fromMillis(ready, { zone });
     const readyDate = readyLocal.toISODate();
@@ -178,7 +179,7 @@ function buildStretch(group: NightStatus[], legs: Leg[], homeZone: Zone, statuse
     checkOut,
     title: `${city}, ${nights.length} ${nights.length === 1 ? "night" : "nights"}`,
     datesLine: `Check in ${dayLabel(checkIn)}, check out ${dayLabel(checkOut)}`,
-    arrivalLine: arrival ? timeLine(arrival.type === "flight" ? "You land" : "You arrive", arrival.end, city, homeZone, arrival.endIsEstimated) : null,
+    arrivalLine: arrivesHere ? timeLine(arrival.type === "flight" ? "You land" : "You arrive", arrival.end, city, homeZone, arrival.endIsEstimated) : null,
     departureLine: departure ? timeLine(departure.type === "flight" ? "You fly out" : "You leave", departure.start, city, homeZone, departure.startIsEstimated) : null,
     warnings: warnings.slice(0, 2),
   };
