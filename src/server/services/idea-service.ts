@@ -4,9 +4,13 @@ import { canSeeIdea, type Idea } from "@/domain/ideas/ideas";
 import { InputProblem } from "@/domain/import/problem";
 import { resolvePlace } from "@/domain/time/resolve-place";
 import type { Item, Requester } from "@/domain/types";
-import { AccessDenied, assertCanEditTrip } from "@/domain/visibility/project";
+import { AccessDenied, assertCanEditTrip, projectTrip } from "@/domain/visibility/project";
+import { placeQueries } from "@/domain/import/quick-add";
 import * as t from "../db/schema";
 import type { ServiceContext } from "./context";
+import { insertActivity } from "../repo/activity-repo";
+import type { DbOrTx } from "../repo/trip-repo";
+import { placeContextFor } from "./place-service";
 import { NotFound, quickAddItem, requireAggregate } from "./trip-service";
 
 const IdeaId = z.string().uuid();
@@ -71,7 +75,7 @@ export async function listIdeas(ctx: ServiceContext, tripId: string, requester: 
   const agg = await requireAggregate(ctx.db, tripId);
   if (requester.kind !== "member" || !agg.memberships.some((m) => m.userId === requester.userId)) throw new AccessDenied();
   const rows = await ctx.db.select().from(t.ideas).where(and(eq(t.ideas.tripId, tripId), ne(t.ideas.state, "dropped")));
-  return rows.map(toIdea).filter((idea) => canSeeIdea(idea, requester)).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+  return rows.map(toIdea).filter((idea) => canSeeIdea(idea, requester)).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
 }
 
 async function sharingFor(ctx: ServiceContext, tripId: string, input: z.infer<typeof IdeaInput>): Promise<{ visibility: Idea["visibility"]; visibleToUserIds: string[] }> {
@@ -119,30 +123,46 @@ export async function editIdea(ctx: ServiceContext, tripId: string, ideaId: stri
   return toIdea(row);
 }
 
-async function move(ctx: ServiceContext, tripId: string, ideaId: string, requester: Requester, from: Idea["state"], to: Idea["state"]): Promise<Idea> {
+async function record(db: DbOrTx, tripId: string, actorId: string, action: "idea_scheduled" | "idea_done" | "idea_dropped" | "idea_reopened", idea: Idea): Promise<void> {
+  await insertActivity(db, { tripId, actorId, action, after: { title: idea.title, visibility: idea.visibility, createdBy: idea.createdBy, visibleToUserIds: idea.visibleToUserIds } });
+}
+
+async function move(ctx: ServiceContext, tripId: string, ideaId: string, requester: Requester, from: Idea["state"], to: Idea["state"], action: "idea_done" | "idea_dropped" | "idea_reopened"): Promise<Idea> {
   const userId = await requireEditor(ctx, tripId, requester);
   await load(ctx, tripId, ideaId, requester);
   const done = to === "done" ? { doneBy: userId, doneAt: ctx.now() } : { doneBy: null, doneAt: null };
-  const [row] = await ctx.db
-    .update(t.ideas)
-    .set({ state: to, ...done, updatedAt: ctx.now() })
-    .where(and(eq(t.ideas.id, ideaId), eq(t.ideas.state, from)))
-    .returning();
-  if (!row) throw new InputProblem("That idea already changed. Reload the page.");
-  return toIdea(row);
+  return ctx.db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(t.ideas)
+      .set({ state: to, ...done, updatedAt: ctx.now() })
+      .where(and(eq(t.ideas.id, ideaId), eq(t.ideas.state, from)))
+      .returning();
+    if (!row) throw new InputProblem("That idea already changed. Reload the page.");
+    const idea = toIdea(row);
+    await record(tx, tripId, userId, action, idea);
+    return idea;
+  });
 }
 
-export const markIdeaDone = (ctx: ServiceContext, tripId: string, ideaId: string, requester: Requester) => move(ctx, tripId, ideaId, requester, "open", "done");
-export const markIdeaNotDone = (ctx: ServiceContext, tripId: string, ideaId: string, requester: Requester) => move(ctx, tripId, ideaId, requester, "done", "open");
-export const dropIdea = (ctx: ServiceContext, tripId: string, ideaId: string, requester: Requester) => move(ctx, tripId, ideaId, requester, "open", "dropped");
-export const restoreIdea = (ctx: ServiceContext, tripId: string, ideaId: string, requester: Requester) => move(ctx, tripId, ideaId, requester, "dropped", "open");
+export const markIdeaDone = (ctx: ServiceContext, tripId: string, ideaId: string, requester: Requester) => move(ctx, tripId, ideaId, requester, "open", "done", "idea_done");
+export const markIdeaNotDone = (ctx: ServiceContext, tripId: string, ideaId: string, requester: Requester) => move(ctx, tripId, ideaId, requester, "done", "open", "idea_reopened");
+export const dropIdea = (ctx: ServiceContext, tripId: string, ideaId: string, requester: Requester) => move(ctx, tripId, ideaId, requester, "open", "dropped", "idea_dropped");
+export const restoreIdea = (ctx: ServiceContext, tripId: string, ideaId: string, requester: Requester) => move(ctx, tripId, ideaId, requester, "dropped", "open", "idea_reopened");
 
 export async function scheduleIdea(ctx: ServiceContext, tripId: string, ideaId: string, requester: Requester, plan: unknown): Promise<Item> {
-  await requireEditor(ctx, tripId, requester);
-  const idea = await load(ctx, tripId, ideaId, requester);
-  if (idea.state !== "open") throw new InputProblem("That idea already changed. Reload the page.");
-  const sharing = idea.visibility === "everyone" ? {} : { visibility: idea.visibility, visibleToUserIds: idea.visibleToUserIds };
-  const item = await quickAddItem(ctx, tripId, requester, plan, sharing, { idempotencyKey: `idea:${ideaId}` });
-  await ctx.db.delete(t.ideas).where(and(eq(t.ideas.id, ideaId), eq(t.ideas.tripId, tripId)));
+  const userId = await requireEditor(ctx, tripId, requester);
+  await load(ctx, tripId, ideaId, requester);
+  const places = await placeContextFor(ctx, projectTrip(await requireAggregate(ctx.db, tripId), requester).items, requester.homeZone, placeQueries(plan));
+  const item = await ctx.db.transaction(async (tx) => {
+    const [row] = await tx.select().from(t.ideas).where(and(eq(t.ideas.id, ideaId), eq(t.ideas.tripId, tripId))).for("update");
+    const idea = row ? toIdea(row) : null;
+    if (!idea || !canSeeIdea(idea, requester) || idea.state !== "open") throw new InputProblem("That idea already changed. Reload the page.");
+    const sharing = idea.visibility === "everyone" ? {} : { visibility: idea.visibility, visibleToUserIds: idea.visibleToUserIds };
+    const created = await quickAddItem(ctx, tripId, requester, plan, sharing, { within: tx, places, idempotencyKey: `idea:${ideaId}` });
+    await record(tx, tripId, userId, "idea_scheduled", idea);
+    await tx.delete(t.ideas).where(eq(t.ideas.id, ideaId));
+    return created;
+  });
+  await ctx.onTripChanged(tripId);
   return item;
 }

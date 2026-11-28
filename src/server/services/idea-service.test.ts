@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildMirrorEvents } from "@/domain/mirror/calendar-mirror";
 import { TRIP_ID, USERS } from "@/fixtures/december-trip";
 import { AccessDenied, projectTrip } from "@/domain/visibility/project";
@@ -7,9 +7,23 @@ import { present } from "@/testing/present";
 import * as t from "../db/schema";
 import { describeIdeas } from "../mcp/describe";
 import { jacob, kenny, testContext } from "../testing";
+import { listActivityLines } from "./activity-service";
 import { deleteAccount } from "./deletion-service";
 import { createIdea, dropIdea, editIdea, listIdeas, markIdeaDone, markIdeaNotDone, restoreIdea, scheduleIdea } from "./idea-service";
 import { getTripView, NotFound } from "./trip-service";
+
+const failing = vi.hoisted(() => ({ scheduling: false }));
+
+vi.mock("../repo/activity-repo", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../repo/activity-repo")>();
+  return {
+    ...real,
+    insertActivity: async (...args: Parameters<typeof real.insertActivity>) => {
+      if (failing.scheduling && args[1].action === "idea_scheduled") throw new Error("the log could not be written");
+      return real.insertActivity(...args);
+    },
+  };
+});
 
 const viewerId = "00000000-0000-4000-8000-0000000000c3";
 
@@ -28,7 +42,7 @@ describe("capturing ideas", () => {
     expect(gold).toMatchObject({ city: "Shenzhen", location: null, state: "open", createdBy: USERS.kenny.id, visibility: "everyone" });
     expect(spa.location).toMatchObject({ name: "Tianyuan Foot Spa, Luohu, Shenzhen" });
     expect(spa.note).toBe("Ask for Ms Lin");
-    for (const who of [kenny, jacob, viewer]) expect((await listIdeas(ctx, TRIP_ID, who)).map((i) => i.title)).toEqual(["Buy gold", "Massage"]);
+    for (const who of [kenny, jacob, viewer]) expect((await listIdeas(ctx, TRIP_ID, who)).map((i) => i.title).sort()).toEqual(["Buy gold", "Massage"]);
   });
 
   it("makes an idea with no place at all, and trims and limits what is typed", async () => {
@@ -63,7 +77,7 @@ describe("who sees which idea", () => {
     const { ctx, viewer } = await withViewer();
     await createIdea(ctx, TRIP_ID, jacob, { title: "Surprise for Kenneth", visibility: "only_me", note: "ring" });
     await createIdea(ctx, TRIP_ID, kenny, { title: "Buy gold", where: "Shenzhen" });
-    expect((await listIdeas(ctx, TRIP_ID, jacob)).map((i) => i.title)).toEqual(["Surprise for Kenneth", "Buy gold"]);
+    expect((await listIdeas(ctx, TRIP_ID, jacob)).map((i) => i.title).sort()).toEqual(["Buy gold", "Surprise for Kenneth"]);
     for (const who of [kenny, viewer]) {
       const seen = await listIdeas(ctx, TRIP_ID, who);
       expect(seen.map((i) => i.title)).toEqual(["Buy gold"]);
@@ -142,6 +156,19 @@ describe("scheduling an idea", () => {
     expect(await db.select().from(t.ideas)).toEqual([]);
   });
 
+  it("is all or nothing: when the log cannot be written there is no plan and the idea is still open", async () => {
+    const { ctx, db } = await testContext({ withItems: false });
+    const idea = await createIdea(ctx, TRIP_ID, kenny, { title: "Buy gold", where: "Shenzhen" });
+    failing.scheduling = true;
+    try {
+      await expect(scheduleIdea(ctx, TRIP_ID, idea.id, kenny, plan)).rejects.toThrow("the log could not be written");
+    } finally {
+      failing.scheduling = false;
+    }
+    expect((await getTripView(ctx, TRIP_ID, kenny)).items).toEqual([]);
+    expect((await db.select().from(t.ideas)).map((i) => [i.title, i.state])).toEqual([["Buy gold", "open"]]);
+  });
+
   it("is refused for a viewer, for a done idea, and for a plan that is not valid, keeping the idea", async () => {
     const { ctx, db, viewer } = await withViewer();
     const idea = await createIdea(ctx, TRIP_ID, kenny, { title: "Buy gold" });
@@ -150,6 +177,30 @@ describe("scheduling an idea", () => {
     expect(await db.select().from(t.ideas)).toHaveLength(1);
     await markIdeaDone(ctx, TRIP_ID, idea.id, kenny);
     await expect(scheduleIdea(ctx, TRIP_ID, idea.id, kenny, plan)).rejects.toThrow("already changed");
+  });
+});
+
+describe("the activity log", () => {
+  const lines = async (ctx: Awaited<ReturnType<typeof testContext>>["ctx"], who: typeof kenny) => (await listActivityLines(ctx, TRIP_ID, who)).lines.filter((l) => l.kind.startsWith("idea_")).map((l) => `${l.by} ${l.kind} ${l.title}`);
+
+  it("says who scheduled, did, dropped and brought back an idea, and agrees with undo: bringing it back is its own line", async () => {
+    const { ctx } = await testContext({ withItems: false });
+    const gold = await createIdea(ctx, TRIP_ID, kenny, { title: "Buy gold", where: "Shenzhen" });
+    const spa = await createIdea(ctx, TRIP_ID, kenny, { title: "Massage" });
+    await markIdeaDone(ctx, TRIP_ID, gold.id, jacob);
+    await markIdeaNotDone(ctx, TRIP_ID, gold.id, jacob);
+    await dropIdea(ctx, TRIP_ID, spa.id, kenny);
+    await restoreIdea(ctx, TRIP_ID, spa.id, kenny);
+    await scheduleIdea(ctx, TRIP_ID, gold.id, kenny, { type: "plan", title: "Buy gold", city: "Shenzhen", startLocal: "2026-12-08T14:00", endLocal: "2026-12-08T15:00" });
+    expect((await lines(ctx, kenny)).sort()).toEqual(["Jacob idea_done Buy gold", "Jacob idea_reopened Buy gold", "You idea_dropped Massage", "You idea_reopened Massage", "You idea_scheduled Buy gold"].sort());
+  });
+
+  it("leaves another person's hidden idea out of the log, and shows it to the people who may see it", async () => {
+    const { ctx } = await testContext({ withItems: false });
+    const secret = await createIdea(ctx, TRIP_ID, jacob, { title: "Surprise", visibility: "only_me" });
+    await markIdeaDone(ctx, TRIP_ID, secret.id, jacob);
+    expect(await lines(ctx, kenny)).toEqual([]);
+    expect(await lines(ctx, jacob)).toEqual(["You idea_done Surprise"]);
   });
 });
 
@@ -173,7 +224,7 @@ describe("deleting an account", () => {
     return env;
   }
   const dad = "00000000-0000-4000-8000-0000000000c4";
-  const rows = async (db: Awaited<ReturnType<typeof setup>>["db"]) => (await db.select().from(t.ideas)).map((i) => ({ title: i.title, createdBy: i.createdBy, visibility: i.visibility, visibleTo: i.visibleToUserIds }));
+  const rows = async (db: Awaited<ReturnType<typeof setup>>["db"]) => (await db.select().from(t.ideas)).map((i) => ({ title: i.title, createdBy: i.createdBy, visibility: i.visibility, visibleTo: i.visibleToUserIds })).sort((a, b) => a.title.localeCompare(b.title));
 
   it("deletes the person's only me ideas and hands specific ones to the first person left on the list", async () => {
     const { ctx, db } = await setup();

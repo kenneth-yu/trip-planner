@@ -10,6 +10,7 @@ import { itemPatchSchema, type ItemPatch } from "@/domain/item-patch";
 import { inputToProposal, InputProblem, placeQueries } from "@/domain/import/quick-add";
 import { placeContextFor } from "./place-service";
 import type { ProposedItem } from "@/domain/import/proposal";
+import type { PlaceContext } from "@/domain/time/resolve-place";
 import type { Item, Requester, TripAggregate, Visibility } from "@/domain/types";
 
 export class NotFound extends Error {
@@ -104,6 +105,8 @@ export function idempotentItemId(userId: string, tripId: string, key: string): s
 
 export interface QuickAddOptions {
   idempotencyKey?: string;
+  within?: DbOrTx;
+  places?: PlaceContext;
 }
 
 export async function quickAddItem(
@@ -115,11 +118,11 @@ export async function quickAddItem(
   options: QuickAddOptions = {},
 ): Promise<Item> {
   const actorId = memberId(requester);
-  const before = await requireAggregate(ctx.db, tripId);
+  const before = await requireAggregate(options.within ?? ctx.db, tripId);
   assertCanEditTrip(before, requester);
-  const places = await placeContextFor(ctx, projectTrip(before, requester).items, requester.homeZone, placeQueries(input));
+  const places = options.places ?? (await placeContextFor(ctx, projectTrip(before, requester).items, requester.homeZone, placeQueries(input)));
   const fixedId = options.idempotencyKey ? idempotentItemId(actorId, tripId, options.idempotencyKey) : null;
-  const outcome = await ctx.db.transaction(async (tx) => {
+  const write = async (tx: DbOrTx) => {
     if (fixedId) await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${fixedId}))`);
     const agg = await requireAggregate(tx, tripId);
     assertCanEditTrip(agg, requester);
@@ -131,8 +134,9 @@ export async function quickAddItem(
     await touchTrip(tx, tripId);
     await insertActivity(tx, { tripId, actorId, action: "created", itemId: created.id, after: created });
     return { item: created, added: true };
-  });
-  if (outcome.added) await ctx.onTripChanged(tripId);
+  };
+  const outcome = options.within ? await write(options.within) : await ctx.db.transaction(write);
+  if (outcome.added && !options.within) await ctx.onTripChanged(tripId);
   return outcome.item;
 }
 

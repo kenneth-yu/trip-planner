@@ -31,7 +31,7 @@ const DAY_STARTS = 9;
 const DAY_ENDS = 21;
 const MIN_GAP_MINUTES = 120;
 
-export function canSeeIdea(idea: Idea, requester: Requester): boolean {
+export function canSeeIdea(idea: Pick<Idea, "visibility" | "createdBy" | "visibleToUserIds">, requester: Requester): boolean {
   if (requester.kind !== "member") return false;
   if (idea.createdBy !== null && idea.createdBy === requester.userId) return true;
   if (idea.visibility === "everyone") return true;
