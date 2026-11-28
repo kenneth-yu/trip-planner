@@ -1,6 +1,8 @@
 import Link from "next/link";
 import styles from "./item.module.css";
 import { CopyButton } from "./copy-button";
+import { rowKey } from "@/domain/smarts/rows";
+import { SmartRow, type SmartRows } from "../../smart-row";
 import { buildFlightCard } from "@/domain/time/flight-card";
 import { itemHeading } from "./item-title";
 import { formatClock, formatDayHeader, homeReference, toLocal } from "@/domain/time/format";
@@ -90,7 +92,14 @@ function Field({ label, entries, big }: { label: string; entries: Entry[]; big?:
   );
 }
 
-export function ItemDetails({ view, item, nowMs, viewerTravelerId }: { view: TripView; item: VisibleItem; nowMs: number; viewerTravelerId: string | null }) {
+function aboutToAirport(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  const parts = [hours ? `${hours} ${hours === 1 ? "hour" : "hours"}` : "", rest ? `${rest} ${rest === 1 ? "minute" : "minutes"}` : ""].filter(Boolean);
+  return `About ${parts.join(" ")} to the airport.`;
+}
+
+export function ItemDetails({ view, item, nowMs, viewerTravelerId, smart }: { view: TripView; item: VisibleItem; nowMs: number; viewerTravelerId: string | null; smart?: SmartRows }) {
   const { rows, lead, sentence } = moments(item, view);
   const city = itemCity(item);
   const airline = item.type === "flight" ? (item.flight?.airline ?? null) : null;
@@ -136,6 +145,10 @@ export function ItemDetails({ view, item, nowMs, viewerTravelerId }: { view: Tri
         {lead && <div className={styles.sub}>{lead}</div>}
         {sentence && <div className={styles.sub}>{sentence}</div>}
         {(item.startIsEstimated || item.endIsEstimated) && <div className={styles.sub}>Times are estimated. Check the booking.</div>}
+        {item.type === "stay" && item.stay?.timeToAirportMinutes ? <div className={styles.sub}>{aboutToAirport(item.stay.timeToAirportMinutes)}</div> : null}
+        {(["flight", "check_in", "check_out", "event"] as const).map((name) => (
+          <SmartRow key={name} tripId={item.tripId} row={smart?.rows.get(rowKey(item.id, name))} />
+        ))}
       </div>
       {(placeName || address) && (
         <div className={styles.place}>
