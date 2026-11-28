@@ -42,7 +42,7 @@ export function TripGridView({ grid, dayHref, selectedKey, checkHref }: { grid: 
         <span className={`${styles.rowLabel} ${styles.bandSleep}`} style={{ gridRow: rows.sleep }}>Sleeping in</span>
         {grid.sleep.map((s) => (
           <div key={s.key} className={styles.sleep} style={{ gridColumn: `${col(s.from)} / ${col(s.to)}`, gridRow: rows.sleep }}>
-            <a className={`${styles.block} ${CITY[s.cityIndex % CITY.length]}`} href={dayHref(grid.days[s.from].key)} title={s.stays.join(", ")}>
+            <a className={`${styles.block} ${CITY[s.cityIndex % CITY.length]} ${s.draft ? styles.draft : ""}`} href={dayHref(grid.days[s.from].key)} title={s.draft ? `${s.stays.join(", ")}. Not booked yet` : s.stays.join(", ")}>
               <b>{s.city}</b>
               <span>
                 {s.nights} night{s.nights === 1 ? "" : "s"}, {s.stays.join(" and ")}
@@ -65,7 +65,7 @@ export function TripGridView({ grid, dayHref, selectedKey, checkHref }: { grid: 
         {hasTravel && grid.travel.map((entries, i) => (
           <div key={`travel-${grid.days[i].key}`} className={styles.cell} style={{ gridColumn: col(i), gridRow: rows.travel }}>
             {entries.map((t) => (
-              <a key={t.key} href={checkHref(t.key) ?? dayHref(grid.days[i].key)} className={`${styles.entry} ${t.kind === "missing" ? styles.missing : ""}`}>
+              <a key={t.key} href={checkHref(t.key) ?? dayHref(grid.days[i].key)} className={`${styles.entry} ${t.kind === "missing" ? styles.missing : ""} ${t.draft ? styles.draft : ""}`} title={t.draft ? `${t.title}. Not booked yet` : undefined}>
                 {t.title}
                 {t.time && <small>{t.time}</small>}
               </a>
@@ -77,7 +77,7 @@ export function TripGridView({ grid, dayHref, selectedKey, checkHref }: { grid: 
         {hasPlans && grid.plans.map((entries, i) => (
           <div key={`plans-${grid.days[i].key}`} className={styles.cell} style={{ gridColumn: col(i), gridRow: rows.plans }}>
             {entries.slice(0, PER_CELL).map((p) => (
-              <a key={p.key} href={dayHref(grid.days[i].key)} className={styles.entry}>
+              <a key={p.key} href={dayHref(grid.days[i].key)} className={`${styles.entry} ${p.draft ? styles.draft : ""}`} title={p.draft ? `${p.title}. Not booked yet` : undefined}>
                 {p.title}
                 <small>{p.time}</small>
               </a>

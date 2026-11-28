@@ -11,7 +11,7 @@ import {
 } from "./format";
 import { airportByCode, airportShortName, airportsInCity } from "./places";
 
-export type FlightLike = Pick<Item, "id" | "type" | "flight" | "start" | "end">;
+export type FlightLike = Pick<Item, "id" | "type" | "flight" | "start" | "end"> & { booked?: boolean };
 
 export interface FlightEnd {
   time: string;
@@ -68,8 +68,10 @@ export function buildFlightCard(item: FlightLike, homeZone: Zone | null, homeLab
   const f = item.flight;
   const from = placeFor(f.fromAirport);
   const to = placeFor(f.toAirport);
+  const named = [f.flightNumber, f.airline].filter(Boolean).join(" ");
+  const header = item.booked !== false ? named : named ? `${named} · not booked yet` : `Not booked yet · ${to.city}`;
   return {
-    header: [f.flightNumber, f.airline].filter(Boolean).join(" "),
+    header,
     dayKey: localDateKey(item.start),
     depart: { time: formatClock(toLocal(item.start)), ...from },
     duration: formatFlightDuration(item.start, item.end),

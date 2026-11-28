@@ -113,6 +113,7 @@ export function ItemDetails({ view, item, nowMs, viewerTravelerId }: { view: Tri
       <h2 className={styles.title} id="item-title" tabIndex={-1}>
         {itemHeading(item)}
       </h2>
+      {!item.booked && <div className={styles.sub}>Not booked yet.</div>}
       {airline && <div className={styles.sub}>{airline}</div>}
       <div className={styles.when}>
         {rows.map((r, i) => (

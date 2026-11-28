@@ -21,13 +21,15 @@ function focusFieldFor(focus: string | undefined, travelerIds: string[], viewerT
 
 export default async function EditItemPage({ params, searchParams }: PageProps<"/trips/[tripId]/items/[itemId]/edit">) {
   const { tripId, itemId } = await params;
-  const { focus } = await searchParams;
+  const { focus, booked } = await searchParams;
   const { ctx, requester, view } = await loadTripPage(tripId, `/trips/${tripId}/items/${itemId}/edit`);
   const item = itemOf(view, itemId);
   if (!item || !view.permissions.canEdit) notFound();
   const travelers = view.travelers.filter((t) => item.travelerIds.includes(t.id));
   const traveler = await viewerTravelerId(ctx, tripId, requester);
   const heading = itemHeading(item);
+  const values = itemToFormValues(item, travelers);
+  const initial = booked === "yes" && !item.booked ? { ...values, fields: { ...values.fields, booked: "yes" } } : values;
   return (
     <div className={styles.narrow}>
       <h2 className={styles.sectionTitle}>Edit {heading}</h2>
@@ -35,7 +37,7 @@ export default async function EditItemPage({ params, searchParams }: PageProps<"
         tripId={tripId}
         travelers={travelers}
         members={[]}
-        initial={itemToFormValues(item, travelers)}
+        initial={initial}
         action={editItem}
         hint={placeHint}
         canChangeSharing={false}
