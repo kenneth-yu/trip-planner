@@ -48,7 +48,7 @@ Under 60 minutes between flights on one booking at an international hub (under 9
 
 The sleep tip (jet-lag window, travel smarts item 13) is a tip, not a check: a flight of 7 hours or more crossing 5 or more zones, a window from the later of 2 hours after takeoff and 8:00pm destination time to the earlier of 90 minutes before landing and 6:00am destination time, shown only when it lasts 3 hours or more and starts at night. It is general guidance, not medical advice.
 
-Both are ordinary checks: warning color, "This is fine" for the whole trip, a "Why?" explanation, and a place in Worth a look. Travel tips (leave the hotel by, bag storage) are separate: secondary color, a per person switch and per kind off switches on `/account#travel-smarts`, shown only to editors, never to viewers or view links, and never a replacement for a check.
+Both are ordinary checks: warning color, "This is fine" for the whole trip, a "Why?" explanation, and a place in Worth a look. Travel tips (leave the hotel by, bag storage) are separate: secondary color, a per person switch and per kind off switches in the Travel smarts section on `/account#travel-smarts` (only kinds that have tips are listed), shown only to editors, never to viewers or view links, and never a replacement for a check.
 
 Leave out of v1: visa and entry rules. They change and depend on nationality. Do not generate advice about them.
 

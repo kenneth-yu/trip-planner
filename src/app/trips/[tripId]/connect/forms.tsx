@@ -12,7 +12,7 @@ export function AssistantForm({ tripId, canSuggest }: { tripId: string; canSugge
       <div className={styles.row}>
         <input name="label" placeholder="Name, like Jacob's Claude" required maxLength={80} />
         {canSuggest ? (
-          <select name="scope" defaultValue="propose">
+          <select name="scope" defaultValue="propose" aria-label="What this link can do">
             <option value="propose">Can suggest items</option>
             <option value="read">Read only</option>
           </select>

@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { Auth } from "@auth/core";
 import { eq } from "drizzle-orm";
 import { buildAuthConfig } from "./config";
+import { FROZEN_NOW_MS } from "@/testing/clock";
 import { createDevOutbox } from "./email";
 import { hashToken } from "./tokens";
 import * as t from "../db/schema";
@@ -107,7 +108,7 @@ describe("email link sign in through Auth.js", () => {
     const { browser, outbox } = shared;
     await requestLink(browser, USERS.jacob.email, "/");
     const link = new URL(present(outbox.lastLink(USERS.jacob.email)));
-    await db.update(t.authVerificationTokens).set({ expires: new Date(Date.now() - 1000) });
+    await db.update(t.authVerificationTokens).set({ expires: new Date(FROZEN_NOW_MS - 1000) });
     const response = await shared.browserFor().send(link.pathname + link.search);
     expect(present(response.headers.get("location"))).toContain("/sign-in?error=Verification");
   });

@@ -2,7 +2,7 @@ import { readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { describe, expect, it } from "vitest";
-import { measureAsync, measureSync, median, MIN_SAMPLES, RESULTS_DIR, SAMPLES, TooSlow } from "../../perf/harness";
+import { measureAsync, measureSync, median, MIN_SAMPLES, RESULTS_DIR, SAMPLES, TooSlow } from "./harness";
 
 function spin(ms: number): void {
   const until = performance.now() + ms;

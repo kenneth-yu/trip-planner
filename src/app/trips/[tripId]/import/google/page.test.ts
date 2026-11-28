@@ -199,7 +199,7 @@ describe("the Google import page", () => {
     world.holder.open = false;
     const html = await render();
     expect(html).toContain("Google Calendar import is not open yet.");
-    expect(html).toContain(`href="/trips/${TRIP_ID}/inbox">Back to the review inbox</a>`);
+    expect(html).toMatch(new RegExp(`<a class="[^"]*" href="/trips/${TRIP_ID}/import">Back to Import bookings</a>`));
   });
 
   it("says the permission ran out when the person connected but the 10 minute token is gone", async () => {
