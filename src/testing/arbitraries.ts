@@ -80,6 +80,7 @@ interface ItemSpec {
   visibleTo: number[];
   creator: number;
   showAsBusy: boolean;
+  booked: boolean;
   confirmed: boolean;
   travelers: number[];
   privates: PrivateSpec[];
@@ -115,6 +116,7 @@ const itemSpec: fc.Arbitrary<ItemSpec> = fc.record({
   visibleTo: fc.array(fc.nat(3), { maxLength: 3 }),
   creator: fc.nat(3),
   showAsBusy: fc.boolean(),
+  booked: fc.oneof({ weight: 3, arbitrary: fc.constant(true) }, { weight: 1, arbitrary: fc.constant(false) }),
   confirmed: fc.boolean(),
   travelers: fc.array(fc.nat(3), { maxLength: 3 }),
   privates: fc.array(privateSpec, { maxLength: 3 }),
@@ -184,6 +186,7 @@ function buildItem(spec: ItemSpec, index: number, ctx: ItemContext): Item {
     visibility: spec.visibility,
     visibleToUserIds: spec.visibility === "specific" ? [...new Set(spec.visibleTo.map((u) => pick(ctx.userIds, u)))] : [],
     showAsBusy: spec.showAsBusy,
+    booked: spec.booked,
     status: spec.confirmed ? "confirmed" : "needs_review",
     notes: m.notes,
     flags: [],
@@ -276,7 +279,7 @@ export function oracleFor(agg: TripAggregate, requester: Requester): Oracle {
       allowed: link?.enabled === true,
       canSeeSensitive: false,
       canSeeDeadlines: link?.showsDeadlines === true,
-      seesItem: (item) => item.visibility === "everyone",
+      seesItem: (item) => item.visibility === "everyone" && item.booked,
     };
   }
   const { userId } = requester;
@@ -286,7 +289,8 @@ export function oracleFor(agg: TripAggregate, requester: Requester): Oracle {
     allowed: role !== null,
     canSeeSensitive: editor,
     canSeeDeadlines: editor || (role === "viewer" && agg.trip.viewersSeeDeadlines),
-    seesItem: (item) => item.visibility === "everyone" || item.createdBy === userId || (item.visibility === "specific" && item.visibleToUserIds.includes(userId)),
+    seesItem: (item) =>
+      (item.booked || editor) && (item.visibility === "everyone" || item.createdBy === userId || (item.visibility === "specific" && item.visibleToUserIds.includes(userId))),
   };
 }
 
@@ -316,7 +320,7 @@ export function expectedBusyIntervals(agg: TripAggregate, requester: Requester):
   if (requester.kind === "link") return [];
   const oracle = oracleFor(agg, requester);
   const spans = agg.items
-    .filter((i) => !oracle.seesItem(i) && i.showAsBusy)
+    .filter((i) => !oracle.seesItem(i) && i.showAsBusy && i.booked)
     .map((i): [number, number] => [Date.parse(i.start.at), Date.parse(i.end.at)])
     .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   const merged: [number, number][] = [];

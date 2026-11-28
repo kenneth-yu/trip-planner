@@ -92,6 +92,7 @@ export interface Item {
   visibility: Visibility;
   visibleToUserIds: string[];
   showAsBusy: boolean;
+  booked: boolean;
   status: ItemStatus;
   notes: string;
   flags: string[];

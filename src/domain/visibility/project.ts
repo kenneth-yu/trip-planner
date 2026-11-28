@@ -95,6 +95,7 @@ function projectItem(item: Item, requester: Requester, perms: Permissions): Visi
     visibility: item.visibility,
     visibleToUserIds: isCreator ? [...item.visibleToUserIds] : [],
     showAsBusy: item.showAsBusy,
+    booked: item.booked,
     status: item.status,
     flags: requester.kind === "link" ? [] : [...item.flags],
     notes: perms.canSeeSensitive ? item.notes : "",
@@ -129,8 +130,9 @@ export function projectTrip(agg: TripAggregate, requester: Requester): TripView 
   const hiddenBusy: Item[] = [];
   const sorted = [...agg.items].sort((a, b) => a.start.at.localeCompare(b.start.at));
   for (const item of sorted) {
+    if (!item.booked && !permissions.canEdit) continue;
     if (canSeeItem(item, requester)) items.push(projectItem(item, requester, permissions));
-    else if (item.showAsBusy) hiddenBusy.push(item);
+    else if (item.showAsBusy && item.booked) hiddenBusy.push(item);
   }
   const busy = requester.kind === "link" ? [] : mergeBusy(hiddenBusy, items, requester.homeZone);
   return {

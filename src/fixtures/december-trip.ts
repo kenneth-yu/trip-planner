@@ -93,6 +93,7 @@ function toItem(raw: unknown, i: number): Item {
     visibility: "everyone",
     visibleToUserIds: [],
     showAsBusy: false,
+    booked: true,
     status: f.status ?? "confirmed",
     notes: "",
     flags: [],

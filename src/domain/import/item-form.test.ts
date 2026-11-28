@@ -418,6 +418,7 @@ describe("itemToFormValues round trip", () => {
       visibility: "everyone",
       visibleToUserIds: [],
       showAsBusy: false,
+      booked: true,
       flags: p.problems,
       deadlines: [],
       createdBy: USERS.kenny.id,

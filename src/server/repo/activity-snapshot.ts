@@ -21,6 +21,7 @@ export const itemSnapshotSchema: z.ZodType<Item> = z.object({
   visibility: z.enum(["everyone", "only_me", "specific"]),
   visibleToUserIds: z.array(z.string()),
   showAsBusy: z.boolean(),
+  booked: z.boolean().default(true),
   status: z.enum(["confirmed", "needs_review"]),
   notes: z.string(),
   flags: z.array(z.string()),

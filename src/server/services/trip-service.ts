@@ -49,6 +49,7 @@ export interface ItemSharing {
   visibility?: Visibility;
   visibleToUserIds?: string[];
   showAsBusy?: boolean;
+  booked?: boolean;
 }
 
 export function proposalToItem(ctx: ServiceContext, tripId: string, actorId: string, p: ProposedItem, sharing: ItemSharing = {}): Item {
@@ -71,6 +72,7 @@ export function proposalToItem(ctx: ServiceContext, tripId: string, actorId: str
     visibility: sharing.visibility ?? "everyone",
     visibleToUserIds: sharing.visibility === "specific" ? (sharing.visibleToUserIds ?? []) : [],
     showAsBusy: sharing.showAsBusy ?? false,
+    booked: sharing.booked ?? true,
     status: p.status,
     notes: p.notes,
     flags: p.problems,

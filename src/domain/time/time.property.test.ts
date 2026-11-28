@@ -136,6 +136,7 @@ function itemAt(id: string, type: Item["type"], start: ZonedTime, end: ZonedTime
     visibility: "everyone",
     visibleToUserIds: [],
     showAsBusy: false,
+    booked: true,
     status: "confirmed",
     notes: "",
     flags: [],

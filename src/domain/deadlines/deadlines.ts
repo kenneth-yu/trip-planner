@@ -38,6 +38,7 @@ function itemLabel(item: VisibleItem): string {
 export function buildDeadlineLines(view: TripView, nowMs: number): DeadlineLine[] {
   if (!view.permissions.canSeeDeadlines) return [];
   return view.items
+    .filter((item) => item.booked)
     .flatMap((item) =>
       item.deadlines.map((d) => {
         const atMs = instantMs(d.at);

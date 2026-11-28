@@ -99,7 +99,7 @@ function locationFor(item: VisibleItem): string | undefined {
 
 export function buildMirrorEvents(view: TripView, opts: MirrorOptions): DesiredEvent[] {
   const props = (key: string) => ({ private: { tripPlannerKey: key, tripId: view.trip.id } });
-  const events: DesiredEvent[] = view.items.map((item) => {
+  const events: DesiredEvent[] = view.items.filter((item) => item.booked).map((item) => {
     const key = `item:${item.id}`;
     const event: MirrorEvent = {
       summary: summaryFor(item),

@@ -37,7 +37,7 @@ describe("buildMirrorEvents properties", () => {
         const view = projectTrip(agg, requester);
         const events = buildMirrorEvents(view, options(false));
         const distinctBusy = new Set(view.busy.map((b) => `${b.start.at}|${b.end.at}`)).size;
-        expect(events).toHaveLength(view.items.length + distinctBusy);
+        expect(events).toHaveLength(view.items.filter((i) => i.booked).length + distinctBusy);
         expect(new Set(events.map((e) => e.key)).size).toBe(events.length);
       }),
       fcParams(200),
