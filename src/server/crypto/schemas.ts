@@ -36,7 +36,7 @@ export const proposedItemSchema: z.ZodType<ProposedItem> = z.object({
   endIsEstimated: z.boolean(),
   location: location.nullable(),
   flight: z.object({ airline: z.string().optional(), flightNumber: z.string(), fromAirport: z.string(), toAirport: z.string() }).optional(),
-  stay: z.object({ propertyName: z.string(), kind: z.enum(["hotel", "rental", "other"]), lateArrivalCutoff: z.string().optional() }).optional(),
+  stay: z.object({ propertyName: z.string(), kind: z.enum(["hotel", "rental", "other"]), lateArrivalCutoff: z.string().optional(), timeToAirportMinutes: z.number().optional() }).optional(),
   transfer: z
     .object({
       mode: z.enum(["train", "ferry", "car", "bus", "border", "other"]).optional(),
