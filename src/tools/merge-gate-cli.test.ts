@@ -482,7 +482,12 @@ describe("updating every approved pull request that is behind main, at once", ()
 });
 
 describe("verdicts that carry over a merge of main, with a real git history", () => {
-  const git = (cwd: string, ...args: string[]) => execFileSync("git", ["-c", "user.email=t@example.invalid", "-c", "user.name=T", "-c", "commit.gpgsign=false", ...args], { cwd, encoding: "utf8", stdio: "pipe" }).trim();
+  let tick = 0;
+  const git = (cwd: string, ...args: string[]) => {
+    tick += 10;
+    const when = new Date(Date.UTC(2026, 10, 1, 0, 0, 0) + tick * 1000).toISOString();
+    return execFileSync("git", ["-c", "user.email=t@example.invalid", "-c", "user.name=T", "-c", "commit.gpgsign=false", ...args], { cwd, encoding: "utf8", stdio: "pipe", env: { ...process.env, GIT_AUTHOR_DATE: when, GIT_COMMITTER_DATE: when } }).trim();
+  };
 
   type Kind = "plain" | "conflict" | "foreign" | "conflict-plus-code" | "plain-plus-code" | "identical";
 
@@ -531,7 +536,7 @@ describe("verdicts that carry over a merge of main, with a real git history", ()
     const head = git(cwd, "rev-parse", "HEAD");
     git(cwd, "push", "-q", "-f", "origin", `${head}:refs/pull/7/head`);
     const parentsOf = (sha: string) => git(cwd, "rev-list", "--parents", "-n", "1", sha).split(" ").slice(1);
-    const commitList = git(cwd, "rev-list", "--reverse", `${base}..${head}`).split("\n").map((sha) => ({ sha, parents: parentsOf(sha) }));
+    const commitList = git(cwd, "rev-list", "--topo-order", "--reverse", `main..${head}`).split("\n").map((sha) => ({ sha, parents: parentsOf(sha) }));
     return { harness, code, head, commitList };
   }
 
