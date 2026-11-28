@@ -13,7 +13,7 @@ export interface CalendarLinkStatus {
 
 const subscribeNothing = () => () => undefined;
 
-function ShownOnce({ url }: { url: string }) {
+export function ShownOnce({ url }: { url: string }) {
   const heading = useRef<HTMLParagraphElement>(null);
   const opensInCalendar = useSyncExternalStore(subscribeNothing, () => /iPhone|iPad|Macintosh|Android|Mobile/i.test(navigator.userAgent), () => false);
   const [copied, setCopied] = useState(false);
@@ -32,8 +32,8 @@ function ShownOnce({ url }: { url: string }) {
   }
   return (
     <div>
-      <p ref={heading} tabIndex={-1}>
-        <strong>Here is your calendar link.</strong>
+      <p ref={heading} tabIndex={-1} style={{ fontWeight: 700 }}>
+        Here is your calendar link.
       </p>
       <label className={styles.hint}>
         Calendar link

@@ -6,7 +6,7 @@ import { jacob, testContext } from "@/server/testing";
 import type { ServiceContext } from "@/server/services/context";
 import { getFeedLink } from "@/server/services/feed-service";
 import { calendarLinkAction } from "./calendar-link-actions";
-import { CalendarLink } from "./calendar-link";
+import { CalendarLink, ShownOnce } from "./calendar-link";
 import { agoText, lastReadText, noCalendarLink, subscribeUrl } from "./calendar-link-text";
 
 const world = vi.hoisted(() => {
@@ -80,6 +80,14 @@ describe("the Connect section", () => {
     expect(html).toContain("Make a new link</button>");
     expect(html).toContain("Turn off</button>");
     expect(html).not.toMatch(/tpf_|\/api\/feed/);
+  });
+});
+
+describe("where focus goes after making a link", () => {
+  it("is the very element that carries the words Here is your calendar link, so that is what a screen reader and the test find focused", () => {
+    const html = renderToStaticMarkup(createElement(ShownOnce, { url: "https://trips.test/api/feed/tpf_x.ics" }));
+    expect(html).toMatch(/<p tabindex="-1" style="font-weight:700">Here is your calendar link\.<\/p>/);
+    expect(html).not.toContain("<strong>");
   });
 });
 
