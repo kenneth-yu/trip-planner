@@ -105,11 +105,20 @@ export function parseVerdict(body) {
 
 const NAMES = { qa: /^qa\b/i, security: /^security\b/i, product: /^product\b/i, ux: /^ux\b/i, architect: /^architect\b/i };
 
+const ANSWER = /\b(applied|declined)\b/i;
+
+export const REPLY_FORMAT = "Name the role, then Applied or Declined, on one line or on two lines in a row, for example \"QA: Applied 1 and 2, Declined 3.\"";
+
 export function isReplyTo(reviewer, body) {
   if (parseVerdict(body)) return false;
-  return lines(body).some((line) => {
-    const plain = line.replace(/^[-*\d.)\s]+/, "").replace(/\*/g, "");
-    return NAMES[reviewer].test(plain) && /\b(applied|declined)\b/i.test(plain);
+  const plain = lines(body)
+    .filter((line) => line.length > 0)
+    .map((line) => line.replace(/^[-*\d.)\s]+/, "").replace(/\*/g, ""));
+  return plain.some((line, index) => {
+    if (!NAMES[reviewer].test(line)) return false;
+    if (ANSWER.test(line)) return true;
+    const next = plain[index + 1];
+    return next !== undefined && /^(applied|declined)\b/i.test(next);
   });
 }
 
@@ -150,6 +159,22 @@ export function pushStart(commits, codeSha, runsFor) {
   return null;
 }
 
+function carriedState(input, after) {
+  if (after.every((c) => isVerifiedMerge(c, input.verifiedMerges))) return "same";
+  const conflicts = input.conflictMerges ?? new Set();
+  if (after.every((c) => isVerifiedMerge(c, input.verifiedMerges) || (c.parents.length === 2 && conflicts.has(c.sha)))) return "merge-changed";
+  return "stale";
+}
+
+function architectIsFresh(input, trusted) {
+  const verdicts = trusted.map((comment) => ({ comment, verdict: parseVerdict(comment.body) })).filter((x) => x.verdict && x.verdict.reviewer === "architect");
+  const latest = verdicts[verdicts.length - 1];
+  if (!latest || !latest.verdict.reviewedSha || (latest.verdict.outcome !== "positive" && latest.verdict.outcome !== "conditional")) return false;
+  const index = input.commits.findIndex((c) => c.sha.startsWith(latest.verdict.reviewedSha));
+  if (index < 0 || carriedState(input, input.commits.slice(index + 1)) !== "same") return false;
+  return latest.verdict.outcome === "positive" || trusted.some((c) => c.time > latest.comment.time && isReplyTo("architect", c.body));
+}
+
 function reasonsForVerdicts(input, paths) {
   const needed = new Set(requiredReviewers(paths));
   const required = REVIEWERS.filter((r) => needed.has(r.key));
@@ -159,6 +184,7 @@ function reasonsForVerdicts(input, paths) {
     .sort((a, b) => a.time - b.time);
   const lastCode = lastCodeCommit(input.commits, input.verifiedMerges);
   const reasons = [];
+  const changedByMerge = [];
   for (const reviewer of required) {
     const verdicts = trusted.map((comment) => ({ comment, verdict: parseVerdict(comment.body) })).filter((x) => x.verdict && x.verdict.reviewer === reviewer.key);
     const latest = verdicts[verdicts.length - 1];
@@ -180,16 +206,23 @@ function reasonsForVerdicts(input, paths) {
       reasons.push(`The ${reviewer.label} verdict names a commit that is not in this pull request.`);
       continue;
     }
+    const state = carriedState(input, input.commits.slice(index + 1));
+    if (state === "merge-changed" && reviewer.key === "architect") {
+      reasons.push("The Architect verdict is older than the head: a merge of main resolved a conflict after it, so the Architect needs to review again at or after that merge.");
+      continue;
+    }
     if (verdict.outcome === "positive") {
-      const after = input.commits.slice(index + 1);
-      if (!after.every((c) => isVerifiedMerge(c, input.verifiedMerges))) {
-        reasons.push(`The ${reviewer.label} verdict is older than the head: it reviewed ${verdict.reviewedSha.slice(0, 7)} and code was pushed after it.`);
-      }
+      if (state === "stale") reasons.push(`The ${reviewer.label} verdict is older than the head: it reviewed ${verdict.reviewedSha.slice(0, 7)} and code was pushed after it.`);
+      else if (state === "merge-changed") changedByMerge.push(reviewer.label);
       continue;
     }
     const reply = trusted.find((c) => c.time > comment.time && isReplyTo(reviewer.key, c.body));
     if (!reply) {
-      reasons.push(`The latest ${reviewer.label} verdict asks for changes ("${verdict.text}") and no reply naming ${reviewer.label} with Applied or Declined follows it.`);
+      reasons.push(`The latest ${reviewer.label} verdict asks for changes ("${verdict.text}") and no reply naming ${reviewer.label} with Applied or Declined follows it. ${REPLY_FORMAT}`);
+      continue;
+    }
+    if (state === "merge-changed") {
+      changedByMerge.push(reviewer.label);
       continue;
     }
     if (lastCode && !input.commits.slice(0, index + 1).includes(lastCode)) {
@@ -199,6 +232,9 @@ function reasonsForVerdicts(input, paths) {
         reasons.push(`The ${reviewer.label} verdict is older than the head: code was pushed after the Applied/Declined reply.`);
       }
     }
+  }
+  if (changedByMerge.length > 0 && !architectIsFresh(input, trusted)) {
+    reasons.push(`A merge of main resolved a conflict and changed this pull request's own diff since ${changedByMerge.join(", ")} reviewed it. The Architect needs a fresh verdict at or after that merge; the others carry over.`);
   }
   return reasons;
 }
@@ -213,7 +249,8 @@ export function evaluate(input) {
   if (ownerOnly) reasons.push("The pull request touches .claude/ or CLAUDE.md, which only the owner may merge.");
   const workflowFiles = touchesWorkflowFiles(paths);
   if (workflowFiles) reasons.push(WORKFLOW_REASON);
-  reasons.push(...reasonsForChecks(input.checkRuns));
+  const checkReasons = reasonsForChecks(input.checkRuns);
+  reasons.push(...checkReasons);
   if (input.files.length !== input.changedFiles) reasons.push(`Only ${input.files.length} of ${input.changedFiles} changed files could be read, so the reviewers it needs cannot be worked out.`);
   reasons.push(...reasonsForVerdicts(input, paths));
   if (changesApp(paths)) {
@@ -222,7 +259,7 @@ export function evaluate(input) {
   }
   const behindKnown = Number.isInteger(input.behindBy);
   if (!behindKnown) reasons.push("Could not tell whether the branch is behind main.");
-  return { ok: reasons.length === 0, reasons, behind: behindKnown && input.behindBy > 0, needsOwner: ownerOnly || workflowFiles, held: held.length > 0 };
+  return { ok: reasons.length === 0, approved: reasons.every((reason) => checkReasons.includes(reason)), reasons, behind: behindKnown && input.behindBy > 0, needsOwner: ownerOnly || workflowFiles, held: held.length > 0 };
 }
 
 function need(condition, message) {
@@ -262,6 +299,7 @@ export function buildInput(raw, reviewerLogin, repo) {
     checkRuns: checkRuns.map((r) => ({ id: r.id, name: r.name, status: r.status, conclusion: r.conclusion, appSlug: r.app ? r.app.slug : "" })),
     behindBy: compare.behind_by,
     verifiedMerges: raw.verifiedMerges ?? new Set(),
+    conflictMerges: raw.conflictMerges ?? new Set(),
     lastCodePushedAt: raw.lastCodePushedAt ?? null,
   };
 }
