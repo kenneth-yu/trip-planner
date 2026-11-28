@@ -25,6 +25,21 @@ describe("a member's calendar link", () => {
     expect(await getFeedLink(ctx, TRIP_ID, jacob)).toMatchObject({ lastReadAt: null });
   });
 
+  it("is made once when two requests arrive together: one wins, one is told a link exists, and only one link is active", async () => {
+    const { ctx, db } = await testContext();
+    const results = await Promise.allSettled([makeFeedLink(ctx, TRIP_ID, jacob), makeFeedLink(ctx, TRIP_ID, jacob), makeFeedLink(ctx, TRIP_ID, jacob)]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    for (const r of results) if (r.status === "rejected") expect(r.reason).toBeInstanceOf(FeedLinkExists);
+    expect((await db.select().from(t.calendarFeeds)).filter((row) => row.revokedAt === null)).toHaveLength(1);
+  });
+
+  it("keeps one active link when two new links are made together", async () => {
+    const { ctx, db } = await testContext();
+    await makeFeedLink(ctx, TRIP_ID, jacob);
+    await Promise.allSettled([rotateFeedLink(ctx, TRIP_ID, jacob), rotateFeedLink(ctx, TRIP_ID, jacob)]);
+    expect((await db.select().from(t.calendarFeeds)).filter((row) => row.revokedAt === null)).toHaveLength(1);
+  });
+
   it("is not made twice: a second link is a new link, which breaks the first", async () => {
     const { ctx } = await testContext();
     await makeFeedLink(ctx, TRIP_ID, jacob);

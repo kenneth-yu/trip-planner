@@ -111,6 +111,18 @@ describe("the actions behind it", () => {
     expect((await calendarLinkAction(noCalendarLink, form("off"))).error).toBe("That already changed. Reload the page.");
   });
 
+  it("says That did not work instead of showing an error page when making a link fails for another reason", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    if (!world.ctx) throw new Error("no test context");
+    world.ctx.db = new Proxy(world.ctx.db, {
+      get(target, property) {
+        if (property === "transaction") return async () => Promise.reject(new Error("connection lost"));
+        return Reflect.get(target, property);
+      },
+    });
+    expect(await calendarLinkAction(noCalendarLink, form("make"))).toEqual({ url: null, turnedOff: false, error: "That did not work. Try again." });
+  });
+
   it("refuses an intent it does not know, and a trip id that is not an id", async () => {
     await expect(calendarLinkAction(noCalendarLink, form("delete"))).rejects.toThrow();
     const bad = form("make");

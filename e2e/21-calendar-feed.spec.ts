@@ -43,6 +43,7 @@ test("a member makes a calendar link, sees it once, and the feed holds no code, 
   expect(await seriousViolations(jacob)).toEqual([]);
   await again.getByRole("button", { name: "Make new link" }).click();
   await expect(again.getByText("Here is your calendar link.")).toBeVisible();
+  expect(await seriousViolations(jacob)).toEqual([]);
   expect((await request.get(link)).status()).toBe(404);
   const next = await again.getByLabel("Calendar link").inputValue();
   expect((await request.get(next)).status()).toBe(200);
@@ -52,6 +53,7 @@ test("a member makes a calendar link, sees it once, and the feed holds no code, 
   await last.getByRole("button", { name: "Turn off" }).click();
   await last.getByRole("button", { name: "Turn off" }).click();
   await expect(last.getByText("Calendar link turned off.")).toBeVisible();
+  expect(await seriousViolations(jacob)).toEqual([]);
   expect((await request.get(next)).status()).toBe(404);
   await request.dispose();
 });

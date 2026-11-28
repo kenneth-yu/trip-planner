@@ -26,6 +26,10 @@ export async function calendarLinkAction(_previous: CalendarLinkState, form: For
   } catch (e) {
     if (e instanceof LinkRateLimited) return { url: null, turnedOff: false, error: e.message };
     if (e instanceof FeedLinkExists || e instanceof InvalidTransition) return { url: null, turnedOff: false, error: "That already changed. Reload the page." };
+    if (e instanceof Error) {
+      console.error(`Calendar link ${intent} failed: ${e.name}: ${e.message}`);
+      return { url: null, turnedOff: false, error: "That did not work. Try again." };
+    }
     throw e;
   }
 }

@@ -44,6 +44,7 @@ export async function getFeedLink(ctx: ServiceContext, tripId: string, requester
 async function insertLink(ctx: ServiceContext, tripId: string, userId: string, replace: boolean): Promise<{ url: string }> {
   const token = generateToken("tpf");
   await ctx.db.transaction(async (tx) => {
+    await tx.select({ userId: t.memberships.userId }).from(t.memberships).where(and(eq(t.memberships.tripId, tripId), eq(t.memberships.userId, userId))).for("update");
     const current = await tx.select({ id: t.calendarFeeds.id }).from(t.calendarFeeds).where(active(tripId, userId));
     if (replace && current.length === 0) throw new InvalidTransition("calendar feed", "Off", "rotate");
     if (!replace && current.length > 0) throw new FeedLinkExists();
