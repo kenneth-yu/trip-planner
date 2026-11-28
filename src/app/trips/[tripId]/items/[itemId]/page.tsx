@@ -11,6 +11,7 @@ import { itemHeading } from "./item-title";
 import { FlashStatus } from "@/app/ui/item-form/flash-status";
 import { formatDayHeader, localDateKey, toLocal } from "@/domain/time/format";
 import { itemOf } from "./item-of";
+import { SmartFlashes } from "../../smart-row";
 import { loadAttention } from "@/server/attention";
 import { loadTipsForPage } from "@/server/services/smarts-service";
 import { arrangeRows, checkSources, tipSources } from "@/domain/smarts/rows";
@@ -35,9 +36,7 @@ export default async function ItemPage({ params }: PageProps<"/trips/[tripId]/it
         </Link>
       </p>
       <FlashStatus kind="saved" tripId={tripId} focusId="item-title" />
-      <FlashStatus kind="fixed" tripId={tripId} />
-      <FlashStatus kind="fine" tripId={tripId} />
-      <FlashStatus kind="tip_hidden" tripId={tripId} />
+      <SmartFlashes tripId={tripId} />
       <ItemDetails view={view} item={item} nowMs={ctx.now().getTime()} viewerTravelerId={travelerId} smart={smart} />
       {view.permissions.canEdit && (
         <ItemActions tripId={tripId} itemId={itemId} heading={promptName} editHref={`/trips/${tripId}/items/${itemId}/edit`} remove={deleteItem} />

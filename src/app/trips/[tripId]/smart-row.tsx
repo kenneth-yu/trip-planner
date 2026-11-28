@@ -1,5 +1,8 @@
 import Link from "next/link";
 import styles from "./smart-line.module.css";
+import { FlashStatus } from "@/app/ui/item-form/flash-status";
+import { TIP_HIDDEN_FLASH } from "@/app/ui/item-form/flash";
+import { TIP_KINDS } from "@/domain/smarts/kinds";
 import { SmartLine } from "./smart-line";
 import { CheckButtons, TipButtons } from "./smart-buttons";
 import type { RowLine } from "@/domain/smarts/rows";
@@ -11,12 +14,21 @@ export interface SmartRows {
 
 export function TipsIntro() {
   return (
-    <div className={styles.intro}>
-      <p>Travel tips are small suggestions about your flights and stays. They are not warnings.</p>
-      <p>
-        <Link href="/account#travel-smarts">Turn off tips</Link>
-      </p>
-    </div>
+    <p className={styles.intro}>
+      Tips like this are optional. <Link href="/account#travel-smarts">Turn off tips</Link>
+    </p>
+  );
+}
+
+export function SmartFlashes({ tripId }: { tripId: string }) {
+  return (
+    <>
+      <FlashStatus kind="fixed" tripId={tripId} />
+      <FlashStatus kind="fine" tripId={tripId} />
+      {TIP_KINDS.map((kind) => (
+        <FlashStatus key={kind} kind={TIP_HIDDEN_FLASH[kind]} tripId={tripId} />
+      ))}
+    </>
   );
 }
 
