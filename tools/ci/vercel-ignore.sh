@@ -19,6 +19,11 @@ if [ "${VERCEL_ENV:-}" = "production" ]; then
   exit 0
 fi
 
+if [ "${VERCEL_ENV:-}" = "preview" ]; then
+  echo "Skipping: previews are not built. CI's prod-build already proves the build, and the owner reviews the live app."
+  exit 0
+fi
+
 case "${VERCEL_GIT_COMMIT_REF:-}" in
   infra/* | owner/*)
     echo "Skipping: infra and owner branches change tooling, roles and docs, never user-visible code. They are checked in CI and get no preview."
