@@ -101,6 +101,42 @@ test("back from an item's details returns to the earlier place on the trip page"
   expect(Math.abs((await settledScroll(page)) - leftAt), "back from the details page returns to where the row was tapped").toBeLessThanOrEqual(2);
 });
 
+test("going Forward into the details and Back again returns to the same place", async ({ pageSignedInAs }) => {
+  const page = await pageSignedInAs("kenny", `/trips/${PACKED_TRIP}`);
+  await chipFor(page, "2027-03-09").click();
+  await expect(page).toHaveURL(/day=2027-03-09/);
+  await page.mouse.wheel(0, 500);
+  const row = page.locator("#day-panel a[href*='/items/']").last();
+  await row.scrollIntoViewIfNeeded();
+  const leftAt = await settledScroll(page);
+  await row.click();
+  await expect(page).toHaveURL(/\/items\//);
+  await page.goBack();
+  await expect(page).toHaveURL(/day=2027-03-09/);
+  await expect(stripOf(page)).toHaveAttribute("data-scroll-restored", /day=2027-03-09/);
+  await page.goForward();
+  await expect(page).toHaveURL(/\/items\//);
+  await page.goBack();
+  await expect(page).toHaveURL(/day=2027-03-09/);
+  await expect(stripOf(page)).toHaveAttribute("data-scroll-restored", /day=2027-03-09/);
+  expect(Math.abs((await settledScroll(page)) - leftAt), "the second Back returns to the same place").toBeLessThanOrEqual(2);
+});
+
+test("the browser's own restoration is back while the page is hidden, so a reload keeps the place", async ({ pageSignedInAs }) => {
+  const page = await pageSignedInAs("kenny", `/trips/${PACKED_TRIP}`);
+  await expect(stripOf(page)).toBeVisible();
+  expect(await page.evaluate(() => window.history.scrollRestoration)).toBe("manual");
+  const values = await page.evaluate(() => {
+    window.dispatchEvent(new PageTransitionEvent("pagehide"));
+    return window.history.scrollRestoration;
+  });
+  expect(values).toBe("auto");
+  await page.evaluate(() => {
+    window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+  });
+  expect(await page.evaluate(() => window.history.scrollRestoration)).toBe("manual");
+});
+
 test("while a long day scrolls, its date stays pinned just under the strip", async ({ pageSignedInAs }) => {
   const page = await pageSignedInAs("kenny", `/trips/${PACKED_TRIP}`);
   const strip = stripOf(page);
