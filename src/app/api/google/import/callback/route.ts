@@ -4,7 +4,7 @@ import { appUrl } from "@/server/app-context";
 import { currentUser } from "@/server/auth/session";
 import { GoogleAuthorizationError } from "@/server/google/calendar-api";
 import { FAKE_ACCESS_TOKEN, FAKE_CODE, fakeGoogleActive, IMPORT_CALLBACK_PATH, importIsRateLimited, importOAuthConfig, importPagePath } from "@/server/google/import-guard";
-import { exchangeImportCode, IMPORT_COOKIE, IMPORT_FLOW_COOKIE, IMPORT_FLOW_PATH, ImportConsentMissing, openImportFlow, openImportState, sealImportToken } from "@/server/google/import-oauth";
+import { exchangeImportCode, IMPORT_COOKIE, IMPORT_FLOW_COOKIE, IMPORT_FLOW_PATH, IMPORT_SEEN_COOKIE, IMPORT_SEEN_MAX_AGE_S, ImportConsentMissing, openImportFlow, openImportState, sealImportToken } from "@/server/google/import-oauth";
 
 type Outcome = { kind: "connected"; sealed: ReturnType<typeof sealImportToken> } | { kind: "declined" | "expired" | "failed" };
 
@@ -44,6 +44,13 @@ export async function GET(request: Request) {
     secure: process.env.NODE_ENV === "production",
     path: page,
     maxAge: outcome.sealed.maxAgeS,
+  });
+  jar.set(IMPORT_SEEN_COOKIE, "1", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: page,
+    maxAge: IMPORT_SEEN_MAX_AGE_S,
   });
   redirect(page);
 }

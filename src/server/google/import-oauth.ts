@@ -5,6 +5,8 @@ import { IMPORT_SCOPE } from "./calendar-api";
 import { tokenRequest, type GoogleOAuthConfig } from "./oauth";
 
 export const IMPORT_COOKIE = "google_import";
+export const IMPORT_SEEN_COOKIE = "google_import_seen";
+export const IMPORT_SEEN_MAX_AGE_S = 3600;
 export const IMPORT_FLOW_COOKIE = "google_import_flow";
 export const IMPORT_FLOW_PATH = "/api/google/import";
 export const IMPORT_WINDOW_MS = 10 * 60_000;
