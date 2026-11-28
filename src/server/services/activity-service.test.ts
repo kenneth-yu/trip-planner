@@ -223,6 +223,19 @@ describe("undo", () => {
     expect(present((await getTripView(ctx, TRIP_ID, jacob)).items.find((i) => i.id === plan.id)).visibility).toBe("everyone");
   });
 
+  it("undoing a change of whether an item is booked is the creator's alone, because it changes who sees it", async () => {
+    const { ctx } = await setup();
+    const dinner = await quickAddItem(ctx, TRIP_ID, jacob, { type: "plan", title: "Booked dinner", city: "Tokyo", startLocal: "2026-12-04T19:00", endLocal: "2026-12-04T21:00" });
+    await updateItem(ctx, TRIP_ID, dinner.id, jacob, { booked: false });
+    const entry = present((await listActivityLines(ctx, TRIP_ID, kenny)).lines.find((l) => l.kind === "updated" && l.title === "Booked dinner"));
+    expect(entry.canUndo).toBe(false);
+    expect(present((await listActivityLines(ctx, TRIP_ID, jacob)).lines.find((l) => l.id === entry.id)).canUndo).toBe(true);
+    await expect(undoActivity(ctx, TRIP_ID, kenny, entry.id)).rejects.toThrow("Only the person who added this can change who sees it.");
+    expect(present((await getTripView(ctx, TRIP_ID, kenny)).items.find((i) => i.id === dinner.id)).booked).toBe(false);
+    await undoActivity(ctx, TRIP_ID, jacob, entry.id);
+    expect(present((await getTripView(ctx, TRIP_ID, jacob)).items.find((i) => i.id === dinner.id)).booked).toBe(true);
+  });
+
   it("is refused when the item changed since, and changes nothing", async () => {
     const { ctx, flight } = await setup();
     await updateItem(ctx, TRIP_ID, flight.id, kenny, { title: "First change" });

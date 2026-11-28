@@ -288,7 +288,7 @@ function ItemFormBody(props: ItemFormProps & { id: string }): React.JSX.Element 
         </label>
       </fieldset>
 
-      {editing && !booked && initial?.fields.booked !== "no" && Object.keys(initial?.fields ?? {}).some((k) => ["confirmationCode", "bookingReference", "price"].includes(k) || k.startsWith("code:")) && (
+      {editing && !booked && initial?.fields.booked !== "no" && initial?.losesOnNotYet === true && (
         <div className={styles.field} data-invalid={errors.confirmDrop ? "true" : undefined}>
           <label className={styles.choice}>
             <input type="checkbox" name="confirmDrop" value="yes" aria-describedby={errors.confirmDrop ? `${id}-confirmDrop-error` : undefined} />

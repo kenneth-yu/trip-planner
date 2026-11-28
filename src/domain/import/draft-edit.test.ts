@@ -83,6 +83,29 @@ describe("what a draft leaves out when it is added", () => {
   });
 });
 
+describe("what the form and the server agree Not yet drops", () => {
+  const rows: ItemPrivate[][] = [
+    [{ travelerId: null, confirmationCode: "ABC123" }],
+    [{ travelerId: null, bookingReference: "REF9" }],
+    [{ travelerId: null, price: { amount: "10", currency: "USD" } }],
+    [{ travelerId: null, seat: "30K" }],
+    [{ travelerId: null, bookingSite: "airline.example" }],
+  ];
+
+  it.each(rows.map((r) => [r]))("%j makes the form ask, and the server ask for the same", (row) => {
+    const item: VisibleItem = { ...flight, private: row };
+    expect(itemToFormValues(item, []).losesOnNotYet).toBe(true);
+    const { parsed } = submit(item, { booked: "no" });
+    expect(parsed.ok).toBe(false);
+  });
+
+  it("neither asks about a phone or notes, which stay", () => {
+    const item: VisibleItem = { ...flight, private: [{ travelerId: null, phone: "+1 555 010 0000", notes: "Window" }] };
+    expect(itemToFormValues(item, []).losesOnNotYet).toBe(false);
+    expect(submit(item, { booked: "no" }).parsed.ok).toBe(true);
+  });
+});
+
 describe("switching a booked item to Not yet", () => {
   const withCode: ItemPrivate[] = [{ travelerId: flight.travelerIds[0] ?? null, confirmationCode: "ABC123", seat: "30K" }];
   const booked: VisibleItem = { ...flight, private: withCode };

@@ -21,6 +21,7 @@ export interface ItemFormValues {
   visibility: Visibility;
   visibleToUserIds: string[];
   showAsBusy: boolean;
+  losesOnNotYet?: boolean;
 }
 
 export interface FormSharing {
@@ -487,6 +488,7 @@ export function itemToFormValues(item: VisibleItem, travelers: { id: string; nam
     visibility: item.visibility,
     visibleToUserIds: item.visibleToUserIds,
     showAsBusy: item.showAsBusy,
+    losesOnNotYet: hasBookedOnly(item.private),
   };
 }
 
