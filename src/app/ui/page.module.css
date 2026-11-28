@@ -231,3 +231,9 @@
   text-decoration: underline;
   display: block;
 }
+
+.summaryRow {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}

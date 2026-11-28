@@ -13,13 +13,13 @@ export function TravelTipsSection({ tipsOn, kindsOff }: { tipsOn: boolean; kinds
       <h2 className={pageStyles.sectionTitle}>Travel tips</h2>
       <p>Small suggestions under your flights and stays, like when to leave for the airport. They only show to people who can edit a trip.</p>
       <form action={action} className={styles.stack}>
-        <label>
+        <label className={styles.choice}>
           <input type="checkbox" name="tipsOn" defaultChecked={tipsOn} /> Show travel tips
         </label>
         <fieldset>
           <legend>Kinds of tips</legend>
           {TIP_KINDS.map((kind) => (
-            <label key={kind} className={styles.hint}>
+            <label key={kind} className={`${styles.hint} ${styles.choice}`}>
               <input type="checkbox" name="kind" value={kind} defaultChecked={!kindsOff.includes(kind)} /> {TIP_KIND_LABELS[kind]}
             </label>
           ))}
