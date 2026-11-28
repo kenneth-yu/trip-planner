@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildInput, changesApp, evaluate, GateDataError, isDocsOnly, isIntegrationPath, isReplyTo, lastCodeCommit, parseVerdict, REQUIRED_CHECKS, requiredReviewers, semverOf, touchesOwnerOnly } from "../../tools/merge-gate-lib.mjs";
+import { buildInput, changesApp, evaluate, GateDataError, isDocsOnly, isIntegrationPath, isReplyTo, lastCodeCommit, parseVerdict, REQUIRED_CHECKS, requiredReviewers, semverOf, touchesOwnerOnly, touchesWorkflowFiles, isWorkflowRefusal, WORKFLOW_REASON } from "../../tools/merge-gate-lib.mjs";
 
 const T = (minute: number) => `2026-11-27T10:${String(minute).padStart(2, "0")}:00Z`;
 const ME = "kenneth-yu";
@@ -273,8 +273,34 @@ describe("merge gate", () => {
     });
   });
 
+  describe("workflow files", () => {
+    it("are recognised by their new or old name", () => {
+      expect(touchesWorkflowFiles([".github/workflows/ci.yml"])).toBe(true);
+      expect(touchesWorkflowFiles(["docs/x.md", ".github/workflows/deep/x.yaml"])).toBe(true);
+      expect(touchesWorkflowFiles([".github/CODEOWNERS", "tools/ci/x.mjs", "src/a.ts"])).toBe(false);
+    });
+
+    it("always need the owner, however many verdicts and green checks there are", () => {
+      const architect = say(13, `## Architect review\n\nVerdict: approve${at("a")}`);
+      for (const files of [[{ filename: ".github/workflows/ci.yml" }], [{ filename: "docs/old.md", previousFilename: ".github/workflows/ci.yml" }]]) {
+        const verdict = evaluate(pull({ files, changedFiles: files.length, comments: [...reviews, architect] }));
+        expect(verdict.ok).toBe(false);
+        expect(verdict.needsOwner).toBe(true);
+        expect(verdict.reasons).toContain(WORKFLOW_REASON);
+      }
+      expect(WORKFLOW_REASON).toBe("The pull request touches workflow files: needs the owner to merge.");
+    });
+
+    it("recognises the refusal GitHub gives a token without the workflows permission", () => {
+      expect(isWorkflowRefusal("refusing to allow a Personal Access Token to create or update workflow `.github/workflows/ci.yml` without `workflow` scope")).toBe(true);
+      expect(isWorkflowRefusal("Resource not accessible by personal access token: cannot modify .github/workflows/ci.yml")).toBe(true);
+      expect(isWorkflowRefusal("Required status check \"test\" is expected.")).toBe(false);
+      expect(isWorkflowRefusal("")).toBe(false);
+    });
+  });
+
   describe("labels", () => {
-    it.each(["hold", "do-not-merge"])("stops on the %s label", (label) => {
+    it.each(["hold", "do-not-merge", "needs-owner"])("stops on the %s label", (label) => {
       const verdict = evaluate(pull({ labels: [label] }));
       expect(verdict.ok).toBe(false);
       expect(verdict.held).toBe(true);

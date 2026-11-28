@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { buildInput, changesApp, evaluate, GateDataError, lastCodeCommit, semverOf } from "./merge-gate-lib.mjs";
+import { buildInput, changesApp, evaluate, GateDataError, isWorkflowRefusal, lastCodeCommit, semverOf, WORKFLOW_REASON } from "./merge-gate-lib.mjs";
 
 const REPO = "kenneth-yu/trip-planner";
 const MARKER = "<!-- merge-gate -->";
@@ -128,7 +128,7 @@ function processPullRequest(number) {
     try {
       gh(["api", "-X", "PUT", `repos/${REPO}/pulls/${number}/update-branch`, "-f", `expected_head_sha=${raw.pr.head.sha}`], gate.token);
     } catch (error) {
-      return refused(number, "update the branch with main", error);
+      return refused(number, "update the branch with main", error, input.labels);
     }
     upsertComment(number, ["Everything else passes. The branch was behind main, so the gate updated it. The checks run again, and it merges once they pass."]);
     return "updated";
@@ -141,7 +141,7 @@ function processPullRequest(number) {
   try {
     gh(mergeArguments, gate.token);
   } catch (error) {
-    return refused(number, "merge", error);
+    return refused(number, "merge", error, input.labels);
   }
   try {
     gh(["api", "-X", "DELETE", `repos/${REPO}/git/refs/heads/${branch}`], gate.token);
@@ -179,7 +179,23 @@ function missingToken(number) {
   return "failed";
 }
 
-function refused(number, action, error) {
+function refusalText(error) {
+  if (!(error instanceof Error)) return "";
+  const said = ["stdout", "stderr"].map((key) => (key in error && typeof error[key] === "string" ? error[key] : ""));
+  return `${error.message}\n${said.join("\n")}`;
+}
+
+function refused(number, action, error, labels = []) {
+  if (isWorkflowRefusal(refusalText(error))) {
+    say(`#${number}: ${WORKFLOW_REASON}`);
+    try {
+      upsertComment(number, ["Everything the gate checks passes, but:", "", `- ${WORKFLOW_REASON}`]);
+      if (!labels.includes("needs-owner")) gh(["api", "-X", "POST", `repos/${REPO}/issues/${number}/labels`, "-f", "labels[]=needs-owner"]);
+    } catch (commentError) {
+      say(`#${number}: the comment or the label could not be written (${describe(commentError)}).`);
+    }
+    return "blocked";
+  }
   const reason = `GitHub refused to ${action} (${describe(error)}). Someone needs to look at it.`;
   say(`#${number}: ${reason}`);
   try {

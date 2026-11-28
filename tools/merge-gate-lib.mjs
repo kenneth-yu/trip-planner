@@ -7,6 +7,7 @@ export const REQUIRED_CHECKS = CONFIG.requiredChecks;
 const compile = (patterns) => patterns.map((pattern) => new RegExp(pattern));
 const DOCS_ONLY = compile(CONFIG.docsOnly);
 const OWNER_ONLY = compile(CONFIG.ownerOnly);
+const WORKFLOW_FILES = compile(CONFIG.workflowFiles);
 const SEMVER_PATHS = compile(CONFIG.semver.paths);
 const SEMVER_EXCLUDE = compile(CONFIG.semver.exclude);
 const MAPPING = Object.fromEntries(Object.entries(CONFIG.reviewers).map(([key, rule]) => [key, { paths: compile(rule.paths), exclude: compile(rule.exclude) }]));
@@ -42,6 +43,16 @@ export function isDocsOnly(paths) {
 export function requiredReviewers(paths) {
   if (isDocsOnly(paths)) return [];
   return Object.keys(MAPPING).filter((key) => paths.some((path) => MAPPING[key].paths.some((p) => p.test(path)) && !MAPPING[key].exclude.some((p) => p.test(path))));
+}
+
+export function touchesWorkflowFiles(paths) {
+  return paths.some((path) => WORKFLOW_FILES.some((pattern) => pattern.test(path)));
+}
+
+export const WORKFLOW_REASON = "The pull request touches workflow files: needs the owner to merge.";
+
+export function isWorkflowRefusal(text) {
+  return /\.github\/workflows/i.test(text) || /\bworkflows?\b[^\n]*\bscope\b|\bscope\b[^\n]*\bworkflows?\b/i.test(text);
 }
 
 export function touchesOwnerOnly(paths) {
@@ -188,6 +199,8 @@ export function evaluate(input) {
   if (held.length > 0) reasons.push(`The pull request carries the ${held.map((l) => `"${l}"`).join(" and ")} label.`);
   const ownerOnly = touchesOwnerOnly(paths);
   if (ownerOnly) reasons.push("The pull request touches .claude/ or CLAUDE.md, which only the owner may merge.");
+  const workflowFiles = touchesWorkflowFiles(paths);
+  if (workflowFiles) reasons.push(WORKFLOW_REASON);
   reasons.push(...reasonsForChecks(input.checkRuns));
   if (input.files.length !== input.changedFiles) reasons.push(`Only ${input.files.length} of ${input.changedFiles} changed files could be read, so the reviewers it needs cannot be worked out.`);
   reasons.push(...reasonsForVerdicts(input, paths));
@@ -197,7 +210,7 @@ export function evaluate(input) {
   }
   const behindKnown = Number.isInteger(input.behindBy);
   if (!behindKnown) reasons.push("Could not tell whether the branch is behind main.");
-  return { ok: reasons.length === 0, reasons, behind: behindKnown && input.behindBy > 0, needsOwner: ownerOnly, held: held.length > 0 };
+  return { ok: reasons.length === 0, reasons, behind: behindKnown && input.behindBy > 0, needsOwner: ownerOnly || workflowFiles, held: held.length > 0 };
 }
 
 function need(condition, message) {

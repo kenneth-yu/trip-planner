@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_TOKEN, GATE_TOKEN, makeHarness, type Route } from "./fake-gh";
 
 const REPO = "kenneth-yu/trip-planner";
+const REPO_BASE = `repos/${REPO}`;
 const tool = path.join(process.cwd(), "tools", "merge-gate.mjs");
 const lines = (items: unknown[]) => items.map((item) => JSON.stringify(item)).join("\n") + (items.length > 0 ? "\n" : "");
 const headOf = (number: number) => String(number).repeat(40).slice(0, 40).replace(/./g, (_c, i) => "abcdef"[(i + number) % 6]);
@@ -17,6 +18,7 @@ interface Options {
   checkRunsTotal?: number;
   comments?: unknown[];
   mergeFails?: boolean;
+  mergeFailBody?: string;
 }
 
 function routesFor(options: Options): Route[] {
@@ -41,7 +43,7 @@ function routesFor(options: Options): Route[] {
     { match: `-X PATCH ${base}/issues/comments`, out: "{}" },
     { match: `-X PUT ${base}/pulls/${number}/update-branch`, out: "{}" },
     { match: `-X POST ${base}/issues/${number}/labels`, out: "[]" },
-    { match: `-X PUT ${base}/pulls/${number}/merge`, ...(options.mergeFails ? { fail: "gh: Required status check test is expected. (HTTP 405)", failBody: JSON.stringify({ message: 'Required status check "test" is expected.', status: "405" }) } : { out: "{}" }) },
+    { match: `-X PUT ${base}/pulls/${number}/merge`, ...(options.mergeFails ? { fail: "gh: Required status check test is expected. (HTTP 405)", failBody: JSON.stringify({ message: options.mergeFailBody ?? 'Required status check "test" is expected.', status: "405" }) } : { out: "{}" }) },
     { match: `-X DELETE ${base}/git/refs/heads/wp/${number}`, out: "" },
     { match: "workflow run", out: "" },
     { match: `${base}/commits/${head}/check-runs?per_page=1`, out: JSON.stringify({ total_count: options.checkRunsTotal ?? checks.length }) },
@@ -132,6 +134,30 @@ describe("merge-gate.mjs against a fake GitHub", () => {
     expect(calls.some((c) => c.includes("/pulls/7/merge"))).toBe(true);
     expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/comments`) && c.includes("refused to merge") && c.includes("Required status check \"test\" is expected."))).toBe(true);
     expect(calls.some((c) => c.includes("/pulls/8/merge"))).toBe(true);
+  });
+
+  it("labels a pull request that touches workflow files needs-owner, comments, and never updates or merges it", () => {
+    for (const behindBy of [0, 2]) {
+      const { calls } = sweep([7], [{ number: 7, files: [".github/workflows/ci.yml"], behindBy }]);
+      expect(calls.some((c) => c.includes("update-branch") || c.includes("/pulls/7/merge"))).toBe(false);
+      expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/labels`) && c.includes("labels[]=needs-owner"))).toBe(true);
+      expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/comments`) && c.includes("touches workflow files: needs the owner to merge"))).toBe(true);
+    }
+  });
+
+  it("treats GitHub's refusal over workflow permissions as needs-owner, once, without a retry", () => {
+    const { calls } = sweep([7], [{ number: 7, mergeFails: true, mergeFailBody: "refusing to allow a Personal Access Token to create or update workflow `.github/workflows/ci.yml` without `workflow` scope" }]);
+    expect(calls.filter((c) => c.includes("/pulls/7/merge"))).toHaveLength(1);
+    expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/labels`) && c.includes("labels[]=needs-owner"))).toBe(true);
+    expect(calls.some((c) => c.includes(`-X POST repos/${REPO}/issues/7/comments`) && c.includes("touches workflow files: needs the owner to merge") && !c.includes("Someone needs to look at it"))).toBe(true);
+  });
+
+  it("does not try a pull request again once it carries the needs-owner label", () => {
+    const harness = makeHarness({ pullRefs: [7] });
+    const routes = routesFor({ number: 7 }).map((route) => (route.match === `${REPO_BASE}/pulls/7 ` || route.match === `${REPO_BASE}/pulls/7` ? { match: route.match, out: route.out?.replace('"labels":[]', '"labels":[{"name":"needs-owner"}]') } : route));
+    harness.setRoutes([{ match: "pulls?state=open", out: "7\n" }, ...routes]);
+    harness.run(process.execPath, [tool, "--sweep"], actions);
+    expect(harness.calls().some((c) => c.includes("/pulls/7/merge") || c.includes("update-branch"))).toBe(false);
   });
 
   it("goes on to the next pull request when update-branch is refused", () => {
