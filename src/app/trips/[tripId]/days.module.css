@@ -216,3 +216,31 @@
 .entries > li:last-child {
   border-bottom: 0;
 }
+
+.ideas {
+  margin-top: 8px;
+}
+
+.ideasButton {
+  min-height: 44px;
+  color: var(--muted);
+  font-size: var(--size-small);
+}
+
+.ideasList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ideasList li {
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.ideasSecond {
+  color: var(--muted);
+  font-size: var(--size-small);
+}

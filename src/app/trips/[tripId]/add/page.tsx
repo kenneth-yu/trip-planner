@@ -30,6 +30,9 @@ export default async function AddPage({ params, searchParams }: PageProps<"/trip
         backHref={`/trips/${tripId}`}
       />
       <p className={styles.muted}>
+        <Link href={`/trips/${tripId}/ideas?add=1`}>Not sure when yet? Save it as an idea</Link>
+      </p>
+      <p className={styles.muted}>
         <Link href={`/trips/${tripId}/import`}>Bring in bookings from a calendar</Link>
       </p>
     </div>
