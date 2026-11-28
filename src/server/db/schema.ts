@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { Difference, ProposedItem } from "@/domain/import/proposal";
 import type { FlightDetails, ItemPrivate, Location, StayDetails, TransferDetails } from "@/domain/types";
 
@@ -298,6 +298,9 @@ export const ideas = pgTable(
     location: jsonb("location").$type<Location | null>(),
     city: text("city"),
     note: text("note").notNull().default(""),
+    onDate: date("on_date", { mode: "string" }),
+    startsAt: ts("starts_at"),
+    whenZone: text("when_zone"),
     visibility: text("visibility", { enum: ["everyone", "only_me", "specific"] }).notNull().default("everyone"),
     visibleToUserIds: jsonb("visible_to_user_ids").$type<string[]>().notNull().default([]),
     state: text("state", { enum: ["open", "done", "dropped"] }).notNull().default("open"),

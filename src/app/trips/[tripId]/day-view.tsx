@@ -11,7 +11,7 @@ import type { TripView, VisibleItem } from "@/domain/visibility/project";
 import { stayCities } from "@/domain/timeline/trip-grid";
 import { groupFreeDays } from "@/domain/time/days";
 import { rowKey } from "@/domain/smarts/rows";
-import { SmartRow, TipsIntro, type SmartRows } from "./smart-row";
+import { SmartFlashes, SmartRow, TipsIntro, type SmartRows } from "./smart-row";
 import { ideasForDay, type Idea } from "@/domain/ideas/ideas";
 import { DayIdeas } from "./day-ideas";
 
@@ -144,9 +144,7 @@ export function DayView({ view, days, todayKey, only, anchors = true, smart, ide
   return (
     <>
       <FlashStatus kind="deleted" tripId={view.trip.id} />
-      <FlashStatus kind="fixed" tripId={view.trip.id} />
-      <FlashStatus kind="fine" tripId={view.trip.id} />
-      <FlashStatus kind="tip_hidden" tripId={view.trip.id} />
+      <SmartFlashes tripId={view.trip.id} />
       {smart?.showIntro && <TipsIntro />}
       {groupFreeDays(days).filter((day) => !only || day.keys.includes(only)).map((day) => (
         <details key={day.key} id={anchors ? `day-${day.key}` : undefined} className={styles.day} open={Boolean(only) || day.keys[day.keys.length - 1] >= todayKey}>
