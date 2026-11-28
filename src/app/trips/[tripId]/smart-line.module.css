@@ -1,0 +1,74 @@
+.smart {
+  margin: 4px 0 0;
+  font-size: var(--size-small);
+}
+
+.line {
+  margin: 0;
+}
+
+.check .line {
+  color: var(--warning);
+}
+
+.tip .line {
+  color: var(--muted);
+}
+
+.why {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 8px;
+  color: var(--muted);
+  font-size: var(--size-small);
+}
+
+.panel {
+  padding: 0 0 8px;
+  color: var(--text);
+}
+
+.panel p {
+  margin: 0 0 8px;
+}
+
+.also {
+  color: var(--muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+
+.action {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+
+.status {
+  color: var(--muted);
+}
+
+.intro {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  font-size: var(--size-small);
+  color: var(--muted);
+}
+
+.intro p {
+  margin: 0 0 8px;
+}

@@ -38,6 +38,16 @@ A plan happens in a city where the traveler is not at that time.
 Less than a fixed buffer between landing and the next timed item (default 2 hours for anything after an international arrival, 1 hour after a domestic one).
 "You land at 1:25pm and your next plan is at 2:30pm. That may be tight after immigration."
 
+**Wrong time of day** (travel smarts)
+A plan whose title says dinner, drinks, a show or a concert starts at 6:30am or earlier (breakfast, brunch or lunch at 4:00am or earlier), or a plan lands in the small hours when the same clock time in the traveler's home zone would be a normal waking hour. One tap fixes it ("Change to 6:30pm", "Use New York time"), keeping the plan's length.
+"Dinner at 6:30am? Did you mean 6:30pm?"
+
+**Risky connection** (travel smarts)
+Under 60 minutes between flights on one booking at an international hub (under 90 for a change of terminal), under 3 hours between flights on separate bookings (only shown to people who can see booking details), or under 4 hours when the second flight leaves from a different airport in the same city.
+"Tight: 55 min to change planes at HKG."
+
+Both are ordinary checks: warning color, "This is fine" for the whole trip, a "Why?" explanation, and a place in Worth a look. Travel tips (leave the hotel by, bag storage) are separate: secondary color, a per person switch and per kind off switches on `/account#travel-smarts`, shown only to editors, never to viewers or view links, and never a replacement for a check.
+
 Leave out of v1: visa and entry rules. They change and depend on nationality. Do not generate advice about them.
 
 ## Deadlines view

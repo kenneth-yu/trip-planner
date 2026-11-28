@@ -10,7 +10,7 @@ import { InputProblem } from "@/domain/import/problem";
 import { GoogleApiError, GoogleAuthorizationError } from "@/server/google/calendar-api";
 import { importFromGoogle } from "@/server/google/import";
 import { IMPORT_CLOSED, importIsRateLimited, importPagePath, importReader } from "@/server/google/import-guard";
-import { IMPORT_COOKIE, openImportToken } from "@/server/google/import-oauth";
+import { IMPORT_COOKIE, IMPORT_SEEN_COOKIE, openImportToken } from "@/server/google/import-oauth";
 import { loadTripPage } from "@/server/web";
 
 export interface ImportState {
@@ -46,6 +46,7 @@ export async function runGoogleImport(_previous: ImportState, form: FormData): P
     throw e;
   }
   jar.delete({ name: IMPORT_COOKIE, path });
+  jar.delete({ name: IMPORT_SEEN_COOKIE, path });
   revalidatePath(`/trips/${tripId}`, "layout");
   if (imported.events === 0) return { message: `Nothing in those calendars falls between ${shortDate(from)} and ${shortDate(to)}. Change the dates or choose other calendars.`, error: false };
   redirect(`/trips/${tripId}/inbox?imported=${imported.waiting}&matched=${imported.matched}`);
