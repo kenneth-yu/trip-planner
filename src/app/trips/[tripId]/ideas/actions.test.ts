@@ -113,6 +113,15 @@ describe("the Ideas page actions", () => {
     expect((await getTripView(ctx(), TRIP_ID, kenny)).items.map((i) => i.title)).toEqual(["Buy gold"]);
   });
 
+  it("says what is wrong with a schedule that ends before it starts, and keeps the idea open and unscheduled", async () => {
+    const idea = await add("Buy gold");
+    const result = await ideaAction(idle, form({ intent: "schedule", ideaId: idea.id, title: "Buy gold", city: "Shenzhen", start: "2026-12-08T15:00", end: "2026-12-08T14:00" }));
+    expect(result.status).toBeNull();
+    expect(result.error).toBeTruthy();
+    expect((await listIdeas(ctx(), TRIP_ID, kenny)).map((i) => i.state)).toEqual(["open"]);
+    expect((await getTripView(ctx(), TRIP_ID, kenny)).items).toEqual([]);
+  });
+
   it("says it already changed, not an error page, when the idea was acted on elsewhere", async () => {
     const idea = await add("Buy gold");
     await ideaAction(idle, form({ intent: "done", ideaId: idea.id }));
