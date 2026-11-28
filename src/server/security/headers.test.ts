@@ -40,6 +40,11 @@ describe("securityHeaders", () => {
     expect(h.get("x-robots-tag")).toBeNull();
   });
 
+  it("keeps view link pages out of every cache, and leaves other pages alone", () => {
+    expect(securityHeaders("/v/abc", "bm9uY2U=", true).get("cache-control")).toBe("private, no-store");
+    expect(securityHeaders("/trips/x", "bm9uY2U=", true).get("cache-control")).toBeNull();
+  });
+
   it.each(["/v/abc", "/invite/abc"])("%s is noindex and sends no referrer", (path) => {
     const h = securityHeaders(path, "n", true);
     expect(h.get("referrer-policy")).toBe("no-referrer");
