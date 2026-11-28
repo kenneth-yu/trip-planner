@@ -54,6 +54,8 @@ describe("an import at the size limit", () => {
   it("planCalendarImport on 500 events at one moment stays inside its budget", () => {
     const view = projectTrip(buildDemoTrip(PACKED_TRIP), owner);
     const run = () => planCalendarImport(events, view.items, { calendarTravelers: {}, defaultTravelerIds: [TRAVELERS.kenny], homeZone: owner.homeZone });
-    check("hot-paths", "planCalendarImport/500events", measureSync(run, { samples: 11, batch: 2, warmup: 3 }), budgetFor("planCalendarImport/500events"), 11);
+    const key = "planCalendarImport/500events";
+    const budgetMs = budgetFor(key);
+    check("hot-paths", key, measureSync(run, { name: key, target: { name: key, file: "hot-paths", budgetMs } }), budgetMs);
   });
 });
