@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createPgliteDb } from "@/server/db/client";
 
@@ -20,8 +20,15 @@ vi.mock("@/server/db/client", async (importOriginal) => {
 
 import { proxy } from "@/proxy";
 
+const MID_WINDOW = new Date("2026-11-27T10:07:30.000Z");
+
 beforeAll(() => {
   process.env.SESSION_SECRET = "test-secret-test-secret-test-secret-0123";
+  vi.useFakeTimers({ toFake: ["Date"], now: MID_WINDOW });
+});
+
+afterAll(() => {
+  vi.useRealTimers();
 });
 
 async function statuses(method: string, url: string, times: number) {

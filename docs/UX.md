@@ -47,7 +47,8 @@ Each screen answers one question. What follows is what answers it, in order, wha
 
 ### Trip, phone (`/trips/[id]`, under 1000px)
 - **Question:** what's next, and what does my day look like?
-- **Order:** trip name, one line of dates and countdown; the nav; at most one alert; Up next (three rows); the day strip; the chosen day in its panel.
+- **Order:** trip name, one line of dates and countdown; the nav; the "You need a place to stay" summary, only while a night has no stay, with "Night by night" folded under it; at most one alert; Up next (three rows); the day strip; the chosen day in its panel.
+- **Where you'll sleep:** an unbooked night outranks every alert, because everything else on the trip depends on a bed (owner decision, Nov 28; `.pipeline/specs/planning-mode.md`). On desktop it heads the attention column, with "Night by night" open.
 - **Alert:** when something is pending, one alert. Order of precedence: deadlines within 3 days, then inbox entries, then checks in the next 14 days. It shows the most urgent sentence and "and 2 more" beneath. The warning tint is used only for deadlines within 3 days. Inbox entries and checks use the neutral soft panel.
 - **Day strip:** choosing a chip shows the chosen day without leaving the scroll position. It scrolls the day panel into view, or swaps the day in place and keeps the strip pinned. A chip's "needs a look" marker is a shape (a ring) as well as a color (WCAG 1.4.1).
 - **Rows:** time (with home time beneath, small, only when the zone differs from home), then title, then a place only when it differs from the day header's place. Tapping a row opens the item's details page (rule 2).

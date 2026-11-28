@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPgliteDb, type Db } from "@/server/db/client";
 
 const env = vi.hoisted(() => {
@@ -35,6 +35,14 @@ vi.mock("@/server/auth/auth", () => ({
 }));
 
 import { continueWithProvider, sendEmailLink } from "./actions";
+
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-27T10:07:30.000Z") });
+});
+
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 function emailForm() {
   const form = new FormData();
