@@ -155,8 +155,8 @@ export async function listActivityLines(ctx: ServiceContext, tripId: string, req
     const state = e.action === "deleted" ? (before.readable ? before.item : null) : after.readable ? (after.item ?? (before.readable ? before.item : null)) : null;
     const ref = state ?? now;
     if (!e.itemId || !ref) return { before, after, ref: null, visible: false };
-    const thenVisible = state ? canSeeItem(state, requester) : true;
-    const nowVisible = now ? canSeeItem(now, requester) : true;
+    const thenVisible = state ? canSeeItem(state, requester) && (state.booked || perms.canEdit) : true;
+    const nowVisible = now ? canSeeItem(now, requester) && (now.booked || perms.canEdit) : true;
     return { before, after, ref, visible: thenVisible && nowVisible };
   };
 

@@ -28,10 +28,11 @@ function entryLine(e: DayEntry): string {
 
 export function describeTrip(view: TripView, deadlines: DeadlineLine[], findings: Finding[]): string {
   const lines = [`Trip: ${view.trip.name} (id ${view.trip.id})`, `Travelers: ${view.travelers.map((t) => t.name).join(", ")}`, "All times are local to where each thing happens.", ""];
+  const drafts = new Set(view.items.filter((i) => !i.booked).map((i) => i.id));
   for (const day of buildDays(view)) {
     lines.push(`${day.header}${day.place ? ` · ${day.place}` : ""}`);
     if (day.isFree) lines.push("  Free day");
-    for (const e of day.entries) lines.push(`  ${entryLine(e)}`);
+    for (const e of day.entries) lines.push(`  ${entryLine(e)}${"itemId" in e && drafts.has(e.itemId) ? " [booked: false]" : ""}`);
   }
   if (deadlines.length) {
     lines.push("", "Deadlines:");
