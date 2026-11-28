@@ -47,7 +47,7 @@ export const itemPatchSchema = z
       fromAirport: z.string().length(3),
       toAirport: z.string().length(3),
     }),
-    stay: z.object({ propertyName: z.string().min(1).max(200), kind: z.enum(["hotel", "rental", "other"]), lateArrivalCutoff: z.string().max(5).optional() }),
+    stay: z.object({ propertyName: z.string().min(1).max(200), kind: z.enum(["hotel", "rental", "other"]), lateArrivalCutoff: z.string().max(5).optional(), timeToAirportMinutes: z.number().int().min(1).max(1439).optional() }),
     transfer: z.object({
       mode: z.enum(["train", "ferry", "car", "bus", "border", "other"]).optional(),
       fromPlace: location.optional(),

@@ -1,6 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import * as t from "../db/schema";
 import type { ServiceContext } from "./context";
+import { loadTipPreferences } from "./preference-service";
 import { NotFound, requireAggregate } from "./trip-service";
 import { projectTrip, type VisibleItem } from "@/domain/visibility/project";
 import type { ItemPrivate, Money, Role, ZonedTime } from "@/domain/types";
@@ -49,7 +50,7 @@ export interface ExportedTrip {
 
 export interface UserExport {
   exportedAt: string;
-  you: { name: string; email: string };
+  you: { name: string; email: string; travelTips: { on: boolean; kindsOff: string[] } };
   trips: ExportedTrip[];
 }
 
@@ -103,5 +104,6 @@ export async function exportUserData(ctx: ServiceContext, userId: string): Promi
       items: view.items.map((i) => exportedItem(i, names)),
     });
   }
-  return { exportedAt: ctx.now().toISOString(), you: { name: user.name, email: user.email }, trips };
+  const tips = await loadTipPreferences(ctx, userId);
+  return { exportedAt: ctx.now().toISOString(), you: { name: user.name, email: user.email, travelTips: { on: tips.tipsOn, kindsOff: tips.kindsOff } }, trips };
 }
