@@ -26,8 +26,8 @@ export async function GET(request: Request) {
   else if (!code || url.searchParams.get("error")) outcome = { kind: "declined" };
   else {
     try {
-      const held = fakeGoogleActive() && code === FAKE_CODE ? { accessToken: FAKE_ACCESS_TOKEN, expiresInS: 3599 } : await exchangeImportCode(cfg, code, flow.verifier);
-      outcome = { kind: "connected", sealed: sealImportToken({ userId: user.id, tripId: state.tripId, accessToken: held.accessToken, expiresInS: held.expiresInS }) };
+      const held = fakeGoogleActive() && code === FAKE_CODE ? { accessToken: FAKE_ACCESS_TOKEN, expiresInS: 3599, email: user.email } : await exchangeImportCode(cfg, code, flow.verifier);
+      outcome = { kind: "connected", sealed: sealImportToken({ userId: user.id, tripId: state.tripId, accessToken: held.accessToken, email: held.email, expiresInS: held.expiresInS }) };
     } catch (e) {
       if (e instanceof ImportConsentMissing) outcome = { kind: "declined" };
       else if (e instanceof GoogleAuthorizationError) outcome = { kind: "expired" };

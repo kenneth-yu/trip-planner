@@ -3,7 +3,7 @@ import { IMPORT_SCOPE, MIRROR_SCOPE } from "./calendar-api";
 import { createHash } from "node:crypto";
 import { present } from "@/testing/present";
 import { encryptSecret } from "../auth/tokens";
-import { exchangeImportCode, IMPORT_WINDOW_MS, ImportConsentMissing, openImportFlow, openImportState, openImportToken, sealImportState, sealImportToken, startImportFlow } from "./import-oauth";
+import { emailFromIdToken, exchangeImportCode, IMPORT_WINDOW_MS, ImportConsentMissing, openImportFlow, openImportHeld, openImportState, openImportToken, sealImportState, sealImportToken, startImportFlow } from "./import-oauth";
 import { authorizationUrl, openState, sealState, type GoogleOAuthConfig } from "./oauth";
 
 const cfg: GoogleOAuthConfig = { clientId: "client", clientSecret: "secret", redirectUri: "https://trips.test/api/google/import/callback" };
@@ -117,6 +117,30 @@ describe("exchanging the code", () => {
   it("refuses a grant that does not include the read scope", async () => {
     await expect(exchangeImportCode(cfg, "code", "verifier", fetchWith("openid email"))).rejects.toThrow(ImportConsentMissing);
     await expect(exchangeImportCode(cfg, "code", "verifier", fetchWith(MIRROR_SCOPE))).rejects.toThrow(ImportConsentMissing);
+  });
+});
+
+describe("naming the Google account", () => {
+  const idToken = (claims: unknown) => `h.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.s`;
+
+  it("reads the email claim of the id token", () => {
+    expect(emailFromIdToken(idToken({ email: "kenny@example.test", sub: "1" }))).toBe("kenny@example.test");
+  });
+
+  it.each([["no token", undefined], ["no payload", "h"], ["not json", "h.bm90IGpzb24.s"], ["no email", idToken({ sub: "1" })], ["an email that is not text", idToken({ email: 5 })], ["a huge email", idToken({ email: "x".repeat(400) })]])("gives nothing for %s", (_name, value) => {
+    expect(emailFromIdToken(value)).toBeUndefined();
+  });
+
+  it("is kept with the held token, and a token sealed without one still opens", () => {
+    const withEmail = sealImportToken({ userId: USER, tripId: TRIP, accessToken: "ya29.read", email: "kenny@example.test", expiresInS: 3599 }, NOW);
+    expect(openImportHeld(withEmail.value, USER, TRIP, NOW)).toEqual({ accessToken: "ya29.read", email: "kenny@example.test" });
+    const without = sealImportToken({ userId: USER, tripId: TRIP, accessToken: "ya29.read", expiresInS: 3599 }, NOW);
+    expect(openImportHeld(without.value, USER, TRIP, NOW)?.email).toBeUndefined();
+  });
+
+  it("is returned by the code exchange when Google sends an id token", async () => {
+    const held = await exchangeImportCode(cfg, "code", "v", async () => new Response(JSON.stringify({ access_token: "t", expires_in: 3599, scope: IMPORT_SCOPE, id_token: idToken({ email: "kenny@example.test" }) }), { status: 200 }));
+    expect(held.email).toBe("kenny@example.test");
   });
 });
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ProposedItem } from "@/domain/import/proposal";
 import type { DecidedEntry } from "@/server/services/inbox-service";
-import { addAllText, addedOutcome, decidedOutcome, discardedOutcome, ENTRY_GONE, mergedOutcome, entryLabel, savedWithoutRemovedTraveler, type Tapped } from "./messages";
+import { addAllText, addedOutcome, decidedOutcome, discardedOutcome, ENTRY_GONE, mergedOutcome, entryLabel, importedOutcome, savedWithoutRemovedTraveler, type Tapped } from "./messages";
 
 const flight = {
   type: "flight",
@@ -86,5 +86,21 @@ describe("the Add all result line", () => {
     [r(0, 0, 0), ""],
   ])("%j", (result, text) => {
     expect(addAllText(result)).toBe(text);
+  });
+});
+
+describe("the line after a Google import", () => {
+  it.each([
+    [["18", "5"], "18 events are waiting in your inbox. 5 look like things already on the trip."],
+    [["18", "0"], "18 events are waiting in your inbox."],
+    [["1", "1"], "1 event is waiting in your inbox. 1 looks like a thing already on the trip."],
+    [["3", undefined], "3 events are waiting in your inbox."],
+    [["3", "nonsense"], "3 events are waiting in your inbox."],
+  ])("%j", ([imported, matched], text) => {
+    expect(importedOutcome(imported, matched)).toEqual({ text, role: "status" });
+  });
+
+  it.each([[undefined], ["abc"], ["-1"], ["1.5"], [["1", "2"]], ["999999999"]])("shows nothing for %j", (imported) => {
+    expect(importedOutcome(imported, "0")).toBeNull();
   });
 });

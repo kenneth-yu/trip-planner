@@ -1,12 +1,15 @@
+import { and, eq } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { ZodError } from "zod";
 import styles from "../../../../ui/page.module.css";
+import local from "./google-import.module.css";
 import { appUrl } from "@/server/app-context";
+import * as t from "@/server/db/schema";
 import { GoogleApiError, GoogleAuthorizationError, type ListedCalendar } from "@/server/google/calendar-api";
 import { IMPORT_CLOSED, IMPORT_CONNECT_PATH, importIsRateLimited, importOAuthConfig, importPagePath, importReader } from "@/server/google/import-guard";
 import { defaultImportRange } from "@/server/google/import";
-import { IMPORT_COOKIE, openImportToken } from "@/server/google/import-oauth";
+import { IMPORT_COOKIE, openImportHeld } from "@/server/google/import-oauth";
 import { loadTripPage } from "@/server/web";
 import { ImportForm } from "./forms";
 
@@ -24,9 +27,9 @@ async function listingFor(token: string | null): Promise<Listing> {
 }
 
 const CONSENT_MESSAGES: Record<string, string> = {
-  declined: "Google calendar access was not granted.",
-  expired: "That Google sign in expired or was already used. Connect again.",
-  failed: "Google sign in did not finish. Try again.",
+  declined: "Google Calendar was not connected, so nothing was imported.",
+  expired: "That took a while, so Google's permission ran out. Continue to Google again.",
+  failed: "Google did not answer. Try again in a few minutes.",
 };
 
 export default async function GoogleImportPage({ params, searchParams }: PageProps<"/trips/[tripId]/import/google">) {
@@ -44,28 +47,42 @@ export default async function GoogleImportPage({ params, searchParams }: PagePro
       </div>
     );
   }
-  const listing = await listingFor(openImportToken((await cookies()).get(IMPORT_COOKIE)?.value, user.id, tripId));
-  const range = defaultImportRange(
-    view.items.map((i) => i.start.at),
-    view.items.map((i) => i.end.at),
-    ctx.now(),
-  );
+  const held = openImportHeld((await cookies()).get(IMPORT_COOKIE)?.value, user.id, tripId);
+  const listing = await listingFor(held?.accessToken ?? null);
   const notice = typeof consent === "string" ? CONSENT_MESSAGES[consent] : undefined;
+  if (listing.kind === "calendars") {
+    const range = defaultImportRange(
+      view.items.map((i) => i.start.at),
+      view.items.map((i) => i.end.at),
+      ctx.now(),
+    );
+    return (
+      <div className={styles.narrow}>
+        <h2 className={styles.sectionTitle}>Choose what to bring in</h2>
+        {held?.email && <p className={styles.muted}>From {held.email}</p>}
+        {listing.calendars.length === 0 ? <p className={styles.muted}>This Google account has no calendars to import from.</p> : <ImportForm tripId={tripId} calendars={listing.calendars} from={range.from} to={range.to} />}
+      </div>
+    );
+  }
+  const [mirror] = await ctx.db.select().from(t.calendarMirrors).where(and(eq(t.calendarMirrors.tripId, tripId), eq(t.calendarMirrors.userId, user.id), eq(t.calendarMirrors.enabled, true)));
   return (
     <div className={styles.narrow}>
       <h2 className={styles.sectionTitle}>Import from Google Calendar</h2>
       {notice && <p role="alert">{notice}</p>}
-      {listing.kind === "calendars" && <ImportForm tripId={tripId} calendars={listing.calendars} from={range.from} to={range.to} />}
       {listing.kind === "unavailable" && (
         <>
-          <p role="alert">Google did not answer. Try again in a minute.</p>
+          <p role="alert">Google did not answer. Try again in a few minutes.</p>
           <a href={path}>Try again</a>
         </>
       )}
       {listing.kind === "connect" && (
         <>
-          <p className={styles.muted}>This asks Google to let the app read your calendars once. Nothing is kept, and everything it finds waits in the inbox for you to review.</p>
-          <a href={`${IMPORT_CONNECT_PATH}?trip=${tripId}`}>Connect Google Calendar</a>
+          <p className={styles.muted}>Google will ask to let Trip planner see your calendars. The app reads the calendars and dates you pick, once, and does not keep that permission.</p>
+          <p className={styles.muted}>Everything comes into your review inbox first. Nothing is added until you say so.</p>
+          {mirror && <p className={styles.muted}>This is separate from mirroring the trip to Google Calendar on the Connect page.</p>}
+          <a className={local.continue} href={`${IMPORT_CONNECT_PATH}?trip=${tripId}`}>
+            Continue to Google
+          </a>
         </>
       )}
     </div>

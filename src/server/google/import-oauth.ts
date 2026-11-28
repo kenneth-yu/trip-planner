@@ -72,21 +72,34 @@ export function openImportFlow(sealed: string | undefined, state: ImportState, n
   return flow.exp > nowMs && flow.userId === state.userId && flow.tripId === state.tripId && safeEqual(flow.nonce, state.nonce) ? flow : null;
 }
 
-export async function exchangeImportCode(cfg: GoogleOAuthConfig, code: string, verifier: string, fetchImpl: typeof fetch = fetch): Promise<{ accessToken: string; expiresInS: number }> {
-  const tokens = await tokenRequest({ code, code_verifier: verifier, client_id: cfg.clientId, client_secret: cfg.clientSecret, redirect_uri: cfg.redirectUri, grant_type: "authorization_code" }, fetchImpl);
-  if (!tokens.scope.split(" ").includes(IMPORT_SCOPE)) throw new ImportConsentMissing();
-  return { accessToken: tokens.access_token, expiresInS: tokens.expires_in };
+const IdClaims = z.object({ email: z.string().max(320).optional() });
+
+export function emailFromIdToken(idToken: string | undefined): string | undefined {
+  const payload = idToken?.split(".")[1];
+  if (!payload) return undefined;
+  const parsed = IdClaims.safeParse(parseJson(Buffer.from(payload, "base64url").toString("utf8")));
+  return parsed.success ? parsed.data.email : undefined;
 }
 
-const Held = z.object({ userId: z.string(), tripId: z.string(), accessToken: z.string(), exp: z.number() });
+export async function exchangeImportCode(cfg: GoogleOAuthConfig, code: string, verifier: string, fetchImpl: typeof fetch = fetch): Promise<{ accessToken: string; expiresInS: number; email?: string }> {
+  const tokens = await tokenRequest({ code, code_verifier: verifier, client_id: cfg.clientId, client_secret: cfg.clientSecret, redirect_uri: cfg.redirectUri, grant_type: "authorization_code" }, fetchImpl);
+  if (!tokens.scope.split(" ").includes(IMPORT_SCOPE)) throw new ImportConsentMissing();
+  return { accessToken: tokens.access_token, expiresInS: tokens.expires_in, email: emailFromIdToken(tokens.id_token) };
+}
 
-export function sealImportToken(held: { userId: string; tripId: string; accessToken: string; expiresInS: number }, nowMs = Date.now()): { value: string; maxAgeS: number } {
+const Held = z.object({ userId: z.string(), tripId: z.string(), accessToken: z.string(), email: z.string().optional(), exp: z.number() });
+
+export function sealImportToken(held: { userId: string; tripId: string; accessToken: string; email?: string; expiresInS: number }, nowMs = Date.now()): { value: string; maxAgeS: number } {
   const lifeMs = Math.min(IMPORT_WINDOW_MS, Math.max(0, held.expiresInS * 1000 - 30_000));
-  const body = { userId: held.userId, tripId: held.tripId, accessToken: held.accessToken, exp: nowMs + lifeMs };
+  const body = { userId: held.userId, tripId: held.tripId, accessToken: held.accessToken, email: held.email, exp: nowMs + lifeMs };
   return { value: encryptSecret(JSON.stringify(body)), maxAgeS: Math.floor(lifeMs / 1000) };
 }
 
 export function openImportToken(sealed: string | undefined, userId: string, tripId: string, nowMs = Date.now()): string | null {
+  return openImportHeld(sealed, userId, tripId, nowMs)?.accessToken ?? null;
+}
+
+export function openImportHeld(sealed: string | undefined, userId: string, tripId: string, nowMs = Date.now()): { accessToken: string; email?: string } | null {
   if (!sealed) return null;
   let text: string;
   try {
@@ -96,5 +109,5 @@ export function openImportToken(sealed: string | undefined, userId: string, trip
     throw e;
   }
   const parsed = Held.safeParse(parseJson(text));
-  return parsed.success && parsed.data.userId === userId && parsed.data.tripId === tripId && parsed.data.exp > nowMs ? parsed.data.accessToken : null;
+  return parsed.success && parsed.data.userId === userId && parsed.data.tripId === tripId && parsed.data.exp > nowMs ? { accessToken: parsed.data.accessToken, email: parsed.data.email } : null;
 }

@@ -4,6 +4,7 @@ import { TRIP_ID, USERS } from "@/fixtures/december-trip";
 import { FakeGoogleCalendar, GoogleApiError, GoogleAuthorizationError } from "@/server/google/calendar-api";
 import { sealImportToken } from "@/server/google/import-oauth";
 import { kenny, testContext } from "@/server/testing";
+import * as t from "@/server/db/schema";
 import { getTripView } from "@/server/services/trip-service";
 import type { ServiceContext } from "@/server/services/context";
 import GoogleImportPage from "./page";
@@ -82,24 +83,67 @@ describe("the Google import page", () => {
     await expect(render()).rejects.toThrow(NotFound);
   });
 
-  it("offers to connect, and says nothing is kept, before anything is connected", async () => {
+  it("says what Google will be asked, that nothing is kept and that the inbox comes first, before anything is connected", async () => {
     const html = await render();
-    expect(html).toContain(`href="/api/google/import/connect?trip=${TRIP_ID}"`);
+    expect(html).toContain(">Import from Google Calendar</h2>");
+    expect(html).toContain("Google will ask to let Trip planner see your calendars. The app reads the calendars and dates you pick, once, and does not keep that permission.");
+    expect(html).toContain("Everything comes into your review inbox first. Nothing is added until you say so.");
+    expect(html).toMatch(/<a class="[^"]*" href="\/api\/google\/import\/connect\?trip=[^"]+">Continue to Google<\/a>/);
+    expect(html).not.toContain("Connect Google Calendar");
     expect(html).not.toContain('role="alert"');
+    expect(html).not.toContain("mirroring the trip");
+  });
+
+  it("says the import is separate from the mirror, only when the person has the mirror on", async () => {
+    const ctx = world.holder.ctx;
+    if (!ctx) throw new Error("no test context");
+    await ctx.db.insert(t.calendarMirrors).values({ tripId: TRIP_ID, userId: USERS.kenny.id, enabled: true });
+    expect(await render()).toContain("This is separate from mirroring the trip to Google Calendar on the Connect page.");
   });
 
   it.each([
-    ["declined", "Google calendar access was not granted."],
-    ["expired", "That Google sign in expired or was already used. Connect again."],
-    ["failed", "Google sign in did not finish. Try again."],
-  ])("shows an alert for %s and still offers to connect", async (consent, message) => {
+    ["declined", "Google Calendar was not connected, so nothing was imported."],
+    ["expired", "That took a while, so Google&#x27;s permission ran out. Continue to Google again."],
+    ["failed", "Google did not answer. Try again in a few minutes."],
+  ])("shows an alert for %s above the button and still offers to continue", async (consent, message) => {
     const html = await render(consent);
     expect(html).toContain(`<p role="alert">${message}</p>`);
-    expect(html).toContain(`href="/api/google/import/connect?trip=${TRIP_ID}"`);
+    expect(html.indexOf('role="alert"')).toBeLessThan(html.indexOf("Continue to Google</a>"));
   });
 
   it("ignores a consent value it does not know", async () => {
     expect(await render("<script>")).not.toContain('role="alert"');
+  });
+
+  it("titles the pick screen, names the Google account when the token gives it, and leaves the line out when not", async () => {
+    withToken();
+    const google = new FakeGoogleCalendar();
+    google.seedCalendar("Mine", [], { primary: true });
+    world.holder.google = google;
+    expect(await render()).toContain(">Choose what to bring in</h2>");
+    expect(await render()).not.toContain("From kenny@");
+    world.holder.cookie = sealImportToken({ userId: USERS.kenny.id, tripId: TRIP_ID, accessToken: "ya29.read", email: "kenny@example.test", expiresInS: 3599 }).value;
+    expect(await render()).toMatch(/From kenny@example\.test<\/p>/);
+  });
+
+  it("shows only a line, and no form, when the Google account has no calendars left", async () => {
+    withToken();
+    world.holder.google = new FakeGoogleCalendar();
+    const html = await render();
+    expect(html).toContain("This Google account has no calendars to import from.");
+    expect(html).not.toContain("<form");
+  });
+
+  it("gives the form its Dates legend, hint and Import button", async () => {
+    withToken();
+    const google = new FakeGoogleCalendar();
+    google.seedCalendar("Mine", [], { primary: true });
+    world.holder.google = google;
+    const html = await render();
+    expect(html).toContain("<legend>Calendars</legend>");
+    expect(html).toContain("<legend>Dates</legend>");
+    expect(html).toContain("Only events between these dates come in.");
+    expect(html).toContain(">Import</button>");
   });
 
   it("lists the calendars, the primary one first, with the trip's dates a day either side already filled in", async () => {
@@ -131,14 +175,14 @@ describe("the Google import page", () => {
     withToken();
     world.holder.google = new GoogleApiError(503, "Google Calendar GET could not be reached: TimeoutError");
     const html = await render();
-    expect(html).toContain('<p role="alert">Google did not answer. Try again in a minute.</p>');
+    expect(html).toContain('<p role="alert">Google did not answer. Try again in a few minutes.</p>');
     expect(html).toContain(`href="/trips/${TRIP_ID}/import/google"`);
   });
 
   it("goes back to connecting when Google refuses the token", async () => {
     withToken();
     world.holder.google = new GoogleAuthorizationError(401, "Google Calendar GET failed: 401");
-    expect(await render()).toContain(`href="/api/google/import/connect?trip=${TRIP_ID}"`);
+    expect(await render()).toContain("Continue to Google</a>");
   });
 
   it("says it is not open yet while no rate rule covers it", async () => {
@@ -148,6 +192,6 @@ describe("the Google import page", () => {
 
   it("does not read the token cookie of another trip", async () => {
     world.holder.cookie = sealImportToken({ userId: USERS.kenny.id, tripId: "00000000-0000-4000-8300-0000000000ff", accessToken: "ya29.read", expiresInS: 3599 }).value;
-    expect(await render()).toContain("Connect Google Calendar");
+    expect(await render()).toContain("Continue to Google");
   });
 });

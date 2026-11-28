@@ -272,7 +272,7 @@ describe("the caps on what one import takes in", () => {
     const many: CalendarEvent[] = Array.from({ length: MAX_EVENTS + 1 }, (_, i) => ({ id: `e${i}`, summary: `Event ${i}`, start: { date: "2026-12-02" }, end: { date: "2026-12-03" } }));
     const google = new FakeGoogleCalendar();
     const id = google.seedCalendar("busy", many);
-    await expect(importFromGoogle(ctx, google, TRIP_ID, kenny, { calendarIds: [id], ...december })).rejects.toThrow("That range has more than 500 events. Choose fewer calendars or a shorter range.");
+    await expect(importFromGoogle(ctx, google, TRIP_ID, kenny, { calendarIds: [id], ...december })).rejects.toThrow("That is more than 500 events. Choose fewer calendars or dates closer to the trip.");
     expect(await listInbox(ctx, TRIP_ID, kenny)).toEqual([]);
   });
 
@@ -296,7 +296,7 @@ describe("the caps on what one import takes in", () => {
     const id = google.seedCalendar("c", []);
     const attempt = importFromGoogle(ctx, google, TRIP_ID, kenny, { calendarIds: [id], from, to });
     if (allowed) await expect(attempt).resolves.toMatchObject({ events: 0 });
-    else await expect(attempt).rejects.toThrow("Choose a range shorter than a year.");
+    else await expect(attempt).rejects.toThrow("Choose dates less than a year apart.");
   });
 
   it("never sends a Google event's location to the address lookup, though other imports still do", async () => {

@@ -3,7 +3,9 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { DateTime } from "@/domain/time/luxon";
 import { z } from "zod";
+import { formatShortDate } from "@/domain/time/format";
 import { InputProblem } from "@/domain/import/problem";
 import { GoogleApiError, GoogleAuthorizationError } from "@/server/google/calendar-api";
 import { importFromGoogle } from "@/server/google/import";
@@ -16,6 +18,10 @@ export interface ImportState {
   error: boolean;
 }
 
+const EXPIRED = "That took a while, so Google's permission ran out. Continue to Google again.";
+const TIMEOUT = "Google did not answer. Try again in a few minutes.";
+const shortDate = (iso: string) => formatShortDate(DateTime.fromISO(iso, { zone: "utc" }));
+
 const Form = z.object({ tripId: z.string().uuid(), from: z.string().max(10), to: z.string().max(10) });
 
 export async function runGoogleImport(_previous: ImportState, form: FormData): Promise<ImportState> {
@@ -25,22 +31,22 @@ export async function runGoogleImport(_previous: ImportState, form: FormData): P
   const { ctx, user, requester } = await loadTripPage(tripId, path);
   const jar = await cookies();
   const token = openImportToken(jar.get(IMPORT_COOKIE)?.value, user.id, tripId);
-  if (!token) return { message: "Connect Google Calendar again to import.", error: true };
+  if (!token) return { message: EXPIRED, error: true };
   const calendarIds = form.getAll("calendar").filter((v): v is string => typeof v === "string");
-  let events: number;
+  let imported: { events: number; waiting: number; matched: number };
   try {
-    events = (await importFromGoogle(ctx, await importReader(token), tripId, requester, { calendarIds, from, to })).events;
+    imported = (await importFromGoogle(ctx, await importReader(token), tripId, requester, { calendarIds, from, to }));
   } catch (e) {
     if (e instanceof InputProblem) return { message: e.message, error: true };
     if (e instanceof GoogleAuthorizationError) {
       jar.delete({ name: IMPORT_COOKIE, path });
-      return { message: "Google did not allow that. Connect Google Calendar again.", error: true };
+      return { message: "Google did not allow that. Continue to Google again.", error: true };
     }
-    if (e instanceof GoogleApiError) return { message: "Google did not answer. Try again in a minute.", error: true };
+    if (e instanceof GoogleApiError) return { message: TIMEOUT, error: true };
     throw e;
   }
   jar.delete({ name: IMPORT_COOKIE, path });
   revalidatePath(`/trips/${tripId}`, "layout");
-  if (events === 0) return { message: "Nothing in those calendars for those dates.", error: false };
-  redirect(`/trips/${tripId}/inbox`);
+  if (imported.events === 0) return { message: `Nothing in those calendars falls between ${shortDate(from)} and ${shortDate(to)}. Change the dates or choose other calendars.`, error: false };
+  redirect(`/trips/${tripId}/inbox?imported=${imported.waiting}&matched=${imported.matched}`);
 }

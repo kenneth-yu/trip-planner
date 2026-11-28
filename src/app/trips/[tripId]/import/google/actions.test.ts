@@ -107,7 +107,7 @@ describe("running the Google import", () => {
 
   it("asks to connect again when there is no token", async () => {
     const { calendar } = await startWith({ token: false });
-    expect(await runGoogleImport(idle, form({ calendars: [calendar] }))).toEqual({ message: "Connect Google Calendar again to import.", error: true });
+    expect(await runGoogleImport(idle, form({ calendars: [calendar] }))).toEqual({ message: "That took a while, so Google's permission ran out. Continue to Google again.", error: true });
   });
 
   it("does not use a token that was held for another trip", async () => {
@@ -118,9 +118,10 @@ describe("running the Google import", () => {
   it("imports into the inbox, uses the token once, clears it and goes to the inbox", async () => {
     const { ctx, calendar } = await startWith();
     const outcome = await result(runGoogleImport(idle, form({ calendars: [calendar] })));
-    expect(outcome.redirectedTo).toBe(`/trips/${TRIP_ID}/inbox`);
+    const inbox = await listInbox(ctx, TRIP_ID, kenny);
+    expect(outcome.redirectedTo).toBe(`/trips/${TRIP_ID}/inbox?imported=${inbox.length}&matched=0`);
     expect(world.deleted).toEqual([{ name: IMPORT_COOKIE, path: PAGE }]);
-    expect((await listInbox(ctx, TRIP_ID, kenny)).length).toBeGreaterThan(0);
+    expect(inbox.length).toBeGreaterThan(0);
   });
 
   it("keeps the token when the form was wrong, so the person can fix it", async () => {
@@ -133,14 +134,14 @@ describe("running the Google import", () => {
   it("clears the token and says to connect again when Google refuses it", async () => {
     const { google, calendar } = await startWith();
     google.failNext = new GoogleAuthorizationError(401, "Google Calendar GET failed: 401");
-    expect(await runGoogleImport(idle, form({ calendars: [calendar] }))).toEqual({ message: "Google did not allow that. Connect Google Calendar again.", error: true });
+    expect(await runGoogleImport(idle, form({ calendars: [calendar] }))).toEqual({ message: "Google did not allow that. Continue to Google again.", error: true });
     expect(world.deleted).toEqual([{ name: IMPORT_COOKIE, path: PAGE }]);
   });
 
   it("keeps the token and says to try again when Google fails or does not answer, so the editor can retry", async () => {
     const { google, calendar, ctx } = await startWith();
     google.failNext = new GoogleApiError(503, "Google Calendar GET could not be reached: TimeoutError");
-    expect(await runGoogleImport(idle, form({ calendars: [calendar] }))).toEqual({ message: "Google did not answer. Try again in a minute.", error: true });
+    expect(await runGoogleImport(idle, form({ calendars: [calendar] }))).toEqual({ message: "Google did not answer. Try again in a few minutes.", error: true });
     expect(world.deleted).toEqual([]);
     expect(world.jar.has(IMPORT_COOKIE)).toBe(true);
     expect(await listInbox(ctx, TRIP_ID, kenny)).toEqual([]);
@@ -150,14 +151,14 @@ describe("running the Google import", () => {
     const { calendar, google } = await startWith();
     const many = Array.from({ length: 501 }, (_, i) => ({ id: `e${i}`, summary: `Event ${i}`, start: { date: "2026-12-02" }, end: { date: "2026-12-03" } }));
     google.readable.set(calendar, { summary: "kenny primary", events: many, primary: true });
-    expect(await runGoogleImport(idle, form({ calendars: [calendar] }))).toEqual({ message: "That range has more than 500 events. Choose fewer calendars or a shorter range.", error: true });
+    expect(await runGoogleImport(idle, form({ calendars: [calendar] }))).toEqual({ message: "That is more than 500 events. Choose fewer calendars or dates closer to the trip.", error: true });
     expect(world.jar.has(IMPORT_COOKIE)).toBe(true);
   });
 
   it("clears the token and says nothing was found when the range holds no events", async () => {
     const { calendar } = await startWith();
     const outcome = await result(runGoogleImport(idle, form({ calendars: [calendar], from: "2027-03-01", to: "2027-03-05" })));
-    expect(outcome.returned).toEqual({ message: "Nothing in those calendars for those dates.", error: false });
+    expect(outcome.returned).toEqual({ message: "Nothing in those calendars falls between Mar 1 and Mar 5. Change the dates or choose other calendars.", error: false });
     expect(world.deleted).toEqual([{ name: IMPORT_COOKIE, path: PAGE }]);
   });
 
