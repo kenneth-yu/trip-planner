@@ -28,7 +28,7 @@ export default async function InboxPage({ params }: PageProps<"/trips/[tripId]/i
         {clean.length > 0 && <AddAllForm tripId={tripId} entryIds={clean} />}
         {!entries.length && (
           <p className={styles.muted}>
-            Nothing waiting. Items from calendars and assistants show up here first. <Link href={`/trips/${tripId}/import`}>Import a calendar</Link>.
+            Nothing to review. Items from calendars and assistants arrive here first. <Link href={`/trips/${tripId}/import`}>Import bookings</Link>
           </p>
         )}
       <ul className={styles.list}>

@@ -7,7 +7,8 @@ import { listInbox } from "@/server/services/inbox-service";
 import type { ServiceContext } from "@/server/services/context";
 import { kenny } from "@/server/testing";
 import { POST } from "./route";
-import { PROBLEM_TEXT, ProblemCode, problemFor } from "./problems";
+import { ProblemCode, problemFor, problemFromQuery, problemQuery, problemText } from "./problems";
+import { BadDates, NothingInDates, TooManyEvents } from "@/server/import/ics-import";
 import { FetchRefused } from "@/server/import/fetch-guard";
 import { IcsProblem } from "@/domain/import/ics";
 
@@ -50,7 +51,7 @@ describe("the .ics upload route", () => {
   it("imports the file into the review inbox and answers with counts only", async () => {
     const response = await post(fileForm(calendar));
     expect(response.status).toBe(303);
-    expect(location(response)).toMatch(new RegExp(`^/trips/${TRIP_ID}/import\\?done=\\d+&skipped=0&repeating=0$`));
+    expect(location(response)).toMatch(new RegExp(`^/trips/${TRIP_ID}/inbox\\?imported=\\d+&matched=\\d+&left=0$`));
     const inbox = await listInbox(present(world.ctx), TRIP_ID, kenny);
     expect(inbox.length).toBeGreaterThan(0);
     expect(location(response)).not.toContain("trip.ics");
@@ -136,25 +137,98 @@ describe("the .ics upload route", () => {
     const form = new FormData();
     form.set("link", "https://calendar.example.test/SECRETTOKEN.ics");
     const response = await post(form);
-    expect(location(response)).toBe(`/trips/${TRIP_ID}/import?problem=link_off`);
+    expect(location(response)).toBe(`/trips/${TRIP_ID}/import?problem=link_failed`);
     expect(location(response)).not.toContain("SECRETTOKEN");
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
   });
 });
 
-describe("problem codes", () => {
-  it("has copy for every code", () => {
-    for (const code of ProblemCode.options) expect(PROBLEM_TEXT[code].length).toBeGreaterThan(10);
+describe("the dates in the upload", () => {
+  beforeEach(async () => {
+    world.ctx = (await testContext({ withItems: false })).ctx;
+    world.user = { id: USERS.kenny.id, homeZone: USERS.kenny.homeZone };
+  });
+
+  const two = toIcs([
+    { summary: "Dinner at Girl and the Goat", start: { dateTime: "2026-12-05T19:00:00Z" }, end: { dateTime: "2026-12-05T21:00:00Z" } },
+    { summary: "Old dinner", start: { dateTime: "2020-01-05T19:00:00Z" }, end: { dateTime: "2020-01-05T21:00:00Z" } },
+  ]);
+
+  function withDates(from: string, to: string) {
+    const form = fileForm(two);
+    form.set("from", from);
+    form.set("to", to);
+    return form;
+  }
+
+  it("brings in only what is inside the dates and says how many were left out", async () => {
+    const response = await post(withDates("2026-11-30", "2026-12-16"));
+    expect(location(response)).toBe(`/trips/${TRIP_ID}/inbox?imported=1&matched=0&left=1`);
+    expect(await listInbox(present(world.ctx), TRIP_ID, kenny)).toHaveLength(1);
+  });
+
+  it("with no dates brings in everything", async () => {
+    expect(location(await post(withDates("", "")))).toBe(`/trips/${TRIP_ID}/inbox?imported=2&matched=0&left=0`);
+  });
+
+  it.each([
+    ["2026-12-16", "2026-11-30", "from_after_to"],
+    ["2026-01-01", "2027-06-01", "range_too_long"],
+    ["junk", "", "bad_dates"],
+  ])("sends %s to %s back as %s", async (from, to, code) => {
+    expect(location(await post(withDates(from, to)))).toBe(`/trips/${TRIP_ID}/import?problem=${code}`);
+  });
+
+  it("names the dates when nothing falls inside them", async () => {
+    expect(location(await post(withDates("2031-01-01", "2031-01-31")))).toBe(`/trips/${TRIP_ID}/import?problem=nothing_in_dates&from=2031-01-01&to=2031-01-31`);
+  });
+
+  it("gives the count when there are too many", async () => {
+    const many = toIcs(Array.from({ length: 501 }, (_, i) => ({ summary: `E${i}`, start: { dateTime: "2026-12-05T10:00:00Z" }, end: { dateTime: "2026-12-05T11:00:00Z" } })));
+    const form = fileForm(many);
+    expect(location(await post(form))).toBe(`/trips/${TRIP_ID}/import?problem=too_many_events&count=501`);
+  });
+});
+
+describe("problem codes and their words", () => {
+  it("has plain words for every code, none of them speaking as we", () => {
+    for (const code of ProblemCode.options) {
+      const text = problemText({ code, count: 1240, from: "2026-11-30", to: "2026-12-16" });
+      expect(text.length).toBeGreaterThan(10);
+      expect(text).not.toMatch(/\bwe\b|\bWe\b/);
+    }
+  });
+
+  it("uses the lead's sentences, with the count and the dates filled in", () => {
+    expect(problemText({ code: "too_many_events", count: 1240 })).toBe("That calendar has 1,240 events in those dates. Choose dates closer to the trip.");
+    expect(problemText({ code: "nothing_in_dates", from: "2026-11-30", to: "2026-12-16" })).toBe("Nothing in that calendar falls between Nov 30 and Dec 16. Change the dates or leave them empty.");
+    expect(problemText({ code: "nothing_in_dates", from: "2026-11-30" })).toBe("Nothing in that calendar falls on or after Nov 30. Change the dates or leave them empty.");
+    expect(problemText({ code: "from_after_to" })).toBe("The From date is after the To date.");
+    expect(problemText({ code: "no_file" })).toBe("Choose a file or paste a link.");
+  });
+
+  it("does not reveal that an address was private: a refused address reads like any unreadable link", () => {
+    expect(problemText({ code: problemFor(new FetchRefused("address"))?.code ?? "try_again" })).toBe(problemText({ code: problemFor(new FetchRefused("unreachable"))?.code ?? "try_again" }));
+  });
+
+  it("round trips through the address, and drops anything that is not a code, a count or a date", () => {
+    const problem = { code: "nothing_in_dates" as const, from: "2026-11-30", to: "2026-12-16" };
+    expect(problemFromQuery(Object.fromEntries(new URLSearchParams(problemQuery(problem))))).toEqual(problem);
+    expect(problemFromQuery({ problem: "<script>" })).toBeNull();
+    expect(problemFromQuery({ problem: "too_many_events", count: "x", from: "javascript:1" })).toEqual({ code: "too_many_events" });
   });
 
   it("maps refusals to codes without carrying their text", () => {
-    expect(problemFor(new FetchRefused("address"))).toBe("link_failed");
-    expect(problemFor(new FetchRefused("scheme"))).toBe("link_invalid");
-    expect(problemFor(new FetchRefused("timeout"))).toBe("link_slow");
-    expect(problemFor(new FetchRefused("size"))).toBe("too_big");
-    expect(problemFor(new IcsProblem("not_calendar"))).toBe("not_calendar");
-    expect(problemFor(new IcsProblem("too_big"))).toBe("too_big");
+    expect(problemFor(new FetchRefused("address"))).toEqual({ code: "link_failed" });
+    expect(problemFor(new FetchRefused("scheme"))).toEqual({ code: "link_invalid" });
+    expect(problemFor(new FetchRefused("timeout"))).toEqual({ code: "link_slow" });
+    expect(problemFor(new FetchRefused("size"))).toEqual({ code: "too_big" });
+    expect(problemFor(new IcsProblem("not_calendar"))).toEqual({ code: "not_calendar" });
+    expect(problemFor(new IcsProblem("too_big"))).toEqual({ code: "too_big" });
+    expect(problemFor(new BadDates("from_after_to"))).toEqual({ code: "from_after_to" });
+    expect(problemFor(new TooManyEvents(7))).toEqual({ code: "too_many_events", count: 7 });
+    expect(problemFor(new NothingInDates({ from: "2026-01-01", to: null }))).toEqual({ code: "nothing_in_dates", from: "2026-01-01" });
     expect(problemFor(new Error("database exploded"))).toBeNull();
   });
 });

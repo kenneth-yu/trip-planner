@@ -7,7 +7,7 @@ import { NOT_ON_ACCOUNT_PATH } from "@/server/web";
 import { NotFound } from "@/server/services/trip-service";
 import { AccessDenied } from "@/domain/visibility/project";
 import type { Requester } from "@/domain/types";
-import { problemFor, type ProblemCode } from "./problems";
+import { problemFor, problemQuery, type Problem } from "./problems";
 
 export const dynamic = "force-dynamic";
 
@@ -60,8 +60,12 @@ function sameSite(request: Request): boolean {
   return URL.canParse(origin) && hosts.includes(new URL(origin).host);
 }
 
-function problem(tripId: string, code: ProblemCode): Response {
-  return redirectTo(`/trips/${tripId}/import?problem=${code}`);
+function problem(tripId: string, found: Problem | Problem["code"]): Response {
+  return redirectTo(`/trips/${tripId}/import?${problemQuery(typeof found === "string" ? { code: found } : found)}`);
+}
+
+function toInbox(tripId: string, outcome: { waiting: number; matched: number; leftOut: number }): Response {
+  return redirectTo(`/trips/${tripId}/inbox?imported=${outcome.waiting}&matched=${outcome.matched}&left=${outcome.leftOut}`);
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ tripId: string }> }) {
@@ -80,19 +84,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ tri
   const requester: Requester = { kind: "member", userId: user.id, homeZone: user.homeZone };
   const link = form.get("link");
   const file = form.get("file");
+  const dates = { from: form.get("from"), to: form.get("to") };
   try {
-    if (typeof link === "string" && link.trim() !== "") {
-      const outcome = await importIcsUrl(ctx, tripId, requester, link.trim());
-      return redirectTo(`/trips/${tripId}/import?done=${outcome.count}&skipped=${outcome.skipped}&repeating=${outcome.repeating}`);
-    }
+    if (typeof link === "string" && link.trim() !== "") return toInbox(tripId, await importIcsUrl(ctx, tripId, requester, link.trim(), dates));
     if (!(file instanceof File) || file.size === 0) return problem(tripId, "no_file");
     if (file.size > MAX_ICS_BYTES) return problem(tripId, "too_big");
-    const outcome = await importIcsText(ctx, tripId, requester, await file.text(), "Calendar file");
-    return redirectTo(`/trips/${tripId}/import?done=${outcome.count}&skipped=${outcome.skipped}&repeating=${outcome.repeating}`);
+    return toInbox(tripId, await importIcsText(ctx, tripId, requester, await file.text(), "Calendar file", dates));
   } catch (e) {
     if (e instanceof NotFound || e instanceof AccessDenied) return redirectTo(NOT_ON_ACCOUNT_PATH);
-    const code = problemFor(e);
-    if (code) return problem(tripId, code);
+    const found = problemFor(e);
+    if (found) return problem(tripId, found);
     console.error("Calendar import failed", { tripId, error: e instanceof Error ? e.name : "unknown" });
     return problem(tripId, "try_again");
   }
