@@ -11,6 +11,9 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   homeZone: text("home_zone").notNull().default("America/New_York"),
   showHomeTime: boolean("show_home_time").notNull().default(true),
+  tipsOn: boolean("tips_on").notNull().default(true),
+  tipKindsOff: jsonb("tip_kinds_off").$type<string[]>().notNull().default([]),
+  tipsIntroSeen: boolean("tips_intro_seen").notNull().default(false),
   createdAt: created(),
 });
 
