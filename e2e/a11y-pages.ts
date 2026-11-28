@@ -24,6 +24,8 @@ const TRIP_PAGES: { suffix: string; route: string }[] = [
   { suffix: "/inbox", route: "/trips/[tripId]/inbox" },
   { suffix: "/connect", route: "/trips/[tripId]/connect" },
   { suffix: "/share", route: "/trips/[tripId]/share" },
+  { suffix: "/activity", route: "/trips/[tripId]/activity" },
+  { suffix: "/import/google", route: "/trips/[tripId]/import/google" },
   { suffix: "/settings", route: "/trips/[tripId]/settings" },
   { suffix: "/settings/delete", route: "/trips/[tripId]/settings/delete" },
 ];

@@ -13,6 +13,8 @@ const ROUTE_ALLOWLIST: Record<string, string> = {
   "/api/dev/outbox": "Answers 404 unless DEV_SIGN_IN is on; never reachable in production.",
   "/api/dev/sign-in": "Answers 404 unless DEV_SIGN_IN is on; never reachable in production.",
   "/api/google/connect": "Signed in redirect to Google carrying a sealed, 10 minute state; reveals nothing and tries no secret.",
+  "/api/google/import/connect": "Closed unless a rule in REQUEST_RULES covers this path (importIsRateLimited answers 503 or redirects away otherwise), and none does yet, so it only runs with the fake Google outside production. Needs a rule before the import is turned on.",
+  "/api/google/import/callback": "Closed unless a rule in REQUEST_RULES covers this path (importIsRateLimited answers 503 or redirects away otherwise), and none does yet, so it only runs with the fake Google outside production. Needs a rule before the import is turned on.",
   "/api/google/callback": "Needs a sealed state minted for the signed in user and a Google code; nothing here can be guessed by repeated calls.",
 };
 
@@ -42,6 +44,8 @@ const ACTION_ALLOWLIST: Record<string, string> = {
   "src/app/trips/[tripId]/share/actions.ts#disableLinkAction": "Owner only, checked in the service; turning the view link off is idempotent and gives nothing away.",
   "src/app/trips/[tripId]/share/actions.ts#setLinkDeadlinesAction": "Owner only, checked in the service; a switch that is idempotent and changes one flag.",
   "src/app/trips/[tripId]/share/actions.ts#setViewerDeadlinesAction": "Owner only, checked in the service; a switch that is idempotent and changes one flag.",
+  "src/app/trips/[tripId]/activity/actions.ts#undoAction": "Editors only, checked in the service; each call undoes one activity row and is refused if the item changed since, so a repeat does nothing.",
+  "src/app/trips/[tripId]/import/google/actions.ts#runGoogleImport": "Refuses unless a rule in REQUEST_RULES covers the page path or the fake Google is on (importIsRateLimited), and none does yet, so it is closed in production. Needs a rule before the import is turned on.",
   "src/app/trips/[tripId]/actions.ts#mirrorAction": "Signed in and acts only on the caller's own mirror, but can start Google Calendar API calls with no per person limit; Google's quota is the only brake. Known gap; add a rule if it is abused.",
 };
 
