@@ -6,6 +6,7 @@ import { formatClock, formatDayHeader, toLocal } from "@/domain/time/format";
 import { buildFlightCard } from "@/domain/time/flight-card";
 import { AddAllForm } from "./add-all-form";
 import { EntryForm } from "./entry-form";
+import { importedOutcome } from "./messages";
 import { InboxResults } from "./result";
 
 const SOURCE: Record<string, string> = {
@@ -16,19 +17,25 @@ const SOURCE: Record<string, string> = {
   assistant: "AI assistant",
 };
 
-export default async function InboxPage({ params }: PageProps<"/trips/[tripId]/inbox">) {
+export default async function InboxPage({ params, searchParams }: PageProps<"/trips/[tripId]/inbox">) {
   const { tripId } = await params;
+  const { imported, matched, left } = await searchParams;
   const { ctx, requester, view } = await loadTripPage(tripId);
   if (!view.permissions.canEdit) return <p className={styles.muted}>Only editors review imports.</p>;
   const entries = await listInbox(ctx, tripId, requester);
   const clean = entries.filter((e) => e.clean).map((e) => e.id);
   return (
     <div className={styles.narrow}>
-      <InboxResults>
+      <InboxResults initial={importedOutcome(imported, matched, left)}>
         {clean.length > 0 && <AddAllForm tripId={tripId} entryIds={clean} />}
         {!entries.length && (
           <p className={styles.muted}>
             Nothing to review. Items from calendars and assistants arrive here first. <Link href={`/trips/${tripId}/import`}>Import bookings</Link>
+          </p>
+        )}
+        {entries.length > 0 && (
+          <p>
+            <Link href={`/trips/${tripId}/import`}>Import bookings</Link>
           </p>
         )}
       <ul className={styles.list}>

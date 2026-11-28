@@ -37,6 +37,7 @@ test("an editor uploads a calendar file inside the trip's dates and lands in the
   await kenny.getByRole("button", { name: "Import" }).click();
   await expect(kenny).toHaveURL(new RegExp(`/trips/${CHICAGO_TRIP}/inbox\\?imported=1&matched=0&left=1$`));
   expect(kenny.url()).not.toContain("chicago.ics");
+  await expect(kenny.locator("p[role=status]").filter({ hasText: "1 event is waiting in your inbox." })).toHaveText("1 event is waiting in your inbox. 1 was left out: cancelled, outside your dates, or with no readable time.");
   await expect(kenny.getByText("Dinner at Girl and the Goat").first()).toBeVisible();
   await expect(kenny.getByText("From Calendar file").first()).toBeVisible();
 });
