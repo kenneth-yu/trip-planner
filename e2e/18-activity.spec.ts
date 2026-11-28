@@ -1,19 +1,23 @@
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { LISBON_TRIP } from "./trips";
 
 async function seriousProblems(page: Page): Promise<string[]> {
   const result = await new AxeBuilder({ page }).analyze();
   return result.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => `${v.id}: ${v.help}`);
 }
 
-test("Lisbon: an empty trip says nothing has changed, then an added flight shows with Undo and the undo is announced", async ({ page, signIn }) => {
-  await signIn("kenny", `/trips/${LISBON_TRIP}/activity`);
+test("a new trip says nothing has changed, then an added flight shows with Undo and the undo is announced", async ({ page, signIn }) => {
+  await signIn("kenny", "/trips/new");
+  await page.getByLabel("Trip name").fill("Activity check trip");
+  await page.getByRole("button", { name: "Create trip" }).click();
+  await page.waitForURL(/\/trips\/[0-9a-f-]{36}/);
+  const trip = new URL(page.url()).pathname.split("/")[2];
+  await page.goto(`/trips/${trip}/activity`);
   await expect(page.getByText("Nothing has changed yet. Changes to this trip will show here.")).toBeVisible();
   expect(await seriousProblems(page)).toEqual([]);
 
-  await page.goto(`/trips/${LISBON_TRIP}/add`);
+  await page.goto(`/trips/${trip}/add`);
   await page.locator("[name=flightNumber]").fill("NH159");
   await page.locator("[name=date]").fill("2026-12-01");
   await page.locator("[name=from]").fill("JFK");
@@ -23,7 +27,7 @@ test("Lisbon: an empty trip says nothing has changed, then an added flight shows
   await page.getByRole("button", { name: "Add flight" }).click();
   await expect(page).toHaveURL(/added=/);
 
-  await page.goto(`/trips/${LISBON_TRIP}/activity`);
+  await page.goto(`/trips/${trip}/activity`);
   await expect(page.getByText(/^You added /)).toBeVisible();
   expect(await seriousProblems(page)).toEqual([]);
 
@@ -34,7 +38,7 @@ test("Lisbon: an empty trip says nothing has changed, then an added flight shows
   expect(await seriousProblems(page)).toEqual([]);
 });
 
-test("a viewer-style page never shows hidden or private detail: the December log has no codes or seats", async ({ page, signIn }) => {
+test("the December log shows the owner no codes or seats", async ({ page, signIn }) => {
   await signIn("kenny", `/trips/00000000-0000-4000-8300-000000000001/activity`);
   const html = await page.content();
   for (const secret of ["PLACEHOLDER_", "30K", "30C"]) expect(html).not.toContain(secret);

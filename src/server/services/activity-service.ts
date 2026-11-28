@@ -3,7 +3,7 @@ import { z } from "zod";
 import * as t from "../db/schema";
 import { insertActivity, listActivity, type StoredActivity } from "../repo/activity-repo";
 import { readSnapshot } from "../repo/activity-snapshot";
-import { deleteItem, saveItem, touchTrip, UnknownTraveler } from "../repo/trip-repo";
+import { deleteItem, lockItemRow, saveItem, touchTrip, UnknownTraveler } from "../repo/trip-repo";
 import type { ServiceContext } from "./context";
 import { requireAggregate } from "./trip-service";
 import { firstName } from "@/domain/people/first-name";
@@ -15,7 +15,7 @@ export const ACTIVITY_PAGE = 50;
 
 export type ActivityKind = "created" | "updated" | "deleted" | "merged" | "imported" | "undone";
 const KINDS: readonly string[] = ["created", "updated", "deleted", "merged", "imported", "undone"];
-const UNDOABLE: readonly string[] = ["created", "updated", "deleted", "merged", "undone"];
+const UNDOABLE: readonly string[] = ["created", "updated", "deleted", "undone"];
 const UNNAMED = "A trip member";
 
 export interface ActivityLine {
@@ -90,6 +90,18 @@ const SOURCE_WORDS: Record<string, string> = {
   assistant: "an AI assistant",
 };
 
+type Snapshot = { readable: true; item: Item | null } | { readable: false };
+
+function readEntry(entryId: string, value: unknown): Snapshot {
+  try {
+    return { readable: true, item: readSnapshot(value) };
+  } catch (e) {
+    if (!(e instanceof z.ZodError)) throw e;
+    console.error(`activity snapshot unreadable for entry ${entryId}`);
+    return { readable: false };
+  }
+}
+
 function currentItem(agg: TripAggregate, id: string | null): Item | null {
   return id ? (agg.items.find((i) => i.id === id) ?? null) : null;
 }
@@ -125,18 +137,22 @@ export async function listActivityLines(ctx: ServiceContext, tripId: string, req
   const latestFor = new Map<string, string>();
   for (const e of entries) if (e.itemId && !latestFor.has(e.itemId)) latestFor.set(e.itemId, e.id);
 
-  const visibleItem = (e: StoredActivity): { ref: Item | null; visible: boolean } => {
-    const ref = readSnapshot(e.after) ?? readSnapshot(e.before);
-    if (!e.itemId) return { ref: null, visible: true };
+  const judge = (e: StoredActivity): { before: Snapshot; after: Snapshot; ref: Item | null; visible: boolean } => {
+    const before = readEntry(e.id, e.before);
+    const after = readEntry(e.id, e.after);
     const now = currentItem(agg, e.itemId);
-    const judged = now ?? ref;
-    return { ref, visible: judged ? canSeeItem(judged, requester) : false };
+    const state = e.action === "deleted" ? (before.readable ? before.item : null) : after.readable ? (after.item ?? (before.readable ? before.item : null)) : null;
+    const ref = state ?? now;
+    if (!e.itemId || !ref) return { before, after, ref: null, visible: false };
+    const thenVisible = state ? canSeeItem(state, requester) : true;
+    const nowVisible = now ? canSeeItem(now, requester) : true;
+    return { before, after, ref, visible: thenVisible && nowVisible };
   };
 
   const hiddenFromBatch = new Map<string, number>();
   for (const e of entries) {
     if (!e.itemId || !e.via.startsWith("import:") || !["created", "merged"].includes(e.action)) continue;
-    if (!visibleItem(e).visible) hiddenFromBatch.set(e.via, (hiddenFromBatch.get(e.via) ?? 0) + 1);
+    if (!judge(e).visible) hiddenFromBatch.set(e.via, (hiddenFromBatch.get(e.via) ?? 0) + 1);
   }
 
   const lines: ActivityLine[] = [];
@@ -151,14 +167,15 @@ export async function listActivityLines(ctx: ServiceContext, tripId: string, req
       lines.push({ id: e.id, at: e.at, kind, by, title: null, itemId: null, changed: [], via: null, count, source: SOURCE_WORDS[payload.source] ?? "somewhere else", canUndo: false });
       continue;
     }
-    const { ref, visible } = visibleItem(e);
+    const { before, after, ref, visible } = judge(e);
     if (!visible || !ref) continue;
-    const before = readSnapshot(e.before);
-    const after = readSnapshot(e.after);
-    const diff = changedFields(before, after, perms.canSeeSensitive, perms.canSeeDeadlines);
+    const readable = before.readable && after.readable;
+    const diff = readable ? changedFields(before.item, after.item, perms.canSeeSensitive, perms.canSeeDeadlines) : { names: [], onlyHidden: false };
     if (diff.onlyHidden) continue;
     const now = currentItem(agg, e.itemId);
-    const undoable = UNDOABLE.includes(kind) && perms.canEdit && e.itemId !== null && latestFor.get(e.itemId) === e.id && (now ? mayEdit(agg, requester, now) : after === null && before !== null && canSeeItem(before, requester));
+    const beforeItem = before.readable ? before.item : null;
+    const afterItem = after.readable ? after.item : null;
+    const undoable = readable && UNDOABLE.includes(kind) && perms.canEdit && e.itemId !== null && latestFor.get(e.itemId) === e.id && (now ? mayEdit(agg, requester, now) : afterItem === null && beforeItem !== null && canSeeItem(beforeItem, requester));
     lines.push({
       id: e.id,
       at: e.at,
@@ -199,10 +216,14 @@ export async function undoActivity(ctx: ServiceContext, tripId: string, requeste
     const entry = id.success ? all.find((e) => e.id === id.data) : undefined;
     if (!entry || !entry.itemId || !UNDOABLE.includes(entry.action)) throw new UndoRefused("missing", NOT_AN_ENTRY, null);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${entry.itemId}))`);
+    await lockItemRow(tx, tripId, entry.itemId);
     const agg = await requireAggregate(tx, tripId);
     const fresh = (await listActivity(tx, tripId)).filter((e) => e.itemId === entry.itemId);
-    const before = readSnapshot(entry.before);
-    const after = readSnapshot(entry.after);
+    const beforeRead = readEntry(entry.id, entry.before);
+    const afterRead = readEntry(entry.id, entry.after);
+    if (!beforeRead.readable || !afterRead.readable) throw new UndoRefused("missing", NOT_AN_ENTRY, null);
+    const before = beforeRead.item;
+    const after = afterRead.item;
     const title = (after ?? before)?.title ?? "That item";
     const now = currentItem(agg, entry.itemId);
     const judged = now ?? before ?? after;
@@ -210,6 +231,9 @@ export async function undoActivity(ctx: ServiceContext, tripId: string, requeste
     if (fresh[0]?.id !== entry.id) throw new UndoRefused("changed", title, now ? now.id : null);
     if (now && !mayEdit(agg, requester, now)) throw new UndoRefused("cannot_edit", title, null);
     const target = before;
+    if (now && target && now.createdBy !== me && (now.visibility !== target.visibility || !same(now.visibleToUserIds, target.visibleToUserIds) || now.showAsBusy !== target.showAsBusy)) {
+      throw new AccessDenied("Only the person who added this can change who sees it.");
+    }
     try {
       if (target) await saveItem(tx, target);
       else await deleteItem(tx, tripId, entry.itemId);
